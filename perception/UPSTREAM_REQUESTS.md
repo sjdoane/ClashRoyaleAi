@@ -1908,3 +1908,482 @@ t=68 (was 97), hits for 572, breaks, and its Barbarians appear at t=69.
 C++ suite, Python suite, the rebuilt `.pyd` (`tools/audit/verify_pyd.py`), and
 the lab's curation over the rebuilt Battle Ram, Prince, Ram Rider and Bomb
 Tower tables: see the commit message for the numbers.
+
+## Item 36 — the live loop on iPhone Mirroring: a silent stall, a ledger that books a play every frame, and four zeroed inputs
+
+Proposed 2026-11-18 by the live-test agent. **Nothing in `engine/` was changed.**
+Every workaround lives in `cr-robot/live_ppo/driver.py` and is applied by
+monkeypatching. Evidence: `cr-robot/runs/live/REPORT_2026-11-18.md`. None of
+these items affect gameplay; they are perception and live-loop only.
+
+1. **`live/elixir_ledger.py:76` `COST_TOLERANCE = 1.0`.**
+   - With a 1-cost card in the deck, the noise floor at line 243 (`drop < _min_cost - tolerance`) becomes `drop < 0`, so every frame where elixir does not rise books a 1-elixir play.
+   - Measured: spend 548 by 35 s live, and 4,863 in a 300 s soak.
+   - Consequences: `my_elixir_spent` saturates, and the HandTracker FIFO advances on fake plays.
+   - Option: 0.5, or `min(1.0, 0.5 * min_cost)`.
+2. **The hand fed to the policy is the tracker's.** It matched the screen on 27 of 102 frames (37 with the ledger fix), while the screen read was 120/120 slots on 30 frames judged by eye. Option: use the screen read and fall back to the tracker only for a blank slot.
+3. **`live/pipeline.py:233` swallows every exception silently.** A capture that raises on every frame is indistinguishable from a hang: last night the board age climbed to 135 s with no output. Option: log each new exception type with its traceback.
+4. **`live/action_gate.py:24` `MAX_STALENESS_MS = 2000`.** Two taps were allowed at board ages of 267 ms and 1,268 ms as the stall began, and the LSTM still steps on a stale board. Option: 1000 ms, and skip the policy step entirely when the board is stale.
+5. **`live/mvp_loop.py:774` never passes `seconds_elapsed`.** The clock scalar is always 0, and the elixir multiplier always reads 1x.
+6. **Opponent Princess HP is never read** (`live/adapter.py:238-239` gets no value). Damaged towers are fed to the policy as full.
+7. **Training Camp guard.** The live loop has no check on match type. The trophy-gold share in the opponent banner (frame x 30–66, y 44–78) separates ladder (0.147–0.151) from Training Camp and menus (0.000). The driver uses it, fail-closed, at a threshold of 0.03.
+8. **Units.** CRBAB scored class-and-side recall 42% and precision 60% on 30 frames. The `video_dataset/detector` YOLO scored 77% and about 95% on the same frames, at a ~50 ms side-car round trip. Proposal: make YOLO the live unit source.
+
+## Item 37 — the live observation's missing inputs: opponent towers, clock, opponent cycle and spend
+
+Proposed 2026-11-18 by the perception-fill agent. **Nothing in `engine/` was changed.**
+The working versions are in `cr-robot/live_ppo/` (`hud_live.py`, `opp_plays.py`, driver
+flags `--hud-towers --hud-clock --opp-plays`). The measurements are in
+`cr-robot/runs/live/PERCEPTION_FILL_2026-11-18.md`. All of this is perception only;
+none of it affects gameplay or checkpoints.
+
+1. **`models/perception_encoder.encode` leaves the opponent-cycle block (`CYCLE_START`, 370 floats) at zero.**
+   - The policy trained with `seen[]`/`recency[]` filled by `GameManager::playCard`. Live, both blocks are all zero.
+   - Option: let `encode` take an optional cycle block, or a `ClashEnv`, and copy `get_observation_for_team(0)[CYCLE_START:...]` from a mirror that perception feeds with `note_played_card(1, card)`.
+   - `live_ppo/driver.py` does this splice today, outside the encoder.
+2. **`GameState.opp_elixir_spent` is always None, so it is fed as 0.0.**
+   - The docstring says inferring it "over-counts". That was true of a per-unit sum.
+   - A birth-tracked, multi-body-deduplicated play detector measured 38/38 elixir on the labelled ladder match (9/9 plays, no false plays).
+   - Option: accept the value when perception supplies it, as now, and document that a value of 0 means "not measured".
+3. **Opponent Princess HP.** CRBAB's bar reader works in the Training Camp arena but reads nothing on the ladder arena's "stone" towers.
+   - The numeral above the bar, read with this repo's own `config/templates/tower_549x976` and anchored on the bar's left edge, measured 0.980 raw and 0.995 fed within 0.01.
+   - Option: move `hud_live.OppTowerReader` and `TowerHPFilter` into `perception/readers/`.
+4. **The match clock.** `video_dataset/detector/hud.py` reads the countdown and the x2 badge.
+   - A monotone filter with a 3 s resync gives elapsed time within 1.5 s on 618/622 densely checked frames. The stock wall-clock fill was 4–18 s behind.
+   - Overtime is handled (label or jump-up) but has not been tested on real frames.
+   - Option: a `readers/match_clock.py` that `mvp_loop` passes as `seconds_elapsed`.
+5. **`track/opp_elixir.py`'s `NEGATIVE_TOLERANCE = 0.1` is tighter than the clock's 1 s resolution.**
+   - On the labelled ladder match, with every play found, the balance dipped to −0.29 at 30.5 s, which is inside the clock quantisation (1 s ≈ 0.36 elixir).
+   - Option: a tolerance of 0.4 when the time source is the on-screen clock.
+
+## Item 38 — the elixir schedule: 2.8 s per elixir, triple from 4:00, the match ends at 5:00
+
+Proposed 2026-11-18 by the sim-fidelity agent. Patch: `cr-robot/patches/0004-elixir-schedule-and-match-end.patch`.
+Measurements: `cr-robot/runs/sim_fidelity/REPORT.md` and `harness.py`. **GAMEPLAY-AFFECTING.**
+
+### Evidence
+- **Regen rate.** IL_Replay had 2,085 Ranked/Ladder replays that ran to about 5:00.
+  - In those, a side's spend plus leaked elixir never exceeds 5 + 197.86. That is the ceiling of a 2.8 s schedule.
+  - 667 sides exceed 194.0, which the engine's 0.035/tick (2.857 s) cannot produce.
+  - FirstLight Zero's `battle_env.py` also uses 2.8 s.
+- **Phases.** Double elixir runs 2:00–4:00 and triple 4:00–5:00 (FLZ `battle_env.py`; the overtime x2/x3 badge on our video perception).
+  - The engine went triple at 3:00.
+  - The engine ended at the caller's `maxTicks`, which is 3600 (6:00) in training.
+- **Harness, before → after:**
+  - seconds per elixir by phase: 2.857 / 1.429 / 0.952 → 2.8 / 1.4 / 1.4 / 0.933;
+  - match end: 360 s → 300 s;
+  - 5 + total income over a full match: 278.07 → 197.93 (real ceiling 198).
+
+### Proposed change (exact)
+- `GameManager.h`:
+  - `static constexpr float ELIXIR_REGEN_RATE = 1.0f / 28.0f` (was `const float 0.035f`);
+  - `TRIPLE_ELIXIR_TICK = 2400`, with the `static_assert` saying triple starts inside overtime;
+  - `step()` resolves the tower tiebreak at `MatchRules::MATCH_END_TICK` whatever `maxTicks` is.
+- `MatchRules.h`: `MATCH_END_TICK = 3000`.
+- Bound to Python as `ELIXIR_REGEN_RATE` and `MATCH_END_TICK`.
+- `perception/timebase.py` reads the bound rate. Tests that hardcoded 0.035 now read `ELIXIR_REGEN_RATE`.
+
+### Blast radius
+- Every match changes:
+  - about 2% more income at 1x;
+  - a minute of triple elixir replaces two minutes;
+  - no 5:00–6:00 tail.
+- Training code with its own `MAX_TICKS = 3600` (`cr-robot/training/reward.py`) still runs; the engine just ends at 3000.
+- `live_ppo/hud_live.py` treats the end of regulation as triple and should read `REGULATION_END_TICK` (cr-robot side, not engine).
+- Checkpoints trained before this see a shifted late game. Retrain or fine-tune.
+
+### Tests
+- `test_game_manager.cpp`: the regen and phase-composition tests are derived from `ELIXIR_REGEN_RATE`.
+- `test_timebase.py` and `test_track.py` read the bound constant.
+- C++: only the 10 failures already present after 0001–0003. Python: only the 2 `test_rl_ppo_compaction` failures already present.
+
+## Item 39 — the cycled-in card is unplayable for 1.5 s, not 2.0 s
+
+Proposed 2026-11-18 by the sim-fidelity agent. Patch: `cr-robot/patches/0005-cycle-in-cooldown.patch`. **GAMEPLAY-AFFECTING.**
+
+### Evidence
+- IL_Replay, 638,300 plays: the gap between a card entering the hand and its earliest play has a hard edge at 1.50 s.
+  - 2,816 plays at 1.45 s, then 8,188 at 1.50 s.
+- The engine's `handCooldownTicks` was 20 (2.0 s).
+- Harness: cycle-in 2.0 s → 1.5 s.
+
+### Proposed change (exact)
+- `PlayerState.h`: `static constexpr int CYCLE_IN_COOLDOWN_TICKS = 15;`, used for `handCooldownTicks[handIndex]`.
+- Bound to Python as `CYCLE_IN_COOLDOWN_TICKS`.
+- `perception/track/cycle.py` docstring now names the constant.
+
+### Blast radius
+- Faster cycle decks (Hog 2.6 most of all) get 0.5 s back per play.
+- If a tap-to-deploy delay of about 1.0 s (FLZ) is ever modelled separately, this constant should shrink to about 0.5 s. This is not done here.
+- Retrain advised.
+
+### Tests
+- The cycle-delay test in `test_game_manager.cpp` is rewritten around the constant (asserts 15).
+- C++, Python and perception suites: only the failures already present.
+
+## Item 40 — attacks have a first-hit load time
+
+Proposed 2026-11-18 by the sim-fidelity agent. Patch: `cr-robot/patches/0006-attack-load-time.patch`. **GAMEPLAY-AFFECTING.**
+
+### Evidence
+- Every troop and building in the real game winds up for its `LoadTime` before the first hit on a new target.
+  - In the engine the first hit landed on the tick the target came into range.
+- Sources:
+  - FLZ's published `card_specs.json` "LoadTime" (release 15.535.13), 71 cards;
+  - RoyaleAPI cr-api-data `load_time` for the other 19;
+  - both rounded to ticks.
+- Where FLZ and cr-api disagree, FLZ wins. The disagreements are logged in `/tmp/sf_scripts/merge_load.py`.
+- Harness, first hit on a Princess Tower after arriving, before → after:
+
+  | Card | Before (s) | After (s) |
+  |---|---|---|
+  | Hog | 0.1 | 1.1 |
+  | Giant | 0.1 | 1.1 |
+  | Balloon | 0.1 | 1.9 |
+  | Ice Golem | 0.1 | 1.6 |
+  | Valkyrie | 0.1 | 1.5 |
+  | Knight | 0.1 | 0.8 |
+  | Musketeer | 0.5 | 0.8 |
+  | Royal Giant | 0.4 | 1.3 |
+
+- Hit intervals are unchanged.
+
+### Proposed change (exact)
+- New `include/core/LoadTimes.h`: 90 rows keyed by registry name, so Evolutions share the base card's value, with `LoadTimes::forName`.
+- `CombatEntity`:
+  - `loadTicks`, `windupTargetId`, `windupRemaining`;
+  - on a new in-range target the wind-up restarts. It is slowed by freeze/slow and reset by stun.
+  - No attack while winding up. The Inferno ramp starts at the first hit.
+- `applyCardMetadata` sets `loadTicks`.
+- `get_card_stats` exposes `load_ticks`.
+
+### Blast radius
+- Every fight is about 0.5–1.9 s slower to its first hit. Win conditions lose chip before they connect.
+- UtilityTeacher rollouts with short horizons now under-score the Hog:
+  - `test_teacher_combos`' planned pair needs `horizon=100`; the follow-up is taken at 70 and 100 but not at 50, 60 or 80.
+  - Teacher rungs with short lookahead play differently.
+- Retrain advised.
+
+### Tests
+- Helper `windUp()` added. Nine card tests advance past the wind-up.
+- Three new `[load_time]` tests:
+  - the Hog's first hit is on the 11th update, then every cooldown;
+  - a stun restarts the wind-up;
+  - every row names a registered card, and an Evolution matches its base.
+- The GameManager statistics mini-match includes the Knight's load.
+
+## Item 41 — Crown Towers are level 11, like the cards
+
+Proposed 2026-11-18 by the sim-fidelity agent. Patch: `cr-robot/patches/0007-level-11-towers.patch`. **GAMEPLAY- and OBSERVATION-AFFECTING.**
+
+### Evidence
+- The engine's towers were level 9: Princess 2534 hp / 90 damage, King 4008. Our cards (and the registry) are level 11, so towers were about 17% weak.
+- Level 11 on the wiki: Princess 3052 / 109 every 0.8 s, King 4824 / 109 every 1.0 s.
+- Live reads (`live_ppo/hud_live.py`): an opponent Princess at full bar read 4032 at level 14 and 4424 at level 15. These fit the level curve of item 42 to within 0.3%.
+- Harness: Princess 2534 → 3052, King 4008 → 4824, shot 90 → 109, interval 0.8 s unchanged.
+
+### Proposed change (exact)
+- `TowerTroops.h`: `namespace CrownTower { LEVEL = 11; PRINCESS_HP = 3052; PRINCESS_DAMAGE = 109; PRINCESS_COOLDOWN_TICKS = 8; KING_HP = 4824; KING_DAMAGE = 109; KING_COOLDOWN_TICKS = 10; }`.
+  - Used for `towerTroopStats(None)` and the King `addTower` calls.
+- `ClashEnv::MAX_BUILDING_HP = CrownTower::KING_HP`. It was 4008, so the observation normaliser moves.
+- Copies of the old numbers updated:
+  - `tools/lab/lab_cli.cpp` expectation;
+  - the `perception/bridge/sim_driver.py` fallback;
+  - a `teacher.py` comment.
+- Not updated: `web/viewer.html` (hardcoded 2534/4008, display only) and perception docs that cite 2534 as an example.
+
+### Blast radius
+- Towers take about 20% longer to fall and hit 21% harder.
+- Building channels in the observation are rescaled (normaliser 4008 → 4824), so **a checkpoint trained before this sees shifted inputs**.
+- `EC.OWN_TOWER_HP_TOTAL` goes 9076 → 10928, which moves the reward PBRS scale.
+- The teacher's Goblin Drill wincon score falls 1404 → 924; its test threshold drops to 600 with that measurement cited.
+- Retrain required.
+
+### Tests
+- C++ tests use the `CrownTower` constants instead of literals.
+- New test pins all the constants and `MAX_BUILDING_HP`.
+- `test_rewards_weights` expects 10928.
+
+## Item 42 — per-team card and tower level
+
+Proposed 2026-11-18 by the sim-fidelity agent. Patch: `cr-robot/patches/0008-per-team-card-level.patch`.
+**Default is identical to item 41 (level 11 everywhere).** It is GAMEPLAY-AFFECTING only when a caller sets a level.
+
+### Evidence
+- Real opponents are often over-levelled. The Training Camp trainer that beat us live was level 15.
+- The engine had no level at all.
+- The curve is the game's single power-level table, from FLZ's published `card_logic.json` `rarity_curves.Common`:
+  - multipliers in percent for card levels 1..16: 100 110 121 133 146 160 176 193 212 233 256 281 309 339 372 409;
+  - a level-L value is the level-11 value × pct[L] / 256.
+- Checks:
+  - Hog Rider 1697 hp / 317 damage at level 11 give 2466 / 461 at level 15, the same as the table's 663 × 3.72 and 124 × 3.72;
+  - Princess Tower 2527 / 4041 / 4435 at levels 9 / 14 / 15, against 2534 / 4032 / 4424 measured (≤ 0.3%).
+- Matchups: our PPO policy (`ppo_bc26_final`) against 9 teacher-piloted decks, 432 matches per row:
+
+  | Opponent level | Win rate |
+  |---|---|
+  | 11 | 65% |
+  | 13 | 12% |
+  | 15 | 0% |
+
+  - At level 15 the policy deals 0.17 tower-fractions per match and takes 2.61.
+
+### Proposed change (exact)
+- New `include/core/CardLevels.h`: the table, `TOURNAMENT_LEVEL = 11`, `scale(v11, level)` (sentinels ≤ 0 pass through).
+- Hooks:
+  - `Entity::levelApplied` and a virtual `scaleToLevel` (no-op default, so Projectiles keep their shooter's damage);
+  - `CombatEntity` scales hp, damage, shieldHp, the pull and flight-pulse damage, heal cap and transform hp;
+  - `Building` also scales maxHp;
+  - `AreaSpell` scales damage, the tier damages and `crownTowerDamage`.
+- `Board`:
+  - `cardLevel[2]` and `towerLevel[2]`, copied by `deepCopy`;
+  - `applyTeamLevel()` runs once per entity in `commitPendingEntities`. This covers the played card and every later spawn (death spawns, spawners, Graveyard). Crown Towers take the tower level.
+- `GameManager::setTeamLevel(team, card, tower = -1)`: towers apply at `reset()`.
+- Python: `set_team_level`, `get_team_card_level`, `get_team_tower_level`.
+
+### Blast radius
+- Nothing changes at the default.
+- With a level other than 11:
+  - damage held inside effect objects (on-hit, death and ability effects) is not scaled;
+  - the observation's building channels exceed 1.0. A level-15 King reads 7010/4824 = 1.45, outside anything a policy has trained on;
+  - troop hp channels likewise run above their normaliser.
+
+### Tests
+- `tests/core/test_card_levels.cpp`:
+  - the curve and its sentinels;
+  - bad-value refusal;
+  - towers per side at reset;
+  - a troop scaled once, and not again after a snapshot;
+  - Fireball crown-tower damage 159 → 231 at level 15.
+- `python_ai/tests/test_team_level.py` covers the binding.
+- All suites: only the failures already present.
+
+---
+
+## Item 43 — The Log rolls at 0.34 tiles/tick, measured from match footage
+
+Proposed 2026-11-18 by the gen-2 agent. Patch: `cr-robot/patches/pending/0009-log-roll-speed.patch`.
+**GAMEPLAY-AFFECTING.** The observation and action space are unchanged.
+
+### Evidence
+- **Engine:** `.withRollingSweep(10.1f, 3.9f, 1.0f, 0.8f)`. That is 1.0 tiles/tick, so the whole 10.1 roll takes about 1 s.
+  - `harness.py spells` measured 9.44 tiles/s; damage arrives at a Knight 9.5 tiles out after 1.8 s.
+  - The speed was marked "not sourced" in CardRegistry.h and in CLAUDE.md.
+- **Footage:** 60 fps match videos from `video_dataset/` (884×1920; geometry `data/det/geo/yersoncz.json`; play times from the detector's `plays.parquet`).
+  - **Method:**
+    - A kymograph of the lane strip under each Log play, with rows in tile y and one column per frame.
+    - A wood-colour mask, then the leading edge tracked frame by frame.
+    - A Theil–Sen fit over the clearly moving phase (displacement in [1.5, D−1.0]).
+    - Pixels to tiles through `video_dataset/detector/common.py` (`tile_to_ref`, `ref_to_video`).
+  - **Sample:** 19 clean full rolls in 3 videos (4s1o1sk-hPM, QD_1suWFNKo, h37LHPnfZX4).
+    - One outlier was excluded: a 0.4 s stall against a Skeleton Army, 2.36 tiles/s.
+  - **Results:**
+    - Moving-phase slope: median **3.47 screen tiles/s** (range 3.39–3.57, fit rmse about 0.25 tiles).
+    - Motion start to rest: median **2.96 s** (2.89–3.08).
+    - Rest-to-rest displacement: about 10.3 screen tiles against the true range of 10.1. So the screen tile scale runs about 2% long, which is why the scale-free figure is used.
+  - **Scale-free:** 10.1 / 2.96 s = **3.41 tiles/s = 0.34 tiles/tick**, which is a 30-tick roll.
+  - **Cross-check:** the published `speed 200` (cr-api-data) is 3.33 tiles/s if 60 units = 1 tile/s. That is within 2–3%.
+  - **Visual checks** (frame strips with tile ticks):
+    - The Log appears as a ghost at the cast point for about 1.0–1.2 s before it rolls. That is the tap-to-deploy delay, consistent with FirstLight-Zero's ~1.0 s.
+    - It rolls, flashes the Princess Tower red at the end of its range, then fades.
+- **Barbarian Barrel (101/174), not changed.** There is one clean enemy Barrel in the footage (QD_1suWFNKo t=2526.0).
+  - It lands on a thrown arc, then rolls about 6 screen tiles in about 0.5 s, peaking near 13 tiles/s, against the engine's 0.5 tiles/tick (5 tiles/s).
+  - The onset is ambiguous (the throw blends into the roll), and the generic tracker was unreliable on the 34 other barrels (spawned Barbarian, walking troops).
+  - One clip is not enough to patch on. **Open:** measure more enemy Barrels.
+
+### Proposed change (exact)
+- `CardRegistry.h` The Log: `.withRollingSweep(10.1f, 3.9f, 0.34f, 0.8f)`, with the comment stating the measurement. Range, width and knockback are unchanged.
+- `.claude/CLAUDE.md`: the rolling-spell table says 0.34 (measured), with a paragraph on the measurement and on the Barrel being left alone.
+- New test `test_area_spell.cpp` "The Log rolls at the measured 0.34 tiles/tick and still reaches the tower":
+  - reads the registry's own stats;
+  - from `BRIDGE_Y` the tower is untouched until tick ceil(9.0/0.34) = 27, takes 269 exactly once, and the roll is over by about tick 30.
+
+### Measured after (gen-2 build, `harness.py`)
+- `log_roll_speed_tiles_per_s` 9.44 → **3.40**.
+- `log_hit_time_by_distance_s` [1.0: 0.9, 4.0: 1.2, 7.0: 1.5, 9.5: 1.8] → [1.0: 1.0, 4.0: 1.9, 7.0: 2.8, 9.5: 3.5] s (each includes the 0.8 s spell delay).
+- `log_crown_tower_damage_from_y17`: 35 → 35, so the Log still reaches the Princess Tower from the bridge.
+- `[roll]` tests: 14 cases, all pass. Full C++ suite: only the 10 failures already present.
+
+### Blast radius
+- The Log arrives later: about 2.6 s after landing for something 9 tiles out, instead of 0.9 s. A unit walking toward it meets it sooner and one walking away can outrun the tail.
+- Knockback is applied over 30 ticks instead of 10.
+- Damage, range and the bridge-to-tower interaction are unchanged.
+- Gen-1 checkpoints learned a 1-second Log, so their Log timing is stale.
+
+---
+
+## Item 44 — tower HP in the observation is a fraction of THAT tower's max, plus a level section
+
+Proposed 2026-11-18 by the gen-2 agent. Patch: `cr-robot/patches/pending/0010-tower-obs-own-max-and-levels.patch`.
+**OBSERVATION-CHANGING:** size 13977 → **13981**. Every offset that existed is unmoved. Checkpoints need the new `scalar_mlp.extra` input width (see below).
+
+### Evidence
+- After 0007/0008 a tower's HP scalar was `hp / MAX_BUILDING_HP` (level-11 King, 4824), and so was its building-channel cell.
+  - At level 11 a full Princess read 0.633.
+  - With `set_team_level(1, 15)` the opponent's full King read **1.453** and a full Princess 0.919.
+  - The building channel clipped at 1.0, the scalar did not.
+- Measured on the 0008 build (`/tmp/gen2/towercheck.py`), opponent full-HP readings `[K, L, R]`:
+  - level 11: [1.000, 0.633, 0.633]
+  - level 13: [1.207, 0.764, 0.764]
+  - level 15: [1.453, 0.919, 0.919]
+- Live perception (`live_ppo/hud_live.py`) reports `hp / that tower's max`. `perception_encoder.encode` scales that by the fresh-board cell value, which is level-11. So against a level-15 opponent the net saw a different number for the same tower in sim and in live play.
+- **Reward:** `cr-robot/training/reward.py tower_damage_fracs` rescaled by the level-11 hp0 and clipped. Fraction of damage it read for a true 10 / 25 / 50% hit:
+
+  | opponent level | 10% | 25% | 50% |
+  |---|---|---|---|
+  | 11 | 0.100 | 0.250 | 0.500 |
+  | 13 | **0.000** | 0.095 | 0.397 |
+  | 15 | **0.000** | **0.000** | 0.273 |
+
+  At level 15 the first 31% of every tower's HP paid nothing, which is the band the curriculum was going to train in.
+
+### Proposed change (exact)
+- **`ClashEnv.h`:**
+  - `towerHpFraction(entity) = clamp(hp / Building::getMaxHp(), 0, 1)`.
+  - The six tower scalars and the towers' building-channel cells use it. Deployed buildings keep `min(hp / MAX_BUILDING_HP, 1)`.
+- **Level section** at `LEVEL_START = CYCLE_START + CYCLE_BLOCK_SIZE`, with `NUM_LEVEL_SCALARS = 4`, from the observer's side: own card, own tower, opponent card, opponent tower.
+  - Each is `levelScalar(L) = (L − 11) / (16 − 11)`, so a level-11 match reads all zeros and level 15 reads 0.8.
+  - `observationSize() = LEVEL_START + NUM_LEVEL_SCALARS`.
+  - Not cheating: the real game shows each King's level.
+- **Bindings:** `LEVEL_START`, `NUM_LEVEL_SCALARS`, module `TOURNAMENT_LEVEL` and `level_scalar(level)`.
+- **`python_ai/models/net.py`:**
+  - `scalar_size` includes the level section.
+  - `ScalarEncoder.extra` reads the 10 extra scalars plus the 4 levels: `Linear(14, 12)` (was `Linear(10, 12)`). The branch output is unchanged, so the 64-dim total and the LSTM input size hold.
+  - An engine without the section gives 0 and the old layout.
+- **`python_ai/models/perception_encoder.py`:**
+  - `OBSERVATION_SIZE` includes the section.
+  - `encode(..., levels=(oc, ot, pc, pt))` fills it from `level_scalar`; the default is all tournament level.
+  - Tower values are still scaled by the fresh-board cell, which is now 1.0, so the GameState fraction goes in unscaled and matches the engine exactly.
+- **`python_ai/engine_constants.py`:** `OWN_TOWER_HP_TOTAL` reads `get_tower_max_hp`, since the scalars no longer carry absolute HP. It still equals 10928.
+- **Tests:**
+  - `test_clash_env.cpp`: size 13981, and a new `[level]` case for levels 11/13/15 — full = 1.0, 75% = 0.75 in both the scalar and the building channel, level section for both teams.
+  - `test_card_cycle_observation.cpp` and `test_opponent_cycle_observation.py`: the size relations and the full-tower reading.
+  - `test_scalar_encoder_branches.py`: the level section closes the scalar vector.
+  - `perception/tests/test_perception_encoder.py`: `test_a_full_princess_is_not_encoded_as_1` pinned the old convention and is replaced by `test_a_full_tower_reads_1_like_the_engine` (encoder and engine agree on all six tower scalars).
+  - Results: C++ only the 10 failures already present. Python 1013 passed; `test_rl_ppo_compaction` fails the same 2 tests as on 0008, and on 2 of 6 fixture seeds also `test_the_LOSS_and_every_diagnostic_are_bit_identical`. That failure is a ~1e-7 difference in placement entropy only (actor and critic loss are equal), which is the placement-head compaction defect `test_active_rows_...` already reports on 0008, showing through a different init. Perception: 385 passed.
+
+### Outside the engine (cr-robot)
+- **`training/common.py`:** `TOWER_OBS_OWN_MAX = hasattr(CE, "LEVEL_START")`.
+- **`training/reward.py`:** `tower_damage_fracs` uses the scalar directly on a gen-2 engine and the old rescale otherwise. After the change the table reads 0.100 / 0.250 / 0.500 at every level (11, 13, 15). Covered by a new test, `training/tests/test_reward.py::test_tower_damage_is_level_aware`.
+- **`live_ppo/driver.py`:**
+  - `--levels OC,OT,PC,PT` writes the level section through `level_scalar`; the default is all 11.
+  - `EvoEncoder` locates the section by its forward offset. It is a no-op on a gen-1 engine.
+
+### Blast radius
+- A Princess at full HP now reads 1.0 instead of 0.633, so every gen-1 checkpoint sees a shifted tower input.
+- `scalar_mlp.extra.weight` changes shape. `load_state_dict_flexible` will discard it and report the discard; zero-padding the 4 new columns would be the warm-start migration (the item-24 pattern).
+- Gen-2 trains from BC data regenerated on this engine, so it is unaffected.
+
+---
+
+## Item 45 — one seed reproduces a whole match: the Python-side generators follow `reset(seed=)`
+
+Proposed 2026-11-18 by the gen-2 agent. Patch: `cr-robot/patches/pending/0011-seed-every-rng.patch`.
+**Not gameplay-affecting.** It changes which random draws happen, not their distribution.
+
+### Evidence
+- **C++ was already seeded:** `ClashEnv::seed` seeds the env `mt19937` and `GameManager`'s (`s ^ 0x9E3779B9`). There is no `rand()`, and `random_device` is used only for the default construction seed, which `seed()` overrides. `Board::idCounter` is per Board.
+- **Unseeded Python generators:**
+  - `UtilityTeacher` was built in `MicroRoyaleEnv.__init__` with no seed, so `np.random.default_rng(None)`. Its epsilon and profile draws differed on every run.
+  - `_deck_rng` was seeded once from `scenario_seed` at construction and never reseeded on `reset(seed)`. So match N depended on how many matches the env had played before it.
+  - `_scenario_rng` likewise.
+  - `randomize_opp_deck` called `sample_random_deck()` with no seed (item 23C).
+- **Proof harness:** `cr-robot/runs/sim_fidelity/repro.py`.
+  - Every (opponent kind, seed) match is played in two fresh processes that run the job list in opposite orders. A match's fingerprint is a SHA-256 over every step's obs, reward and info.
+  - Kinds: teacher rungs 0/2/4, the real-deck pool, LeagueEnv teacher/mirror/snapshot, the C++ builtin, actuation delay, and level-13 opponent.
+  - **Before: 6/20 bit-identical.** Every teacher-driven kind differed.
+  - **After: 20/20** on seeds 11 and 22, and **50/50** on seeds 11, 22, 33, 44, 55 (`cr-robot/runs/sim_fidelity/repro_after.json`).
+
+### Proposed change (exact, `python_ai/envs/gym_wrapper.py`)
+- `DECK_SEED_OFFSET = 7` and `TEACHER_SEED_OFFSET = 1013`: each Python generator is derived from the env seed.
+- `_deck_rng` is always created (seeded from `scenario_seed` when given).
+- The teacher is built with `seed = scenario_seed + TEACHER_SEED_OFFSET`.
+- `reset(seed)` reseeds:
+  - `game.seed(seed)`;
+  - `_deck_rng.seed(seed + 7)`;
+  - `_scenario_rng = default_rng(seed)`;
+  - the teacher's `rng = default_rng(seed + 1013)`, when it has one (LeagueEnv's stub teacher has none).
+- `randomize_opp_deck` passes `sample_random_deck(seed=_deck_rng.randrange(2**31))`.
+- New test `python_ai/tests/test_seed_reproducible.py`:
+  - teacher, deck pool, randomized deck and builtin; env b plays another match first, then both play seed 777 and must be equal;
+  - plus the teacher draws following the seed.
+  - 5 pass with the fix; 4 fail without it.
+
+### Blast radius
+- A given seed now plays a different (but fixed) match than before.
+- Unseeded resets behave as before.
+- Training runs that never pass a seed are unchanged in distribution.
+
+---
+
+## Item 46 — opponent elixir estimate, Evolution counters and Hero/Champion ability state in the observation
+
+Proposed 2026-11-18 by the opponent-state agent. Patch: `cr-robot/patches/pending/0012-opponent-state-observation.patch` (on top of 0004 → 0011).
+**OBS-AFFECTING:** `observation_size()` 13981 → 14379; a 398-float section appended after the level section. `ScalarEncoder` gains an `opp_state` branch (`SCALAR_FEATURE_DIM` 64 → 80), so gen-1 checkpoints do not load into a 0012 net.
+**Not GAMEPLAY-affecting:** no rule, stat or timing changes. `GameManager` only records an `ObservedEvent` per play and ability, and gets two read-only accessors. The 10.0f elixir cap literals became `PlayerState::MAX_ELIXIR` (same value).
+
+### Evidence
+- **What the policy saw before:**
+  - The obs had `opp_elixir_spent` and the opponent cycle blocks, but no opponent elixir estimate.
+  - It did not show which cards are Evolutions or when their next deployment is evolved, on either side. A Hero/Champion ability state was missing too, again on either side.
+  - The live tracker (`perception/track/opp_elixir.py`) clamps at 0 when proven wrong, has no miss prior, and never debits abilities.
+- **Harness:** `cr-robot/runs/sim_fidelity/opp_state_eval.py`.
+  - 16 seeded self-play matches, about 4,800 samples per row.
+  - Opponent decks are random, with Evolutions in slots 0 and 2. Both teams play random affordable cards and fire abilities when ready.
+  - Detector defaults apply except where a row varies them; opponent ability activations are never detected.
+  - Error is against `get_elixir_for_team(1)`.
+- **Results.** MAE is in elixir; "in band" is the share of samples with the truth inside [lower, upper].
+
+  | detector | new MAE | new bias | in band | old MAE | old bias |
+  |---|---|---|---|---|---|
+  | exact | 0.00 | +0.00 | 1.00 | 0.49 | +0.49 |
+  | miss 0 | 0.90 | +0.82 | 0.67 | 1.33 | +1.11 |
+  | miss .04 (default) | 1.31 | +0.96 | 0.77 | 1.72 | +1.59 |
+  | miss .10 | 2.42 | +2.07 | 0.68 | 3.01 | +2.91 |
+  | miss .20 | 2.65 | +2.21 | 0.70 | 3.68 | +3.57 |
+  | miss .30 | 2.66 | +2.30 | 0.73 | 4.29 | +4.25 |
+  | false plays .10 | 1.06 | +0.43 | 0.76 | 1.35 | +0.71 |
+  | unknown cards .10 | 1.29 | +0.96 | 0.75 | 2.09 | +1.99 |
+  | all troops 3.5 s late | 2.17 | +1.49 | 0.59 | 2.47 | +2.14 |
+
+  The miss-0 row still has error because detection timing remains. Roughly 0.4 of it is the 1.5 s troop emit latency, which is real information lag, and about 0.2–0.3 is undetected abilities.
+- **Estimator parity:** the bound class driven from Python with the delivered reports in emit order (as live drives it) equals the env's estimate to 0.0 in every row. In `live_ppo/eval/test_opp_state.py`, the live `OppState` section equals the env's opponent part exactly.
+- **Evolution counters:**
+  - When known, the counter is exact: charge equals the opponent's own value in 94–100% of samples at miss ≤ .10.
+  - Next-evolved precision is 1.0 in every row.
+  - Coverage is low (known on about 10% of evo-in-hand samples), because an opponent Evolution is only known after its first evolved sighting.
+- **Live recordings** (`cr-robot/live_ppo/eval/eval_opp_state.py`; vid_QD, vid_uVf1, vid_iVgm and rec_dry1, 6 match windows, 173 opponent plays):
+  - YOLO `-ev1` votes marked 5 plays evolved.
+  - Spot-checked frames: 1 confirmed (evolved Bats), 1 plausible (Royal Giant), and 1 false positive (`battle-ram-ev1` on the King Tower banner).
+  - No `-hero` play passed the vote threshold.
+  - Opponent ability activations have no YOLO class, so they are not detected.
+
+### Proposed change (exact)
+- **`include/core/OpponentStateEstimator.h` (new):**
+  - Elixir filter:
+    - `hi` is the hard upper bound under misses.
+    - `est = hi − bias`, where bias is the miss prior p/(1−p) × mean missed cost, and the mean cost adapts to the opponent's identified plays.
+    - `sigma` sets the spread; lower and upper are est ∓ 2σ, and upper is capped by `hi`. The cap absorbs bias and σ.
+    - When a cost exceeds `hi + 0.15`, the filter re-anchors (no clamp to 0) and confidence takes a penalty that recovers over 300 ticks.
+    - Back-dated reports are replayed within 150 ticks. Regen runs per tick, as `GameManager` does.
+  - Evolution counters follow `PlayerState`'s rule. An opponent Evolution becomes known on its first evolved report.
+  - Ability tracking covers the 2 opponent Champions/Heroes by first sighting, with estimated cooldown and recency.
+- **`ClashEnv`:**
+  - Section at `OPP_STATE_START = LEVEL_START + NUM_LEVEL_SCALARS`. All offsets are bound (see `cr-robot/runs/sim_fidelity/OPP_STATE_LAYOUT.md`).
+  - A per-observer simulated detector, `DetectionNoise`, feeds the estimator. Defaults are the live-measured rates: miss troop .03 and spell .04, unknown .02, false play .02, troop emit 1.5 s, late troop .05 (+3.5 s), evo recognised .9, `abilityDetected` 0.0.
+  - The detector has one RNG per observer, seeded by `seed()` and copied by `snapshot()`.
+- **Bindings:**
+  - `OpponentStateEstimator`, `OpponentStateConfig`, `OpponentReport`, `OpponentAbilityState`, `OppDetectionNoise` and `OppDeliveredReport`.
+  - `set_/get_opp_detection_noise`, `get_opp_state_estimate` and `get_opp_reports`.
+- **Python:**
+  - `models/net.py`: `ScalarEncoder` gets an `opp_state` branch (28 dense features plus a 2×185 → 8 evo embedding, out to 16).
+  - `models/perception_encoder.py`: `encode(..., opp_state=)`.
+- **Tests:**
+  - `tests/core/test_opponent_state_estimator.cpp` (7 cases), plus size updates in existing C++ and Python tests.
+  - The perception parity tests pass the engine's section into `encode`, because it is not a function of `GameState`.
+
+### Blast radius
+- The obs grows by 398 floats. BC data and checkpoints from 0011 are incompatible, so gen-2 must regenerate and train from scratch.
+- The opponent values are estimates in training too. That is intended: training sees the same estimator live does.
+- A model trained on 0012 run live without `--opp-state` sees a zero section it never trained on. `live_ppo/driver.py` warns when that happens.
+- Pre-existing failures are unchanged: 10 C++ (`card_registry` ×6, `deck_audit_item32`, `hero_abilities` ×3, `navigation_wedge`) and the flaky `test_rl_ppo_compaction`.

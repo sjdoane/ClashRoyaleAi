@@ -5,8 +5,10 @@
 #include "Tower.h"
 #include "CombatEntity.h"
 #include "MatchRules.h"
+#include "TimeoutRules.h"
 #include "MatchStatistics.h"
 #include "TowerTroops.h"
+#include "RoyalChefBuffEffect.h"
 #include "CardFactories.h"
 #include "SpiritEmpressForms.h"
 #include <algorithm>
@@ -26,8 +28,10 @@ public:
     // Negative, so they never collide with a registry id.
     static constexpr int TOWER_KING_ID = -2;
     static constexpr int TOWER_PRINCESS_ID = -3;
-    // Mirror's registered id; playCard special-cases it.
+    // Mirror's registered id, and its Evolution's (patch 0016); playCard
+    // special-cases both.
     static constexpr int MIRROR_CARD_ID = 164;
+    static constexpr int EVO_MIRROR_CARD_ID = 180;
     // Spirit Empress's registered id; see SpiritEmpressForms.h.
     static constexpr int SPIRIT_EMPRESS_CARD_ID = 165;
 
@@ -52,9 +56,27 @@ private:
     // observation. A plain value, so snapshot() copies it and a rollout
     // inherits the cycle.
     CycleTable lastPlayedTick = neverPlayed();
-    const float ELIXIR_REGEN_RATE = 0.035f;
+public:
+    // Every real play and ability activation, per team, in order: what an
+    // observer could have watched happen. Read by ClashEnv, which passes it
+    // through a simulated detector into OpponentStateEstimator (item 46).
+    // Written in playCard and activateChampionAbility, cleared by reset(); a
+    // plain value, so snapshot() copies it.
+    struct ObservedEvent {
+        int tick;
+        int kind;        // OpponentStateEstimator::KIND_PLAY / KIND_ABILITY
+        int cardId;      // what left the hand (an Evolution's own id even when played plain)
+        float cost;      // elixir actually paid (Mirror +1, Spirit Empress 3/6, ability cost)
+        bool evolved;    // the evolved form was spawned
+        bool isSpell;
+    };
+private:
+    std::array<std::vector<ObservedEvent>, 2> observedEvents;
     // Curriculum hook: scales the opponent's regen. 1.0 is a normal opponent.
     float oppElixirMultiplier = 1.0f;
+    // setTeamLevel; written into each fresh Board by reset().
+    int teamCardLevel[2] = { CardLevels::TOURNAMENT_LEVEL, CardLevels::TOURNAMENT_LEVEL };
+    int teamTowerLevel[2] = { CardLevels::TOURNAMENT_LEVEL, CardLevels::TOURNAMENT_LEVEL };
 
     // How far short of the river a non-spell placement must stay on its own
     // side; Board enforces the river only during movement.
@@ -68,6 +90,28 @@ private:
     // Tower.
     TowerTroopType aiTowerTroop = TowerTroopType::None;
     TowerTroopType oppTowerTroop = TowerTroopType::None;
+    // Royal Chef's pancake, per team: the fraction cooked (1 = ready, held
+    // until a troop qualifies). See cookRoyalChef.
+    float chefCookProgress[2] = { 0.0f, 0.0f };
+
+    // Royal Chef (TowerTroops.h RoyalChef): one pancake cooks per team, at the
+    // rate of how many of that team's Princess Towers are busy (attacking, or
+    // destroyed); with both destroyed it stops.
+    void cookRoyalChef(int team) {
+        if ((team == 0 ? aiTowerTroop : oppTowerTroop) != TowerTroopType::RoyalChef) return;
+        if (currentTick < RoyalChef::COOK_START_TICKS) return;
+        int standing = 0, attacking = 0;
+        for (const auto& e : board.getEntities()) {
+            if (e->team != team || !e->isAlive() || !e->isTower() || e->symbol == 'R') continue;
+            standing++;
+            if (auto t = std::dynamic_pointer_cast<CombatEntity>(e); t && t->isAttacking()) attacking++;
+        }
+        if (standing == 0) return;
+        const int busy = std::min(2, attacking + (2 - standing));
+        float& progress = chefCookProgress[team];
+        if (progress < 1.0f) progress += 1.0f / static_cast<float>(RoyalChef::COOK_TICKS[busy]);
+        if (progress >= 1.0f && RoyalChefBuffEffect::serve(board, team)) progress = 0.0f;
+    }
 
     void addTower(float x, float y, int hp, int team, float attackRange, int damage, int attackCooldown,
         char symbol, const std::string& towerName) {
@@ -144,15 +188,23 @@ private:
             if (!slotDef || slotDef->abilityUsableAfterDeathTicks <= 0) continue;
             bool anyFound = false; // a unit of this slot's card seen this tick
             bool anyAlive = false;
+            // A body that already used its alive-path ability (Hero
+            // Tombstone, patch 0017) spends the post-death one too: one use
+            // per deploy.
+            bool spent = false;
             Vector2D deathPosition = state.lastSquadWipePosition;
             for (const auto& entity : board.getEntities()) {
                 if (entity->cardId != deckConfig[slot] || entity->team != team) continue;
                 anyFound = true;
                 if (entity->isAlive()) { anyAlive = true; break; }
                 deathPosition = entity->position;
+                if (auto ce = std::dynamic_pointer_cast<CombatEntity>(entity))
+                    if (ce->abilityEffect && ce->abilityUsesRemaining == 0) spent = true;
             }
             if (anyAlive) {
                 state.lastSquadWipeTick = -1; // a fresh deploy invalidates an unconsumed window
+            } else if (anyFound && spent) {
+                state.lastSquadWipeTick = -1;
             } else if (anyFound && state.lastSquadWipeTick < 0) {
                 // anyFound stops the window re-arming every tick after the dead
                 // squad is erased, which would let the ability fire repeatedly
@@ -178,22 +230,30 @@ private:
 
 public:
     // --- elixir phases ---
-    // The real schedule: 3:00 of regular time with double elixir from 2:00,
-    // then overtime at triple.
+    // The real schedule (FirstLight-Zero battle_env.py; IL_Replay match ends):
+    // 3:00 of regulation, double elixir from 2:00, then 2:00 of overtime whose
+    // first minute stays double and whose last minute is triple.
     //
-    //   0:00 - 2:00   1x   one elixir per 2.857 s
-    //   2:00 - 3:00   2x   one per 1.429 s
-    //   3:00 +        3x   one per 0.952 s
+    //   0:00 - 2:00   1x   one elixir per 2.8 s
+    //   2:00 - 4:00   2x   one per 1.4 s
+    //   4:00 - 5:00   3x   one per 0.933 s
     //
     // In ticks (10 ticks = 1 s, perception/timebase.py). Public because
     // ClashEnv, the bindings and GameLogger all need it.
+    // One elixir per 2.8 s at 1x (28 ticks). Measured: in 2,085 Ranked/Ladder
+    // replays that ran to ~5:00, spend + leaked never exceeds 5 + 197.86 (the
+    // 2.8 s schedule's ceiling) and 667 sides exceed 194.0, which 2.857 s
+    // (the old 0.035) cannot produce (perception/UPSTREAM_REQUESTS.md item 38).
+    // Static and bound, so Python reads it instead of restating it.
+    static constexpr float ELIXIR_REGEN_RATE = 1.0f / 28.0f;
     static constexpr int DOUBLE_ELIXIR_TICK = 1200;   // 2:00
-    static constexpr int TRIPLE_ELIXIR_TICK = 1800;   // 3:00
-    // Triple elixir and the end of regulation are one instant, which MatchRules
-    // owns. Asserted rather than derived, since MatchRules knows nothing about
+    static constexpr int TRIPLE_ELIXIR_TICK = 2400;   // 4:00, one minute into overtime
+    // Triple elixir is the last minute of overtime, which MatchRules owns.
+    // Asserted rather than derived, since MatchRules knows nothing about
     // elixir.
-    static_assert(TRIPLE_ELIXIR_TICK == MatchRules::REGULATION_END_TICK,
-                  "overtime and triple elixir both begin when regulation ends");
+    static_assert(TRIPLE_ELIXIR_TICK > MatchRules::REGULATION_END_TICK &&
+                  TRIPLE_ELIXIR_TICK < MatchRules::MATCH_END_TICK,
+                  "triple elixir starts inside overtime");
 
     // The largest multiplier, and the normaliser of the observation scalar;
     // bound so perception's encoder divides by the same number.
@@ -240,6 +300,24 @@ public:
         oppElixirMultiplier = std::max(0.0f, multiplier);
     }
 
+    // Per-team card and Crown Tower level, 1..16 (CardLevels.h, UPSTREAM item
+    // 41). Cards take effect from the next entity to enter play; towers are
+    // built at reset(), so a tower level waits for the next match.
+    // towerLevel < 0 follows cardLevel (a real account's King level is near
+    // its card level). Returns false and changes nothing on a bad value.
+    bool setTeamLevel(int team, int cardLevel, int towerLevel = -1) {
+        if (team != 0 && team != 1) return false;
+        if (towerLevel < 0) towerLevel = cardLevel;
+        if (!CardLevels::isValid(cardLevel) || !CardLevels::isValid(towerLevel)) return false;
+        teamCardLevel[team] = cardLevel;
+        teamTowerLevel[team] = towerLevel;
+        board.cardLevel[team] = cardLevel;
+        board.towerLevel[team] = towerLevel;
+        return true;
+    }
+    int getTeamCardLevel(int team) const { return teamCardLevel[team == 1 ? 1 : 0]; }
+    int getTeamTowerLevel(int team) const { return teamTowerLevel[team == 1 ? 1 : 0]; }
+
     Board& getBoard() { return board; }
     const Board& getBoard() const { return board; }
     const MatchStatistics& getStatistics() const { return stats; }
@@ -284,16 +362,26 @@ public:
     // ClashEnv::notePlayedCard for why this is separate from inject()).
     // getLastPlayedTick returns the tick of `team`'s last play of `cardId`, or
     // -1. Both ignore out-of-range ids: callers sweep the whole id range.
+    // Both fold the id to faceCardIdOf (patch 0014): an Evolution or Hero play
+    // is recorded under the base card the screen shows, which is all live
+    // perception can report, so training and live write the same index.
     void notePlayedCard(int team, int cardId) {
         if (team != 0 && team != 1) return;
         if (cardId < 0 || cardId >= CARD_ID_COUNT) return;
-        lastPlayedTick[team][cardId] = currentTick;
+        lastPlayedTick[team][faceCardIdOf(cardId)] = currentTick;
+    }
+
+    const std::vector<ObservedEvent>& getObservedEvents(int team) const {
+        return observedEvents[(team == 1) ? 1 : 0];
+    }
+    const std::vector<int>& getDeckConfig(int team) const {
+        return (team == 0) ? aiDeckConfig : oppDeckConfig;
     }
 
     int getLastPlayedTick(int team, int cardId) const {
         if (team != 0 && team != 1) return -1;
         if (cardId < 0 || cardId >= CARD_ID_COUNT) return -1;
-        return lastPlayedTick[team][cardId];
+        return lastPlayedTick[team][faceCardIdOf(cardId)];
     }
 
     float getElixir(int team) const {
@@ -309,7 +397,7 @@ public:
     void setElixir(int team, float value) {
         PlayerState& player = (team == 0) ? playerAI : playerOpponent;
         // The same [0, 10] clamp step() enforces.
-        player.elixir = std::max(0.0f, std::min(value, 10.0f));
+        player.elixir = std::max(0.0f, std::min(value, PlayerState::MAX_ELIXIR));
     }
 
     // Returns false and changes nothing unless `cards` is a valid hand for this
@@ -496,9 +584,11 @@ public:
         if (!cardDef) return false;
 
         // Mirror: legality, spawn and cost come from this team's last play (+1
-        // elixir), reusing that card's own rules. Fails if nothing has been
-        // played.
-        bool isMirror = (targetCardId == MIRROR_CARD_ID);
+        // elixir), reusing that card's own rules, and the copy is one level
+        // above the team's (wiki Mirror). Fails if nothing has been played.
+        // Evolved Mirror (180) plays as Mirror until its evolved play, which
+        // copies the last card as its Evolution where it has one.
+        bool isMirror = (targetCardId == MIRROR_CARD_ID || targetCardId == EVO_MIRROR_CARD_ID);
         // Spirit Empress: the form and cost follow the current elixir at play
         // time (an approximation; see SpiritEmpressForms.h). Both forms share a
         // footprint, so legality needs no substitution.
@@ -526,22 +616,41 @@ public:
             if (isSpiritEmpress) {
                 bool flying = (costOverride >= 6.0f);
                 CardFactories::spawn(flying ? spiritEmpressFlyingStats() : spiritEmpressGroundStats(), x, y, team, board);
+            } else if (isMirror && result.useEvolvedForm) {
+                // Evolved Mirror: the last card's Evolution, else its base.
+                const CardDefinition* evo = CardRegistry::getInstance().getCard(evolutionIdOf(player.lastPlayedCardId));
+                if (evo && evo->spawnEvolvedEntity) evo->spawnEvolvedEntity(x, y, team, board);
+                else effectiveDef->spawnEntity(x, y, team, board);
             } else if (result.useEvolvedForm && effectiveDef->spawnEvolvedEntity) {
                 effectiveDef->spawnEvolvedEntity(x, y, team, board);
             } else {
                 effectiveDef->spawnEntity(x, y, team, board);
             }
+            if (isMirror) {
+                // +1 level on the bodies the copy spawns now. Bodies they spawn
+                // later (death spawns, a spawner's units) take the team level.
+                const int level = std::min(board.cardLevel[team] + 1, CardLevels::MAX_LEVEL);
+                for (size_t i = pendingBefore; i < board.pendingEntityCount(); ++i) {
+                    Entity& e = *board.getPendingEntity(i);
+                    if (e.levelApplied || e.team != team) continue;
+                    e.levelApplied = true;
+                    e.scaleToLevel(level);
+                }
+            }
             float reportedCost = (costOverride >= 0.0f) ? costOverride : cardDef->cost;
             board.statsEvents.notifyCardPlayed({ team, result.cardId, reportedCost, x, y, currentTick });
+            observedEvents[team].push_back({ currentTick, 0, result.cardId, reportedCost,
+                                             result.useEvolvedForm, effectiveDef->isSpell });
 
             // Card-cycle tracking (perception/UPSTREAM_REQUESTS.md item 24).
             // Recorded here because every real play passes through this
             // function, whoever the caller.
             //
             // `result.cardId` is what left the hand: for a Mirror play, Mirror
-            // itself (164), which is what has to cycle back round.
+            // itself (164), which is what has to cycle back round. Folded to
+            // the face card, as in notePlayedCard.
             if (result.cardId >= 0 && result.cardId < CARD_ID_COUNT) {
-                lastPlayedTick[team][result.cardId] = currentTick;
+                lastPlayedTick[team][faceCardIdOf(result.cardId)] = currentTick;
             }
             // A second Mirror replays what preceded the first, so Mirror never
             // becomes lastPlayedCardId.
@@ -588,6 +697,19 @@ public:
         }
     }
 
+    // Whether `team`'s Champion/Hero in `slot` has a live body, and its
+    // ability cooldown left (the live body's, else the persisted one a redeploy
+    // resumes). For the observation's own-ability section (item 46).
+    bool isChampionDeployed(int team, int slot) const {
+        return findChampionInSlot(team, slot) != nullptr;
+    }
+    int championCooldownRemaining(int team, int slot) const {
+        if (auto champion = findChampionInSlot(team, slot)) return champion->abilityCooldownRemaining;
+        const PlayerState& player = (team == 0) ? playerAI : playerOpponent;
+        auto it = player.championSlots.find(slot);
+        return it == player.championSlots.end() ? 0 : it->second.persistedCooldownRemaining;
+    }
+
     // Whether `team`'s Champion in `slot` (1 = Heroic, 2 = Wild Card) could
     // activate now: deployed, off cooldown, uses left, affordable. The two
     // slots are independent.
@@ -623,6 +745,7 @@ public:
             player.elixir -= champion->abilityElixirCost;
             champion->activateAbility(board);
             board.statsEvents.notifyChampionAbilityActivated({ team, champion->cardId, champion->abilityElixirCost, currentTick });
+            observedEvents[team].push_back({ currentTick, 1, getDeckConfig(team)[slot], champion->abilityElixirCost, false, false });
             return true;
         }
 
@@ -639,20 +762,27 @@ public:
         slotDef->postDeathAbilityEffect->apply(board, slotState.lastSquadWipePosition, team);
         slotState.lastSquadWipeTick = -1; // consumed until the squad is redeployed and wiped again
         board.statsEvents.notifyChampionAbilityActivated({ team, deckConfig[slot], slotDef->abilityElixirCost, currentTick });
+        observedEvents[team].push_back({ currentTick, 1, deckConfig[slot], slotDef->abilityElixirCost, false, false });
         return true;
     }
 
     void reset() {
         board = Board();
+        for (int t = 0; t < 2; ++t) {
+            board.cardLevel[t] = teamCardLevel[t];
+            board.towerLevel[t] = teamTowerLevel[t];
+        }
         // Right after replacing the board, whose subscriber list died with it:
         // fresh collectors before any event fires.
         stats.attach(board);
         currentTick = 0;
         gameOver = false;
         loserTeam = -1;
+        chefCookProgress[0] = chefCookProgress[1] = 0.0f;
         // Cleared per match, or the agent would see cards the opponent has not
         // shown.
         for (auto& perTeam : lastPlayedTick) perTeam.fill(-1);
+        for (auto& perTeam : observedEvents) perTeam.clear();
 
         std::string aiErr = validateDeckSlots(aiDeckConfig);
         if (!aiErr.empty()) throw std::invalid_argument("GameManager: invalid AI deck -- " + aiErr);
@@ -663,8 +793,10 @@ public:
         playerOpponent.initializeDeck(oppDeckConfig, rng);
 
         // Tower positions from ArenaLayout.h.
-        addTower(ArenaLayout::CENTER_X, ArenaLayout::kingY(0), 4008, 0, 7.0f, 90, 10, 'R', "King Tower");
-        addTower(ArenaLayout::CENTER_X, ArenaLayout::kingY(1), 4008, 1, 7.0f, 90, 10, 'R', "King Tower");
+        addTower(ArenaLayout::CENTER_X, ArenaLayout::kingY(0), CrownTower::KING_HP, 0, 7.0f,
+                 CrownTower::KING_DAMAGE, CrownTower::KING_COOLDOWN_TICKS, 'R', "King Tower");
+        addTower(ArenaLayout::CENTER_X, ArenaLayout::kingY(1), CrownTower::KING_HP, 1, 7.0f,
+                 CrownTower::KING_DAMAGE, CrownTower::KING_COOLDOWN_TICKS, 'R', "King Tower");
 
         // Princess Towers, from the configured Tower Troop.
         addTower(ArenaLayout::LEFT_LANE_X,  ArenaLayout::princessY(0), 0, "Princess Tower", towerTroopStats(aiTowerTroop));
@@ -685,9 +817,9 @@ public:
         // players. oppElixirMultiplier multiplies on top: a 1.5x opponent in
         // double elixir gets 3x, as intended.
         const float elixirPhase = getElixirMultiplier();
-        playerAI.elixir = std::min(playerAI.elixir + ELIXIR_REGEN_RATE * elixirPhase, 10.0f);
+        playerAI.elixir = std::min(playerAI.elixir + ELIXIR_REGEN_RATE * elixirPhase, PlayerState::MAX_ELIXIR);
         playerOpponent.elixir = std::min(
-            playerOpponent.elixir + ELIXIR_REGEN_RATE * elixirPhase * oppElixirMultiplier, 10.0f);
+            playerOpponent.elixir + ELIXIR_REGEN_RATE * elixirPhase * oppElixirMultiplier, PlayerState::MAX_ELIXIR);
         playerAI.tick();
         playerOpponent.tick();
 
@@ -700,11 +832,13 @@ public:
         for (auto& entity : board.getEntities()) {
             if (entity->isAlive()) entity->update(board);
         }
+        cookRoyalChef(0);
+        cookRoyalChef(1);
 
         // Elixir Collector: drain this tick's grants into the players, with the
         // same cap.
-        playerAI.elixir = std::min(playerAI.elixir + board.pendingElixirGrant[0], 10.0f);
-        playerOpponent.elixir = std::min(playerOpponent.elixir + board.pendingElixirGrant[1], 10.0f);
+        playerAI.elixir = std::min(playerAI.elixir + board.pendingElixirGrant[0], PlayerState::MAX_ELIXIR);
+        playerOpponent.elixir = std::min(playerOpponent.elixir + board.pendingElixirGrant[1], PlayerState::MAX_ELIXIR);
         board.pendingElixirGrant[0] = 0.0f;
         board.pendingElixirGrant[1] = 0.0f;
 
@@ -716,6 +850,11 @@ public:
         // evaluateAtTick: from 3:00 a crown lead, or the first crown in
         // overtime, ends the match.
         MatchRules::Outcome outcome = MatchRules::evaluateAtTick(board, currentTick);
+        // 5:00: overtime expires and the tower tiebreak decides, whatever the
+        // caller's maxTicks. loserTeam -1 is the exact-tie draw.
+        if (!outcome.over && currentTick >= MatchRules::MATCH_END_TICK) {
+            outcome = TimeoutRules::resolve(board);
+        }
         if (outcome.over) {
             gameOver = true;
             loserTeam = outcome.loserTeam;

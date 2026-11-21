@@ -137,4 +137,4 @@ def test_dilation_preserves_the_lstm_input_width():
 
     net = MicroRoyaleNet(num_ability_slots=0)
     assert net.cnn_out_dim == out_dim(1) == 1440
-    assert net.lstm.input_size == net.cnn_out_dim + 64
+    assert net.lstm.input_size == net.cnn_out_dim + net.scalar_feature_dim == net.cnn_out_dim + 80

@@ -5,6 +5,7 @@
 #include "DeathEffect.h"
 #include "PeriodicEffect.h"
 #include "AbilityEffect.h"
+#include "SelfPeriodicEffect.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -139,6 +140,22 @@ struct CardStats {
     float spawnEffectRadius = 0.0f;
     int spawnEffectDamage = 0;
     std::shared_ptr<IOnHitEffect> spawnEffectOnHit;
+    // Card-stats audit (patch 0003): a deploy burst may be several impacts
+    // (Evolved Cannon's barrage). Offsets are relative to the placement point
+    // with +y toward the enemy for team 0 (mirrored for team 1); empty means
+    // one impact at the placement point. Knockback and Crown Tower damage are
+    // the AreaSpell fields of the same name (-1 = full damage).
+    std::vector<Vector2D> spawnEffectOffsets;
+    float spawnEffectKnockback = 0.0f;
+    int spawnEffectCrownTowerDamage = -1;
+
+    // Card-stats audit (patch 0003): DefensiveBuilding lifetime in ticks
+    // (Building's decay clock). 300 = the 30 s the engine used for every
+    // building before; set per card from the wiki's Lifetime attribute.
+    int lifetimeTicks = 300;
+    // Card-stats audit (patch 0003): on-hit effects (freeze) also land on
+    // splash victims. Ice Spirit only.
+    bool splashAppliesOnHit = false;
 
     // Fired once when a unit of this card dies (e.g. Golem's Golemites).
     // Concrete effects live in core/.
@@ -216,6 +233,12 @@ struct CardStats {
     // interval.
     std::shared_ptr<IPeriodicEffect> periodicEffect;
     int periodicIntervalTicks = 0;
+    // The self-periodic hook (SelfPeriodicEffect.h, patch 0015).
+    std::shared_ptr<ISelfPeriodicEffect> selfPeriodicEffect;
+    int selfPeriodicIntervalTicks = 0;
+    int selfPeriodicFirstTicks = 0;
+    // Crown Tower damage cut on the unit's own melee hits (patch 0017).
+    float crownTowerHitMultiplier = 1.0f;
     // A faster interval used only while attacking (Evolved Furnace's "Hot
     // Spawning"). 0 disables it.
     int periodicHotIntervalTicks = 0;
@@ -324,6 +347,12 @@ struct CardStats {
 
     // A burst every Nth attack (Dagger Duchess, some Evolutions).
     int burstEveryNAttacks = 0;
+    // CombatEntity's magazine (Dagger Duchess); 0 = none.
+    int magazineSize = 0;
+    int magazineReloadTicks = 0;
+    // A load time for bodies the name-keyed LoadTimes table cannot reach (the
+    // Tower Troops, which are all named "Princess Tower"); -1 = use the table.
+    int loadTicksOverride = -1;
     float burstDamageMultiplier = 1.0f;
 
     // An effect on taking damage (some Evolutions, e.g. Barbarians).
@@ -385,6 +414,21 @@ struct CardStats {
         spawnEffectRadius = radius;
         spawnEffectDamage = damage;
         spawnEffectOnHit = std::move(effect);
+        return *this;
+    }
+    // A multi-impact deploy burst (see spawnEffectOffsets).
+    CardStats& withSpawnBarrage(std::vector<Vector2D> offsets, float knockback, int crownTowerDamage) {
+        spawnEffectOffsets = std::move(offsets);
+        spawnEffectKnockback = knockback;
+        spawnEffectCrownTowerDamage = crownTowerDamage;
+        return *this;
+    }
+    CardStats& withSplashOnHit(bool value = true) {
+        splashAppliesOnHit = value;
+        return *this;
+    }
+    CardStats& withLifetime(int ticks) {
+        lifetimeTicks = ticks;
         return *this;
     }
     CardStats& withDeathEffect(std::shared_ptr<IDeathEffect> effect) {
@@ -461,6 +505,18 @@ struct CardStats {
     CardStats& withPeriodicEffect(int intervalTicks, std::shared_ptr<IPeriodicEffect> effect) {
         periodicIntervalTicks = intervalTicks;
         periodicEffect = std::move(effect);
+        return *this;
+    }
+    // First check `firstTicks` after the deploy ends, then every
+    // `intervalTicks` after each fire (a declined check retries next tick).
+    CardStats& withCrownTowerHitMultiplier(float m) {
+        crownTowerHitMultiplier = m;
+        return *this;
+    }
+    CardStats& withSelfPeriodicEffect(int firstTicks, int intervalTicks, std::shared_ptr<ISelfPeriodicEffect> effect) {
+        selfPeriodicFirstTicks = firstTicks;
+        selfPeriodicIntervalTicks = intervalTicks;
+        selfPeriodicEffect = std::move(effect);
         return *this;
     }
     CardStats& withAllyBuffAura(float radius, int everyNAttacks, float multiplier, int durationTicks, int maxTargets) {
@@ -631,6 +687,15 @@ struct CardStats {
         hitSpeedRampFullTick = fullTick;
         hitSpeedRampMidFraction = midFraction;
         hitSpeedRampFullFraction = fullFraction;
+        return *this;
+    }
+    CardStats& withMagazine(int size, int reloadTicks) {
+        magazineSize = size;
+        magazineReloadTicks = reloadTicks;
+        return *this;
+    }
+    CardStats& withLoadTicks(int ticks) {
+        loadTicksOverride = ticks;
         return *this;
     }
     CardStats& withBurstAttack(int everyNAttacks, float multiplier) {

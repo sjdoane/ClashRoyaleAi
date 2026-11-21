@@ -21,7 +21,7 @@ TEST_CASE("GameManager construction sets up exactly the 6 expected towers", "[ga
     // roster: six towers, their hp and names, in spawn order.
     REQUIRE(entities[0]->symbol == 'R');
     REQUIRE(entities[0]->team == 0);
-    REQUIRE(entities[0]->hp == 4008);
+    REQUIRE(entities[0]->hp == CrownTower::KING_HP);
     REQUIRE(entities[0]->name == "King Tower");
     REQUIRE(entities[0]->position.x == Catch::Approx(ArenaLayout::CENTER_X));
     REQUIRE(entities[0]->position.y == Catch::Approx(ArenaLayout::kingY(0)));
@@ -36,7 +36,7 @@ TEST_CASE("GameManager construction sets up exactly the 6 expected towers", "[ga
 
     REQUIRE(entities[2]->symbol == 'P');
     REQUIRE(entities[2]->team == 0);
-    REQUIRE(entities[2]->hp == 2534);
+    REQUIRE(entities[2]->hp == CrownTower::PRINCESS_HP);
     REQUIRE(entities[2]->name == "Princess Tower");
     REQUIRE(entities[2]->position.x == Catch::Approx(ArenaLayout::LEFT_LANE_X));
     REQUIRE(entities[2]->position.y == Catch::Approx(ArenaLayout::princessY(0)));
@@ -158,7 +158,7 @@ TEST_CASE("Elixir Collector passively grants its owner extra elixir beyond norma
     // 80 ticks of interval plus the 10-tick deploy time before its first cycle.
     for (int i = 0; i < 80 + DEPLOY_TIME_TICKS; ++i) game.step();
 
-    float pureRegenOnly = 0.035f * (80 + DEPLOY_TIME_TICKS); // regen alone, same window
+    float pureRegenOnly = GameManager::ELIXIR_REGEN_RATE * (80 + DEPLOY_TIME_TICKS); // regen alone, same window
     REQUIRE(game.getElixirAI() > pureRegenOnly + 0.5f); // meaningfully more than regen alone
 }
 
@@ -294,7 +294,7 @@ TEST_CASE("step() regenerates elixir at the fixed rate, capped at 10.0", "[game_
     REQUIRE(game.getElixirAI() == Catch::Approx(5.0f));
 
     game.step();
-    REQUIRE(game.getElixirAI() == Catch::Approx(5.035f));
+    REQUIRE(game.getElixirAI() == Catch::Approx(5.0f + GameManager::ELIXIR_REGEN_RATE));
 
     for (int i = 0; i < 1000; ++i) game.step();
     REQUIRE(game.getElixirAI() == Catch::Approx(10.0f));
@@ -388,8 +388,8 @@ TEST_CASE("A full scripted mini-match produces sane getStatistics() output", "[g
     auto enemy = std::make_shared<DummyEntity>(board.allocateId(), 9.0f, 10.5f, 1000, 1);
     spawn(board, enemy);
 
-    // 5 ticks of combat after the Knight's 10-tick deploy time.
-    for (int i = 0; i < 5 + DEPLOY_TIME_TICKS; ++i) game.step();
+    // 5 ticks of combat after the Knight's 10-tick deploy time and its load time.
+    for (int i = 0; i < 5 + DEPLOY_TIME_TICKS + LoadTimes::forName("Knight"); ++i) game.step();
 
     const auto& stats = game.getStatistics();
     REQUIRE(stats.elixirSpent(0) == Catch::Approx(3.0f));
@@ -487,8 +487,12 @@ TEST_CASE("Random-hand initializeDeck seeds championSlots by ORIGINAL deck index
     }
 }
 
-TEST_CASE("A freshly-cycled-in hand slot is unplayable for 19 ticks, playable on the 20th -- the opening hand needs no such wait",
+TEST_CASE("A freshly-cycled-in hand slot is unplayable for CYCLE_IN_COOLDOWN_TICKS - 1 ticks, playable on the next -- the opening hand needs no such wait",
         "[player_state][cycle_delay]") {
+    // 1.5 s, measured off real replays (UPSTREAM item 39). It was 20.
+    REQUIRE(PlayerState::CYCLE_IN_COOLDOWN_TICKS == 15);
+    const int wait = PlayerState::CYCLE_IN_COOLDOWN_TICKS;
+
     PlayerState player;
     player.initializeDeck({ 0, 1, 2, 3, 4, 5, 6, 7 }); // deterministic overload: hand={0,1,2,3}, queue={4,5,6,7}
     player.elixir = 100.0f;
@@ -497,19 +501,19 @@ TEST_CASE("A freshly-cycled-in hand slot is unplayable for 19 ticks, playable on
     auto opening = player.playCard(0);
     REQUIRE(opening.cardId == 0);
 
-    // hand[0] is now 4, cycled in from the queue with a fresh 20-tick cooldown:
-    // unplayable for 19 ticks...
+    // hand[0] is now 4, cycled in from the queue with a fresh cooldown:
+    // unplayable for wait - 1 ticks...
     REQUIRE(player.hand[0] == 4);
-    for (int i = 0; i < 19; ++i) {
+    for (int i = 0; i < wait - 1; ++i) {
         auto blocked = player.playCard(0);
         REQUIRE(blocked.cardId == -1); // still cooling down
         REQUIRE(player.hand[0] == 4);  // nothing consumed, hand slot untouched
         player.tick();
     }
-    auto stillBlocked = player.playCard(0); // 19 ticks elapsed -- one more needed
+    auto stillBlocked = player.playCard(0); // wait - 1 ticks elapsed -- one more needed
     REQUIRE(stillBlocked.cardId == -1);
 
-    // ...and playable once the 20th tick lands.
+    // ...and playable once the last tick lands.
     player.tick();
     auto afterCooldown = player.playCard(0);
     REQUIRE(afterCooldown.cardId == 4);
@@ -825,7 +829,8 @@ TEST_CASE("elixir regen follows the real-game 1x/2x/3x phase schedule",
 
     // The boundaries against the 10-ticks-per-second conversion.
     REQUIRE(GameManager::DOUBLE_ELIXIR_TICK == 120 * 10);   // 2:00
-    REQUIRE(GameManager::TRIPLE_ELIXIR_TICK == 180 * 10);   // 3:00
+    REQUIRE(GameManager::TRIPLE_ELIXIR_TICK == 240 * 10);   // 4:00
+    REQUIRE(MatchRules::MATCH_END_TICK == 300 * 10);         // 5:00
     REQUIRE(GameManager::MAX_ELIXIR_MULTIPLIER
             == GameManager::elixirMultiplierAtTick(GameManager::TRIPLE_ELIXIR_TICK));
 }
@@ -847,16 +852,16 @@ TEST_CASE("elixir income is actually multiplied, measured off the bar",
 
     // 20 ticks: the bar clamps at 10.0, so a long window would saturate and
     // every phase would read the same.
-    REQUIRE(incomeOver(0, 20) == Catch::Approx(0.7f).margin(0.01f));
-    REQUIRE(incomeOver(GameManager::DOUBLE_ELIXIR_TICK, 20) == Catch::Approx(1.4f).margin(0.01f));
-    REQUIRE(incomeOver(GameManager::TRIPLE_ELIXIR_TICK, 20) == Catch::Approx(2.1f).margin(0.01f));
+    REQUIRE(incomeOver(0, 28) == Catch::Approx(1.0f).margin(0.01f));     // 2.8 s per elixir
+    REQUIRE(incomeOver(GameManager::DOUBLE_ELIXIR_TICK, 28) == Catch::Approx(2.0f).margin(0.01f));
+    REQUIRE(incomeOver(GameManager::TRIPLE_ELIXIR_TICK, 28) == Catch::Approx(3.0f).margin(0.01f));
 
     // Crossing a boundary mid-window. step() increments the tick before reading
     // the phase, so stepping N from T covers T+1..T+N: from 1190, 9 ticks at 1x
-    // (1191..1199) and 11 at 2x (1200..1210), 0.315 + 0.770. Pins per-tick
+    // (1191..1199) and 11 at 2x (1200..1210), (9 + 22) / 28. Pins per-tick
     // evaluation, which a schedule sampled once per step() would fail.
     REQUIRE(incomeOver(GameManager::DOUBLE_ELIXIR_TICK - 10, 20)
-            == Catch::Approx(1.085f).margin(0.01f));
+            == Catch::Approx(31.0f / 28.0f).margin(0.01f));
 }
 
 TEST_CASE("the elixir phase composes with the curriculum's opponent multiplier",
@@ -877,11 +882,24 @@ TEST_CASE("the elixir phase composes with the curriculum's opponent multiplier",
 
     // The phase scales the base rate and oppElixirMultiplier scales that: a
     // 1.5x opponent in double elixir gets 3.0x, as intended.
-    REQUIRE(oppIncomeOver(0, 20, 1.5f).first == Catch::Approx(1.05f).margin(0.01f));
+    const float r = GameManager::ELIXIR_REGEN_RATE;
+    REQUIRE(oppIncomeOver(0, 20, 1.5f).first == Catch::Approx(20 * r * 1.5f).margin(0.01f));
     REQUIRE(oppIncomeOver(GameManager::DOUBLE_ELIXIR_TICK, 20, 1.5f).first
-            == Catch::Approx(2.10f).margin(0.01f));
+            == Catch::Approx(20 * r * 3.0f).margin(0.01f));
 
     // ...and the handicap never reaches the AI's own bar.
     REQUIRE(oppIncomeOver(GameManager::DOUBLE_ELIXIR_TICK, 20, 1.5f).second
-            == Catch::Approx(1.40f).margin(0.01f));
+            == Catch::Approx(20 * r * 2.0f).margin(0.01f));
+}
+
+TEST_CASE("the match ends at 5:00 on the tower tiebreak, whatever maxTicks",
+          "[game_manager][match_end]") {
+    std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    GameManager game(deck, deck);
+    game.setCurrentTick(MatchRules::MATCH_END_TICK - 2);
+    game.step();
+    REQUIRE_FALSE(game.isGameOver());
+    game.step();                       // tick MATCH_END_TICK
+    REQUIRE(game.isGameOver());
+    REQUIRE(game.getLoserTeam() == -1); // untouched towers: exact tie, a draw
 }

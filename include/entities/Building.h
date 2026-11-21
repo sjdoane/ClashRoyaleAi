@@ -22,6 +22,19 @@ public:
     // outside.
     int getMaxHp() const { return maxHp; }
 
+    void scaleToLevel(int level) override {
+        CombatEntity::scaleToLevel(level);
+        maxHp = CardLevels::scale(maxHp, level);
+    }
+
+    bool loseLevel() override {
+        const int from = currentLevel;
+        if (!CombatEntity::loseLevel()) return false;
+        maxHp = std::max(1, static_cast<int>(std::lround(static_cast<double>(maxHp)
+            * CardLevels::MULTIPLIER_PERCENT[from - 2] / CardLevels::MULTIPLIER_PERCENT[from - 1])));
+        return true;
+    }
+
     float getCollisionRadius() const override { return COLLISION_RADIUS; }
 
     bool isBuilding() const override { return true; }

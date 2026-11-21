@@ -1,4 +1,5 @@
 #include <catch_amalgamated.hpp>
+#include <cmath>
 #include "test_helpers.h"
 #include "AreaSpell.h"
 #include "ArenaLayout.h"
@@ -456,6 +457,32 @@ TEST_CASE("The Log's 10.1 range reaches a Princess Tower from the bridge", "[are
     for (int i = 0; i < 12; ++i) log.update(board);
 
     REQUIRE(tower->hp == 2534 - 269);
+}
+
+TEST_CASE("The Log rolls at the measured 0.34 tiles/tick and still reaches the tower", "[area_spell][roll][bridge][registry]") {
+    // The registry's own roll (UPSTREAM_REQUESTS.md item 43): footage puts the
+    // full 10.1 roll at ~3.0 s. From the bridge the tower's near edge is 9.0
+    // tiles of travel away, so the hit lands on tick ceil(9.0 / 0.34) = 27,
+    // not within the first second as at the old 1.0 tiles/tick.
+    const auto& stats = *CardRegistry::getInstance().getCard(33)->stats;
+    REQUIRE(stats.spellRollSpeed == Catch::Approx(0.34f));
+    REQUIRE(stats.spellRollRange == Catch::Approx(10.1f));
+
+    const float towerY = ArenaLayout::princessY(1);
+    Board board;
+    auto tower = std::make_shared<Building>(1, ArenaLayout::LEFT_LANE_X, towerY, 2534, 1, 'T', 7.5f, 50, 10);
+    spawn(board, tower);
+
+    AreaSpell log = makeRoller(2, ArenaLayout::LEFT_LANE_X, ArenaLayout::BRIDGE_Y, 0, 269,
+                               stats.spellRollRange, stats.spellRollWidth,
+                               stats.spellRollSpeed, stats.spellRollKnockback);
+    const int hitTick = static_cast<int>(std::ceil(((towerY - 1.5f) - ArenaLayout::BRIDGE_Y) / stats.spellRollSpeed));
+    for (int i = 0; i < hitTick - 1; ++i) log.update(board);
+    REQUIRE(tower->hp == 2534);           // not yet
+    for (int i = 0; i < 6; ++i) log.update(board);
+    REQUIRE(tower->hp == 2534 - 269);     // reached, once
+    for (int i = 0; i < 10; ++i) log.update(board);
+    REQUIRE_FALSE(log.isAlive());         // the 10.1 roll ends at ~30 ticks
 }
 
 TEST_CASE("The Log throws edge-caught units SIDEWAYS and centred ones FORWARD", "[area_spell][roll][knockback]") {

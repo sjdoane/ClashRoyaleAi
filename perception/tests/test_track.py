@@ -141,14 +141,12 @@ def test_opponent_elixir_regenerates_at_the_real_rate():
 
 
 def test_opponent_elixir_uses_the_real_rate_not_the_simulators():
-    """At the simulator's rate the balance would be ~1.3 elixir low by three
-    minutes, firing the negative-balance alarm on good input. See timebase.py.
+    """The tracker models the real 2.8 s rate (which the engine also runs at
+    since UPSTREAM item 38). See timebase.py.
     """
     tracker = OpponentElixirTracker()
     tracker.advance_to(1800)  # 180 s
     at_real_rate = STARTING_ELIXIR + 180 / 2.8
-    at_sim_rate = STARTING_ELIXIR + 1800 * 0.035
-    assert at_real_rate - at_sim_rate == pytest.approx(1.3, abs=0.1)
     assert tracker.value == pytest.approx(min(10.0, at_real_rate))
 
 

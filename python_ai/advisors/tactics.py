@@ -233,8 +233,8 @@ HOG_MAX_THREAT = 800.0
 # and counter-push.
 HOG_MAX_OPP_ELIXIR = 7.0
 
-# ClashEnv.h values, not bound.
-ELIXIR_REGEN_RATE = 0.035
+# GameManager::ELIXIR_REGEN_RATE, bound; the rest are ClashEnv.h values, not bound.
+ELIXIR_REGEN_RATE = E.ClashRoyaleEnv.ELIXIR_REGEN_RATE
 STARTING_ELIXIR = 5.0
 MAX_ELIXIR = 10.0
 TRAINING_MAX_TICKS = 3600.0

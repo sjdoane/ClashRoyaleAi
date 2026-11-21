@@ -40,6 +40,11 @@ public:
     // tight loops.
     bool isFlying = false;
 
+    // Set by Board::commitPendingEntities once this entity carries its team's
+    // level (CardLevels.h). Copied with the entity, so a snapshot or a Clone
+    // copy of a scaled body is never scaled twice.
+    bool levelApplied = false;
+
     Entity(int id, float x, float y, int hp, int team, char symbol = '?')
         : id(id), position{ x, y }, hp(hp), team(team), symbol(symbol) {}
 
@@ -61,6 +66,12 @@ public:
     // True only for Tower; lets findTarget treat towers as an always-visible
     // fallback without a cast.
     virtual bool isTower() const { return false; }
+
+    // Rescales this entity's level-11 hp and damage to `level`
+    // (CardLevels::scale). Board calls it once per entity. The default does
+    // nothing: a Projectile carries damage copied from an already-scaled
+    // shooter or spell.
+    virtual void scaleToLevel(int level) { (void)level; }
 
     virtual float getCollisionRadius() const { return 0.0f; }
 

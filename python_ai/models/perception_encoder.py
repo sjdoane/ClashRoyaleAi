@@ -57,8 +57,12 @@ PLANE = BOARD_WIDTH * BOARD_HEIGHT
 SPATIAL_SIZE = NUM_CHANNELS * PLANE
 # Plus the opponent card-cycle blocks after the extra scalars.
 CYCLE_BLOCK_SIZE = _E.CYCLE_BLOCK_SIZE
+# Then the level section (UPSTREAM item 44); 0 on an engine without one.
+NUM_LEVEL_SCALARS = getattr(_E, "NUM_LEVEL_SCALARS", 0)
+# Then the opponent-state section (UPSTREAM item 46); 0 on an engine without one.
+OPP_STATE_SIZE = getattr(_E, "OPP_STATE_SIZE", 0)
 SCALAR_SIZE = (1 + HAND_SIZE + HAND_SIZE * NUM_CARD_IDS + NUM_EXTRA_SCALARS
-               + CYCLE_BLOCK_SIZE)
+               + CYCLE_BLOCK_SIZE + NUM_LEVEL_SCALARS + OPP_STATE_SIZE)
 OBSERVATION_SIZE = SPATIAL_SIZE + SCALAR_SIZE
 
 # See the module docstring.
@@ -204,10 +208,12 @@ class TowerCells:
 
     indices: tuple[int, ...]
     full_hp_channel_value: float
-    """The building channel's value for an undamaged tower: hp / MAX_BUILDING_HP.
-    A Princess reads 0.632 (2534/4008), a King 1.0 -- so a GameState fraction,
-    which is relative to the tower's OWN maximum, has to be multiplied by this
-    rather than written straight in."""
+    """The building channel's value for an undamaged tower, read off the
+    engine's fresh board. Since UPSTREAM item 44 the engine writes a tower's hp
+    over its OWN maximum, so this is 1.0 for every tower and a GameState
+    fraction (also own-max) goes in unscaled. On an older engine it is
+    hp / MAX_BUILDING_HP (a level-11 Princess 0.633); scaling by it keeps both
+    conventions right."""
 
 
 def _tower_cells() -> dict[str, TowerCells]:
@@ -240,7 +246,7 @@ _BASE: np.ndarray | None = None
 _TOWERS: dict[str, TowerCells] | None = None
 
 
-def encode(state, *, card_table_=None) -> np.ndarray:
+def encode(state, *, card_table_=None, levels=None, opp_state=None) -> np.ndarray:
     """A GameState -> one observation vector, from our side (team 0).
 
     Mirrors `ClashEnv::extractObservationForTeam(0)`: the HP channels assign,
@@ -251,6 +257,16 @@ def encode(state, *, card_table_=None) -> np.ndarray:
     GameState carries no play history. The live mirror should instead call
     `ClashEnv.note_played_card(1, card_id)` per opponent play and read the
     observation off the engine.
+
+    `levels` is (own card, own tower, opp card, opp tower) level for the level
+    section (item 44); None means all TOURNAMENT_LEVEL, which reads zeros. The
+    real game shows each player's King level on the tower, which is the tower
+    level; perception passes it through.
+
+    `opp_state` is the OPP_STATE_SIZE-long opponent-state section (item 46),
+    written at OPP_STATE_START: live_ppo/opp_state.py builds it from the bound
+    OpponentStateEstimator. None leaves it zero, which reads "nothing known"
+    (est 0 with confidence 0), not "opponent at 0 elixir".
     """
     global _BASE, _TOWERS
     table = card_table_ if card_table_ is not None else card_table()
@@ -322,9 +338,9 @@ def encode(state, *, card_table_=None) -> np.ndarray:
     opp_spend = (OPP_SPEND_WHEN_UNMEASURED if state.opp_elixir_spent is None
                  else min(state.opp_elixir_spent / MAX_MATCH_ELIXIR, 1.0))
     obs[e + 2] = opp_spend
-    # Tower scalars are hp / MAX_BUILDING_HP, so a full Princess reads 0.632
-    # and only a King 1.0; the GameState fraction is scaled by what a full
-    # tower reads.
+    # Tower scalars use the same convention as the building channel; the
+    # GameState fraction is scaled by what a full tower reads there (1.0 since
+    # item 44, so the fraction goes in as is).
     for offset, key in enumerate(("own_king", "own_princess_left",
                                   "own_princess_right", "opp_king",
                                   "opp_princess_left", "opp_princess_right")):
@@ -341,4 +357,14 @@ def encode(state, *, card_table_=None) -> np.ndarray:
     obs[e + 9] = (engine.elixir_multiplier_at_tick(
                       int(state.seconds_elapsed * TICKS_PER_SECOND))
                   / MAX_ELIXIR_MULTIPLIER)
+
+    if NUM_LEVEL_SCALARS:
+        lv = levels if levels is not None else (engine.TOURNAMENT_LEVEL,) * NUM_LEVEL_SCALARS
+        start = _E.LEVEL_START
+        for k, level in enumerate(lv[:NUM_LEVEL_SCALARS]):
+            obs[start + k] = engine.level_scalar(int(level))
+    if OPP_STATE_SIZE and opp_state is not None:
+        if len(opp_state) != OPP_STATE_SIZE:
+            raise ValueError(f"opp_state has {len(opp_state)} values, the section {OPP_STATE_SIZE}")
+        obs[_E.OPP_STATE_START:_E.OPP_STATE_START + OPP_STATE_SIZE] = opp_state
     return obs

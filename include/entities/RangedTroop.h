@@ -29,7 +29,8 @@ protected:
         // On-hit effects travel with the shot and land when it does.
         auto arrow = std::make_shared<Projectile>(
             board.allocateId(), position.x, position.y, team, target, 1.5f, getCurrentDamage(), onHitEffects,
-            boomerang, boomerangReturnDelayTicks, id, cardId, splashRadius, lineSplash, lineSplashRange);
+            boomerang, boomerangReturnDelayTicks, id, cardId, splashRadius, lineSplash, lineSplashRange,
+            splashAppliesOnHit);
         board.addEntity(arrow);
     }
 };

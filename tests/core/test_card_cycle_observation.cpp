@@ -62,9 +62,11 @@ TEST_CASE("the observation carries two card-cycle blocks after the extra scalars
     std::vector<float> obs = env.getObservationForTeam(0);
 
     REQUIRE(static_cast<int>(obs.size()) == env.observationSize());
-    // The blocks are last, so the base plus both blocks ends exactly at the
-    // vector's end; this fails if anything is inserted rather than appended.
-    REQUIRE(cycleBase() + ClashEnv::CYCLE_BLOCK_SIZE == env.observationSize());
+    // The blocks end where the level section (item 44) starts, which is last;
+    // this fails if anything is inserted rather than appended.
+    REQUIRE(cycleBase() + ClashEnv::CYCLE_BLOCK_SIZE == ClashEnv::LEVEL_START);
+    REQUIRE(ClashEnv::LEVEL_START + ClashEnv::NUM_LEVEL_SCALARS == ClashEnv::OPP_STATE_START);
+    REQUIRE(ClashEnv::OPP_STATE_START + ClashEnv::OPP_STATE_SIZE == env.observationSize());
     REQUIRE(ClashEnv::CYCLE_BLOCK_SIZE
             == ClashEnv::NUM_CYCLE_BLOCKS * ClashEnv::NUM_CARD_IDS);
 }

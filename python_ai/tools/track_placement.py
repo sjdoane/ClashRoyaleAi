@@ -32,8 +32,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 import python_ai  # noqa: E402
+import clash_royale_env as E  # noqa: E402
 
-UNIFORM_NEXT_CARD_CE = float(np.log(185))   # ln(NUM_CARD_IDS)
+UNIFORM_NEXT_CARD_CE = float(np.log(E.ClashRoyaleEnv.NUM_CARD_IDS))
 POOL_WINRATE_FLOOR = 0.20                   # opponents/deck_pool.py
 
 

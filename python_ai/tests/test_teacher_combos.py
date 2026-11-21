@@ -400,7 +400,11 @@ def test_the_teacher_actually_executes_a_planned_pair_end_to_end():
     """
     env = _env()
     _stage_hand(env, 0, [ICE_GOLEM, HOG, CANNON, SKELETONS], 10.0)
-    t = _teacher(horizon=50)
+    # 100 ticks, the top rung's horizon. The follow-up is re-scored when it
+    # falls due, and since the Hog winds up 1.0 s before its first hit
+    # (LoadTimes.h, UPSTREAM item 40) a 50-tick rollout no longer reaches
+    # the tower damage that makes it the best play here.
+    t = _teacher(horizon=100)
     spent0 = env.get_elixir_spent(0)
 
     slot, x, y = t.act(env, _obs(env))

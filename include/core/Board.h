@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include "ArenaLayout.h"
+#include "CardLevels.h"
 #include "Entity.h"
 #include "StatsEventBus.h"
 
@@ -96,6 +97,10 @@ public:
         copy.currentTick = currentTick;
         copy.pendingElixirGrant[0] = pendingElixirGrant[0];
         copy.pendingElixirGrant[1] = pendingElixirGrant[1];
+        for (int t = 0; t < 2; ++t) {
+            copy.cardLevel[t] = cardLevel[t];
+            copy.towerLevel[t] = towerLevel[t];
+        }
 
         std::unordered_map<int, std::shared_ptr<Entity>> byOldId;
         byOldId.reserve(activeEntities.size() + pendingEntities.size());
@@ -161,9 +166,26 @@ public:
     const std::shared_ptr<Entity>& getPendingEntity(size_t index) const { return pendingEntities[index]; }
 
     // GameManager::step passes the real tick; tests call it without one.
+    // Per-team levels (CardLevels.h, UPSTREAM_REQUESTS.md item 42), applied
+    // once to every entity as it enters play: the played card, and everything
+    // spawned later (death spawns, spawner buildings, Graveyard). Crown Towers
+    // take towerLevel. GameManager owns the setting and writes it into each
+    // fresh Board; 11 everywhere is the unscaled engine.
+    int cardLevel[2] = { CardLevels::TOURNAMENT_LEVEL, CardLevels::TOURNAMENT_LEVEL };
+    int towerLevel[2] = { CardLevels::TOURNAMENT_LEVEL, CardLevels::TOURNAMENT_LEVEL };
+
+    void applyTeamLevel(Entity& e) const {
+        if (e.levelApplied) return;
+        e.levelApplied = true;
+        if (e.team != 0 && e.team != 1) return;
+        const int level = e.isTower() ? towerLevel[e.team] : cardLevel[e.team];
+        if (level != CardLevels::TOURNAMENT_LEVEL) e.scaleToLevel(level);
+    }
+
     void commitPendingEntities(int tick = 0) {
         if (!pendingEntities.empty()) {
             for (const auto& e : pendingEntities) {
+                applyTeamLevel(*e);
                 statsEvents.notifyEntitySpawned({ e->id, e->cardId, e->team, tick });
             }
             activeEntities.insert(activeEntities.end(), pendingEntities.begin(), pendingEntities.end());

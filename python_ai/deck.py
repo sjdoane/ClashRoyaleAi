@@ -22,7 +22,6 @@ import clash_royale_env as E
 SHIPPED_DECK = (15, 6, 25, 40, 24, 72, 33, 7)
 
 DECK_SIZE = 8
-_EVOLUTION_IDS = range(123, 164)
 
 
 def _norm(name):
@@ -35,7 +34,7 @@ def _lookup(token):
         return int(token)
     evo = token.lower().startswith("evo:")
     want = _norm(token[4:] if evo else token)
-    pool = _EVOLUTION_IDS if evo else E.get_all_card_ids()
+    pool = E.get_evolution_card_ids() if evo else E.get_all_card_ids()
     for cid in pool:
         try:
             if _norm(E.get_card_info(cid)["name"]) == want:

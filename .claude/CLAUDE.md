@@ -1005,6 +1005,28 @@ never by subtracting from the end.** This layout only ever grows by appending,
 so a forward offset is stable by construction and a backward one is a
 scheduled defect — it survives until the next append and then fails silently.
 
+**AND ON 2026-11-18: `observation_size()` 13977 → 13981, towers read their OWN
+max** (`UPSTREAM_REQUESTS.md` item 44). Each tower's six scalars and its
+building-channel cells are `hp / Building::getMaxHp()` in [0, 1]
+(`ClashEnv::towerHpFraction`), so every full tower reads 1.0 at any level; a
+deployed building still reads `min(hp / MAX_BUILDING_HP, 1)`. Before this a
+level-11 Princess read 0.633 and a level-15 King 1.453, and
+`cr-robot/training/reward.py` rescaled by level-11 HP and clipped, so the first
+31% of a level-15 tower's HP paid no tower reward. Appended after the cycle
+blocks, at the forward offset `LEVEL_START = CYCLE_START + CYCLE_BLOCK_SIZE`:
+
+```
+LEVEL_START + 0..3   own card, own tower, opp card, opp tower level
+                     each (L - 11) / 5, so a level-11 match reads all zeros
+```
+
+The real game shows each King's level, so this is observable. `ScalarEncoder.extra`
+takes the level section with the extra scalars, `Linear(14, 12)` (was 10), so the
+branch width and the LSTM input are unchanged and only that one layer's weight
+is discarded on a warm start. The perception encoder fills it from
+`encode(levels=...)`; `level_scalar(level)` is bound so neither side restates the
+formula.
+
 **Combat is deterministic.** The only RNG in the engine is the opening-hand
 shuffle (`PlayerState::initializeDeck`) and `HeuristicOpponent`. Nothing in
 `include/entities/` is random — so identical inputs give identical outcomes,
@@ -1354,8 +1376,19 @@ advancing every tick and damaging each target **at most once**.
 
 | | width | range | speed | knockback |
 |---|---|---|---|---|
-| The Log (33) | 3.9 | 10.1 | 1.0 tiles/tick | 0.8 |
+| The Log (33) | 3.9 | 10.1 | 0.34 tiles/tick (measured) | 0.8 |
 | Barbarian Barrel (101, 174) | 2.6 | 4.5 | 0.5 tiles/tick | none |
+
+**The Log's speed is measured, not guessed** (UPSTREAM_REQUESTS.md item 43). It
+was 1.0 tiles/tick, a whole 10.1 roll in ~1 s. In match footage (19 full rolls
+across 3 videos at 60 fps) the roll takes **2.96 s** from the first motion to
+rest, so 10.1 / 2.96 = 3.41 tiles/s, i.e. **0.34 tiles/tick**, about 30 ticks
+per roll. That agrees with the published speed 200 read as 60 = 1 tile/s
+(3.33). The range is unchanged, so the bridge-to-tower property below still
+holds; the hit just lands on tick 27 instead of tick 9. The Barrel's 0.5 is
+still unsourced: the one clean enemy Barrel in the footage looked faster
+(~13 screen-tiles/s peak, but its thrown arrival blurs the onset), so it is
+left alone until more footage is checked.
 
 **3.9 is a WIDTH and was being read as a RADIUS**, so The Log's old footprint
 was a circle of diameter 7.8 — twice as wide laterally as the real card, and

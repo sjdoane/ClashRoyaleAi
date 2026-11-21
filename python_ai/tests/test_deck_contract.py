@@ -48,7 +48,9 @@ def test_a_deck_without_fireball_keys_the_spell_terms_to_its_own_spell():
     assert spell_lines, text(report)
     lvl, msg = spell_lines[0]
     assert lvl == "INFO" and "Lightning" in msg, msg
-    assert "1057" in msg and "6 elixir" in msg, msg
+    # 286 is Lightning's Crown Tower damage (card-stats audit, patch 0003:
+    # wiki Lightning, level 11); before the patch towers took the full 1057.
+    assert "286" in msg and "6 elixir" in msg, msg
 
 
 def test_a_deck_with_no_damaging_spell_warns_that_the_spell_terms_are_off():

@@ -19,6 +19,33 @@ HIRES_HIDDEN = 8
 
 # Placement constants, read from the engine. get_own_half_max_y() needs an
 # instance, so one is built once here.
+_CONV_BATCH_INVARIANT = {}
+
+
+def _conv_batch_invariant(device):
+    """Whether Conv2d on `device` gives a row the same bits whatever batch it
+    is in. forward_sequence's row compaction is only exact when it does: true
+    of the MKL-DNN CPU path, false of Accelerate (macOS) and of some cuDNN
+    algorithms. Probed once per device type."""
+    key = torch.device(device).type
+    if key not in _CONV_BATCH_INVARIANT:
+        # The placement head's own conv shapes (place_up, place_hires): a
+        # backend can be batch-invariant at small shapes only.
+        g = torch.Generator().manual_seed(0)
+        rows = torch.tensor([3, 9], device=device)
+        same = True
+        for cin, cout, h, w in ((32, 16, 18, 10), (16 + HIRES_CTX_DIM, HIRES_HIDDEN, 34, 18)):
+            # Private generator: the probe must not move the global RNG.
+            wt = torch.randn(cout, cin, 3, 3, generator=g).to(device)
+            b = torch.randn(cout, generator=g).to(device)
+            x = torch.randn(16, cin, h, w, generator=g).to(device)
+            with torch.no_grad():
+                same = same and bool(torch.equal(F.conv2d(x, wt, b, padding=1)[rows],
+                                                 F.conv2d(x[rows], wt, b, padding=1)))
+        _CONV_BATCH_INVARIANT[key] = same
+    return _CONV_BATCH_INVARIANT[key]
+
+
 _probe = clash_royale_env.ClashRoyaleEnv(list(range(8)), list(range(8)), 100)
 OWN_HALF_MAX_Y = _probe.get_own_half_max_y()
 MAX_PLACEMENT_X = _probe.get_max_placement_x()
@@ -203,6 +230,16 @@ HAND_SLOT_EMBED_DIM = 5      # x hand_size (4) = 20
 EXTRA_BRANCH_DIM = 12
 CYCLE_BRANCH_DIM = 24
 SCALAR_FEATURE_DIM = 64
+#: The opponent-state branch (UPSTREAM item 46: opponent elixir estimate, both
+#: sides' Evolution charge and Champion/Hero ability state). Present only on an
+#: engine with the section, and then the total is 80: a deliberate change of
+#: lstm_input_dim, since nothing below 64 can make room for it without starving
+#: another branch. Nets for that engine are trained from scratch (gen-2).
+OPP_STATE_BRANCH_DIM = 16
+SCALAR_FEATURE_DIM_WITH_OPP_STATE = SCALAR_FEATURE_DIM + OPP_STATE_BRANCH_DIM
+#: Card-identity width of the opponent-Evolution blocks (known[], charge[]),
+#: one projection shared by both, as in the cycle branch.
+OPP_EVO_EMBED_DIM = 8
 
 #: Card-identity width inside the cycle branch. `seen` and `recency` share one
 #: projection: they index the same card space, so both read the same notion of
@@ -222,7 +259,9 @@ class ScalarEncoder(nn.Module):
     """
 
     def __init__(self, hand_size, num_card_ids, num_extra_scalars,
-                 cycle_block_size, extra_start, cycle_start):
+                 cycle_block_size, extra_start, cycle_start,
+                 num_level_scalars=0, level_start=None,
+                 opp_state_size=0, opp_state_start=None):
         super().__init__()
         self.hand_size = hand_size
         self.num_card_ids = num_card_ids
@@ -230,15 +269,27 @@ class ScalarEncoder(nn.Module):
         self.cycle_block_size = cycle_block_size
         self.extra_start = extra_start
         self.cycle_start = cycle_start
+        # The level section (UPSTREAM item 44) joins the extra branch: it is
+        # match context of the same kind (clock, spend, tower HP), and the
+        # branch's 12 outputs are unchanged, so the 64-dim total holds.
+        self.num_level_scalars = num_level_scalars
+        self.level_start = level_start
         self.onehot_start = 1 + hand_size
+        # The opponent-state section (item 46): its own branch, before the
+        # cycle so the cycle stays last. Sub-offsets are the engine's.
+        self.opp_state_size = opp_state_size
+        self.opp_state_start = opp_state_start
+        opp_dim = OPP_STATE_BRANCH_DIM if opp_state_size else 0
 
         hand_dim = hand_size * HAND_SLOT_EMBED_DIM
         self.out_dim = (ECON_BRANCH_DIM + hand_dim
-                        + EXTRA_BRANCH_DIM + CYCLE_BRANCH_DIM)
-        if self.out_dim != SCALAR_FEATURE_DIM:
+                        + EXTRA_BRANCH_DIM + opp_dim + CYCLE_BRANCH_DIM)
+        expected = (SCALAR_FEATURE_DIM_WITH_OPP_STATE if opp_state_size
+                    else SCALAR_FEATURE_DIM)
+        if self.out_dim != expected:
             raise ValueError(
                 f"scalar branches sum to {self.out_dim}, not "
-                f"{SCALAR_FEATURE_DIM}; that changes lstm_input_dim and "
+                f"{expected}; that changes lstm_input_dim and "
                 "discards the LSTM's 1.8M trained parameters. Retune the "
                 "branch widths so they still sum to the total, or change the "
                 "total deliberately and say so.")
@@ -249,9 +300,15 @@ class ScalarEncoder(nn.Module):
         # One projection shared across hand slots, which all hold the same kind
         # of thing.
         self.hand_slot = nn.Linear(num_card_ids, HAND_SLOT_EMBED_DIM)
-        self.extra = nn.Linear(num_extra_scalars, EXTRA_BRANCH_DIM)
+        self.extra = nn.Linear(num_extra_scalars + num_level_scalars, EXTRA_BRANCH_DIM)
         self.cycle_card = nn.Linear(num_card_ids, CYCLE_EMBED_DIM, bias=False)
         self.cycle_out = nn.Linear(2 * CYCLE_EMBED_DIM, CYCLE_BRANCH_DIM)
+        if opp_state_size:
+            E = clash_royale_env.ClashRoyaleEnv
+            self.opp_evo_offset = E.OPP_EVO_OFFSET
+            self.opp_evo_card = nn.Linear(num_card_ids, OPP_EVO_EMBED_DIM, bias=False)
+            self.opp_state_out = nn.Linear(E.OPP_EVO_OFFSET + 2 * OPP_EVO_EMBED_DIM,
+                                           OPP_STATE_BRANCH_DIM)
 
         self.cycle_slice = (self.out_dim - CYCLE_BRANCH_DIM, self.out_dim)
 
@@ -261,6 +318,9 @@ class ScalarEncoder(nn.Module):
                          self.onehot_start + self.hand_size * self.num_card_ids]
         extra = scalar[:, self.extra_start:
                        self.extra_start + self.num_extra_scalars]
+        if self.num_level_scalars:
+            extra = torch.cat([extra, scalar[:, self.level_start:
+                                             self.level_start + self.num_level_scalars]], dim=1)
         cycle = scalar[:, self.cycle_start:
                        self.cycle_start + self.cycle_block_size]
 
@@ -268,11 +328,24 @@ class ScalarEncoder(nn.Module):
         h = F.relu(self.hand_slot(
             onehots.reshape(-1, self.hand_size, self.num_card_ids))).flatten(1)
         x = F.relu(self.extra(extra))
+        parts = [e, h, x]
+        if self.opp_state_size:
+            parts.append(self.opp_state_branch(
+                scalar[:, self.opp_state_start:self.opp_state_start + self.opp_state_size]))
         # Detached: the actor and critic read the branch but cannot reshape it,
         # which PPO otherwise did (turning it into a 1-D opponent-tempo
         # readout). `cycle_id_head` is its only gradient. Downstream layers
         # still learn to use these dims at full gradient.
-        return torch.cat([e, h, x, self.cycle_branch(cycle).detach()], dim=1)
+        return torch.cat(parts + [self.cycle_branch(cycle).detach()], dim=1)
+
+    def opp_state_branch(self, opp):
+        """Elixir estimate, own evo/ability, opponent ability (the first
+        OPP_EVO_OFFSET values, read directly) and the two per-card Evolution
+        blocks through one shared card projection. (B, OPP_STATE_BRANCH_DIM)."""
+        head = opp[:, :self.opp_evo_offset]
+        evo = opp[:, self.opp_evo_offset:].reshape(-1, 2, self.num_card_ids)
+        evo = F.relu(self.opp_evo_card(evo)).flatten(1)
+        return F.relu(self.opp_state_out(torch.cat([head, evo], dim=1)))
 
     def cycle_branch(self, cycle):
         """The cycle branch with its gradient attached. (B, CYCLE_BRANCH_DIM).
@@ -380,12 +453,22 @@ class MicroRoyaleNet(nn.Module):
         # The opponent's card cycle: seen[] and recency[], appended after the
         # extra scalars.
         self.cycle_block_size = clash_royale_env.ClashRoyaleEnv.CYCLE_BLOCK_SIZE
+        # The level section (item 44), appended after the cycle blocks. getattr:
+        # an engine without it has none, and the layout is then unchanged.
+        self.num_level_scalars = getattr(clash_royale_env.ClashRoyaleEnv,
+                                         "NUM_LEVEL_SCALARS", 0)
+        # The opponent-state section (item 46), appended after the levels.
+        self.opp_state_size = getattr(clash_royale_env.ClashRoyaleEnv,
+                                      "OPP_STATE_SIZE", 0)
         self.scalar_size = (1 + hand_size + hand_size * num_card_ids
-                            + self.num_extra_scalars + self.cycle_block_size)
+                            + self.num_extra_scalars + self.cycle_block_size
+                            + self.num_level_scalars + self.opp_state_size)
         self.extra_start = 1 + hand_size + hand_size * num_card_ids
         # Forward offsets, never measured back from the end, which breaks on
         # the next append.
         self.cycle_start = self.extra_start + self.num_extra_scalars
+        self.level_start = self.cycle_start + self.cycle_block_size
+        self.opp_state_start = self.level_start + self.num_level_scalars
 
         # 1. CNN over (Batch, NUM_CHANNELS, 34, 18). ceil_mode on both pools:
         #    floor would drop a row (34 -> 17 -> 8). The pre-flatten map also
@@ -418,7 +501,9 @@ class MicroRoyaleNet(nn.Module):
         if branched_scalars:
             self.scalar_mlp = ScalarEncoder(
                 hand_size, num_card_ids, self.num_extra_scalars,
-                self.cycle_block_size, self.extra_start, self.cycle_start)
+                self.cycle_block_size, self.extra_start, self.cycle_start,
+                self.num_level_scalars, self.level_start,
+                self.opp_state_size, self.opp_state_start)
             scalar_feature_dim = self.scalar_mlp.out_dim
         else:
             # The monolithic layer it replaced, kept so the A/B and the
@@ -827,6 +912,14 @@ class MicroRoyaleNet(nn.Module):
                     flat_hx, flat_embeds, flat_idx, flat_obs, flat_spatial,
                     hires_map=flat_hires, cycle_feat=flat_cycle)
             out = flat_hx.new_zeros(L * B, self.placement_cells)
+            if not _conv_batch_invariant(flat_hx.device):
+                # A backend whose conv depends on the batch: the head runs on
+                # every row and only the fill is applied, so the kept rows
+                # stay bit-identical to the uncompacted call.
+                full = self.placement_given_card(
+                    flat_hx, flat_embeds, flat_idx, flat_obs, flat_spatial,
+                    hires_map=flat_hires, cycle_feat=flat_cycle)
+                return out.index_copy(0, active_rows, full[active_rows])
             if active_rows.numel() == 0:
                 # An all-forced chunk (common for a spent-down agent) would
                 # hand Conv2d an empty batch.

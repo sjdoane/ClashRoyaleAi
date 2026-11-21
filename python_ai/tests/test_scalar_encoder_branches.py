@@ -19,9 +19,10 @@ sum of the embeddings of cards shown, and the same weighted by recency. It is
 separate from `card_id_embed`, so cycle gradients cannot disturb the working
 placement path.
 """
+import clash_royale_env
 import torch
 
-from python_ai.models.net import MicroRoyaleNet
+from python_ai.models.net import MicroRoyaleNet, SCALAR_FEATURE_DIM_WITH_OPP_STATE
 
 
 def _obs_batch(net, n=8, seed=0):
@@ -47,12 +48,16 @@ def _with_cycle(net, scalar, value, seed=1):
 def test_scalar_encoder_output_width_is_unchanged_so_the_lstm_is_untouched():
     """The branch widths may be retuned; their sum may not, without discarding the
     LSTM.
+
+    The opponent-state section (item 46) raised it once, deliberately, 64 -> 80:
+    gen-2 nets are trained from scratch on that engine.
     """
     net = MicroRoyaleNet(num_ability_slots=0)
     scalar = _scalar_part(net, _obs_batch(net))
-    assert net.scalar_mlp(scalar).shape == (8, 64)
-    assert net.lstm.input_size == net.cnn_out_dim + 64 == 1504
-    assert sum(p.numel() for p in net.lstm.parameters()) == 1_804_288
+    assert SCALAR_FEATURE_DIM_WITH_OPP_STATE == 80
+    assert net.scalar_mlp(scalar).shape == (8, 80)
+    assert net.lstm.input_size == net.cnn_out_dim + 80 == 1520
+    assert sum(p.numel() for p in net.lstm.parameters()) == 4 * 256 * (1520 + 256 + 2)
 
 
 def test_the_scalar_encoder_reads_its_blocks_from_the_engines_own_offsets():
@@ -67,7 +72,14 @@ def test_the_scalar_encoder_reads_its_blocks_from_the_engines_own_offsets():
     # ...and the blocks tile the scalar vector exactly: a gap is an ignored
     # input, an overlap double counts.
     assert net.extra_start + net.num_extra_scalars == net.cycle_start
-    assert net.cycle_start + net.cycle_block_size == net.scalar_size
+    # The level section (card/tower level of each side) follows the cycle
+    # blocks and closes the vector.
+    assert enc.level_start == net.cycle_start + net.cycle_block_size
+    assert enc.level_start + net.num_level_scalars == enc.opp_state_start
+    # The opponent-state section (item 46) closes it.
+    assert enc.opp_state_start + enc.opp_state_size == net.scalar_size
+    E = clash_royale_env.ClashRoyaleEnv
+    assert net.spatial_size + enc.opp_state_start == E.OPP_STATE_START
 
 
 def test_the_cycle_block_owns_a_dedicated_slice_of_the_scalar_features():

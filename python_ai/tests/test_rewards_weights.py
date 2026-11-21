@@ -77,9 +77,9 @@ def test_fireballs_damage_and_cost_are_read_from_the_registry():
 
 
 def test_the_own_tower_total_is_read_from_a_fresh_board_not_written_out():
-    """2*2534 + 4008 = 9076 today, and tower HP is what a balance pass moves.
+    """2*3052 + 4824 = 10928 (level-11 Crown Towers, patch 0007), and tower HP is what a balance pass moves.
     """
-    assert EC.OWN_TOWER_HP_TOTAL == pytest.approx(9076.0)
+    assert EC.OWN_TOWER_HP_TOTAL == pytest.approx(10928.0)
 
 
 def test_the_env_overridable_weights_are_the_ones_meant_to_be_ablated():

@@ -333,6 +333,18 @@ const SightRow SIGHT_CATALOG[] = {
         { 172, "Hero Goblins", 5.5f },
         { 173, "Hero Mega Minion", 5.5f },
         { 175, "Hero Ice Golem", 7.0f },
+        { 176, "Minion Giant", 7.5f },
+        { 177, "Giant", 7.5f },
+        { 178, "Elite Barbarians", 5.5f },
+        { 179, "Electro Giant", 5.5f },
+        { 181, "Hero Balloon", 7.7f },
+        { 182, "Hero Valkyrie", 5.5f },
+        { 183, "Hero Ice Wizard", 5.5f },
+        { 184, "Hero Dark Prince", 5.5f },
+        { 185, "Hero Bowler", 4.0f },
+        { 186, "Hero Electro Wizard", 5.5f },
+        { 187, "Hero Berserker", 5.5f },
+        { 188, "Hero Tombstone", 5.5f },
 };
 } // namespace
 

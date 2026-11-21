@@ -87,12 +87,12 @@ TEST_CASE("Every currently-defined card resolves with id/name/cost/isSpell", "[c
         {94, "Barbarian Hut", 6.0f, false}, {95, "Goblin Hut", 4.0f, false}, {96, "Tombstone", 3.0f, false},
         {97, "Goblin Cage", 4.0f, false}, {98, "Goblin Drill", 4.0f, false}, {99, "Elixir Collector", 6.0f, false},
         {100, "Giant Snowball", 2.0f, true}, {101, "Barbarian Barrel", 2.0f, true}, {102, "Goblin Curse", 2.0f, true},
-        {103, "Earthquake", 3.0f, true}, {104, "Void", 3.0f, true}, {105, "Vines", 3.0f, true},
+        {103, "Earthquake", 3.0f, true}, {104, "Void", 5.0f, true}, {105, "Vines", 3.0f, true},
         {106, "Tornado", 3.0f, true}, {107, "Freeze", 4.0f, true}, {108, "Rage", 2.0f, true},
         {109, "Goblin Barrel", 3.0f, true}, {110, "Graveyard", 5.0f, true}, {111, "Royal Delivery", 3.0f, true},
         {112, "Goblin Gang", 3.0f, false}, {113, "Rascals", 5.0f, false}, {114, "Clone", 3.0f, true},
         {115, "Mighty Miner", 4.0f, false}, {116, "Golden Knight", 4.0f, false}, {117, "Skeleton King", 4.0f, false},
-        {118, "Archer Queen", 5.0f, false}, {119, "Monk", 4.0f, false}, {120, "Little Prince", 3.0f, false},
+        {118, "Archer Queen", 5.0f, false}, {119, "Monk", 5.0f, false}, {120, "Little Prince", 3.0f, false},
         {121, "Goblinstein", 5.0f, false}, {122, "Boss Bandit", 6.0f, false},
         {123, "Wall Breakers", 2.0f, false}, // Evolution of id 83
         {124, "Zap", 2.0f, true}, // Evolution of id 29
@@ -127,6 +127,14 @@ TEST_CASE("Every currently-defined card resolves with id/name/cost/isSpell", "[c
         {153, "Goblin Drill", 4.0f, false}, // Evolution of id 98
         {154, "Tesla", 4.0f, false}, // Evolution of id 26
         {155, "Barbarians", 5.0f, false}, // Evolution of id 8
+        {177, "Giant", 5.0f, false}, // Evolution of id 2 (patch 0015)
+        {178, "Elite Barbarians", 6.0f, false}, // Evolution of id 17 (patch 0015)
+        {179, "Electro Giant", 7.0f, false}, // Evolution of id 84 (patch 0015)
+        {180, "Mirror", 3.0f, true}, // Evolution of id 164 (patch 0016)
+        {181, "Hero Balloon", 5.0f, false}, {182, "Hero Valkyrie", 4.0f, false},
+        {183, "Hero Ice Wizard", 3.0f, false}, {184, "Hero Dark Prince", 4.0f, false},
+        {185, "Hero Bowler", 5.0f, false}, {186, "Hero Electro Wizard", 4.0f, false},
+        {187, "Hero Berserker", 2.0f, false}, {188, "Hero Tombstone", 3.0f, false},
         {156, "Lumberjack", 4.0f, false}, // Evolution of id 21
         {157, "Executioner", 5.0f, false}, // Evolution of id 36
         {158, "Giant Snowball", 2.0f, true}, // Evolution of id 100
@@ -143,6 +151,7 @@ TEST_CASE("Every currently-defined card resolves with id/name/cost/isSpell", "[c
         {171, "Hero Magic Archer", 4.0f, false}, {175, "Hero Ice Golem", 2.0f, false},
         {174, "Hero Barbarian Barrel", 2.0f, true},
         {172, "Hero Goblins", 2.0f, false},
+        {176, "Minion Giant", 4.0f, false},
     };
 
     const auto& registry = CardRegistry::getInstance();
@@ -263,6 +272,7 @@ TEST_CASE("Executioner's axe hits its target twice: on arrival, then again on th
     REQUIRE(executioner != nullptr);
 
     advancePastDeploy(executioner, board);
+    windUp(executioner, board);
     executioner->update(board); // fires: spawns the boomerang projectile
     board.commitPendingEntities();
     auto axe = std::dynamic_pointer_cast<Projectile>(board.getEntities().back());
@@ -417,7 +427,7 @@ TEST_CASE("Giant Skeleton, Ice Golem and Balloon deal death-explosion damage", "
         auto entity = board.getEntities().back();
         entity->takeDamage(entity->hp);
         board.cleanDeadEntities();
-        REQUIRE(enemy->hp == 100000 - 84);
+        REQUIRE(enemy->hp == 100000 - 92); // audit 0003: 92 death damage
     }
 
     SECTION("Balloon") {
@@ -500,6 +510,7 @@ TEST_CASE("Inferno Tower's damage ramps up the longer it stays locked onto the s
     REQUIRE(tower != nullptr);
 
     advancePastDeploy(tower, board);
+    windUp(tower, board);
     tower->update(board); // ticksOnTarget == 0 on first lock: stage 1 (5% of 847)
     REQUIRE(enemy->hp == 1000000 - 42);
 
@@ -689,6 +700,7 @@ TEST_CASE("Ice Wizard is genuinely ranged: freeze lands with the arrow, not when
     REQUIRE(std::dynamic_pointer_cast<RangedTroop>(iceWizardEntity) != nullptr);
 
     advancePastDeploy(iceWizardEntity, board);
+    windUp(iceWizardEntity, board);
     iceWizardEntity->update(board); // fires: spawns a projectile, does not freeze yet
     board.commitPendingEntities();
     REQUIRE(enemy->freezeTicks == 0);
@@ -717,6 +729,7 @@ TEST_CASE("Ice Golem's slow is on its death explosion, never on its attack",
 
     auto golem = board.getEntities().back();
     advancePastDeploy(golem, board);
+    windUp(golem, board);
     const int hpBeforeAttack = enemy->hp;
     golem->update(board);
 
@@ -728,8 +741,9 @@ TEST_CASE("Ice Golem's slow is on its death explosion, never on its attack",
     // ...and dying does slow: same duration and strength, the right trigger.
     golem->hp = 0;
     board.cleanDeadEntities();
-    REQUIRE(enemy->freezeTicks == 30);
-    REQUIRE(enemy->freezeSlow == Catch::Approx(0.65f));
+    // Audit 0003 (wiki, 6/10/2025): the Death Nova slows 30% for 2.5 s.
+    REQUIRE(enemy->freezeTicks == 25);
+    REQUIRE(enemy->freezeSlow == Catch::Approx(0.70f));
 }
 
 TEST_CASE("Electro Wizard stuns on hit via the on-hit decorator (freeze with slowFactor 0)", "[card_registry][on_hit]") {
@@ -753,9 +767,10 @@ TEST_CASE("Electro Wizard stuns on hit via the on-hit decorator (freeze with slo
     // Direct damage (an instant zap): damage and stun land the same tick. One
     // enemy in range, so it takes the full damage, not the split half.
     advancePastDeploy(electroWizardEntity, board);
+    windUp(electroWizardEntity, board); // the 1.2 s first-attack load (patch 0006)
     electroWizardEntity->update(board);
 
-    REQUIRE(enemy->hp == 882); // 1000 - 118
+    REQUIRE(enemy->hp == 885); // 1000 - 115 (audit 0003)
     REQUIRE(enemy->freezeTicks == 5);
     REQUIRE(enemy->freezeSlow == Catch::Approx(0.0f));
 }
@@ -779,10 +794,11 @@ TEST_CASE("Electro Wizard splits its attack across the 2 closest enemies at half
     REQUIRE(electroWizardEntity != nullptr);
 
     advancePastDeploy(electroWizardEntity, board);
+    windUp(electroWizardEntity, board); // the 1.2 s first-attack load (patch 0006)
     electroWizardEntity->update(board);
 
-    REQUIRE(near->hp == 941);  // 1000 - 118/2
-    REQUIRE(far->hp == 941);
+    REQUIRE(near->hp == 943);  // 1000 - 115/2 (audit 0003)
+    REQUIRE(far->hp == 943);
     REQUIRE(near->freezeTicks == 5); // both stunned
     REQUIRE(far->freezeTicks == 5);
 }
@@ -907,6 +923,7 @@ TEST_CASE("Battle Ram breaks on its first hit on a building and releases its 2 B
             auto building = std::make_shared<Building>(999, 5.0f, 5.4f, 5000, 1, 'C', 5.0f, 10, 10);
             spawn(board, building);
             advancePastDeploy(ram, board);
+            windUp(ram, board);
             ram->update(board);
 
             REQUIRE(building->hp == 5000 - 286);   // one uncharged hit: it never travelled
@@ -968,6 +985,7 @@ TEST_CASE("Bomb Tower splashes, and drops a 3-second bomb when destroyed", "[car
         spawn(board, away);
         spawn(board, flier);
         advancePastDeploy(tower, board);
+        windUp(tower, board);
         tower->update(board);
         REQUIRE(target->hp == 100000 - 222);
         REQUIRE(beside->hp == 100000 - 222);
@@ -1039,6 +1057,7 @@ TEST_CASE("Inferno Dragon's beam damage ramps up like Inferno Tower's, while fly
     REQUIRE(dragon->targetsAir);
 
     advancePastDeploy(dragon, board);
+    windUp(dragon, board);
     dragon->update(board); // ticksOnTarget == 0 on first lock: stage 1 (~8.3% of 422)
     REQUIRE(enemy->hp == 1000000 - 35);
 }
@@ -1079,6 +1098,7 @@ TEST_CASE("Valkyrie's splash hits a second enemy standing near her primary targe
     board.commitPendingEntities();
 
     advancePastDeploy(board.getEntities().back(), board);
+    windUp(board.getEntities().back(), board);
     board.getEntities().back()->update(board);
 
     REQUIRE(primary->hp == 734);  // 1000 - 266
@@ -1550,6 +1570,7 @@ TEST_CASE("Bowler's piercing line hits a bystander behind the primary target, no
     auto bowler = board.getEntities().back();
 
     advancePastDeploy(bowler, board);
+    windUp(bowler, board);
     bowler->update(board); // fires the projectile
     board.commitPendingEntities();
     for (int i = 0; i < 10; ++i) {
@@ -1573,10 +1594,13 @@ TEST_CASE("X-Bow can't fire until its slow initial deploy delay elapses", "[card
     board.commitPendingEntities();
     auto xbow = board.getEntities().back();
 
-    for (int i = 0; i < 34; ++i) xbow->update(board); // 3.4s: still not ready (delay is 3.5s/35 ticks)
+    // Audit 0003 made the 3.5 s a deploy time (withDeployTime(35)), so it
+    // follows the deploy convention of advancePastDeploy: inert for 35
+    // updates, acting on the next one.
+    for (int i = 0; i < 35; ++i) xbow->update(board); // 3.5s: still deploying
     REQUIRE(enemy->hp == 100000);
 
-    xbow->update(board); // the 35th tick: ready to fire
+    xbow->update(board); // the first update after deploy: fires
     REQUIRE(enemy->hp < 100000);
 }
 
@@ -1770,4 +1794,78 @@ TEST_CASE("every spawned unit moves at the speed of its own playable card",
                       << " tiles/s, spawned copy runs at " << o.spawned * 10.0f);
     }
     REQUIRE(offenders.empty());
+}
+
+// ---------------- attack load time (UPSTREAM item 40) ----------------
+
+namespace {
+// Updates `unit` until `target` loses hp, returning how many updates it took;
+// -1 if it never does within `limit`.
+int updatesUntilHit(const std::shared_ptr<Entity>& unit, const std::shared_ptr<Entity>& target,
+                    Board& board, int limit = 100) {
+    const int before = target->hp;
+    for (int i = 1; i <= limit; ++i) {
+        unit->update(board);
+        board.commitPendingEntities();
+        if (target->hp < before) return i;
+    }
+    return -1;
+}
+}
+
+TEST_CASE("A Hog Rider's first hit lands its load time after it reaches the building, then every hit speed",
+          "[card_registry][load_time]") {
+    // 1.0 s load, 1.6 s hit speed (FLZ HogRider).
+    REQUIRE(LoadTimes::forName("Hog Rider") == 10);
+    Board board;
+    auto building = std::make_shared<Building>(999, 5.0f, 5.5f, 100000, 1, 'C', 5.0f, 10, 10);
+    spawn(board, building);
+    CardRegistry::getInstance().getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto hog = board.getEntities().back();
+    REQUIRE(std::dynamic_pointer_cast<CombatEntity>(hog)->loadTicks == 10);
+    advancePastDeploy(hog, board);
+
+    // In range from the first live tick: wind up 10 ticks, hit on the 11th.
+    REQUIRE(updatesUntilHit(hog, building, board) == 11);
+    // Then the period is the hit speed, with no second wind-up on the same target.
+    REQUIRE(updatesUntilHit(hog, building, board) == CardRegistry::getInstance().getCard(15)->stats->attackCooldown);
+}
+
+TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]") {
+    Board board;
+    auto building = std::make_shared<Building>(999, 5.0f, 5.5f, 100000, 1, 'C', 5.0f, 10, 10);
+    spawn(board, building);
+    CardRegistry::getInstance().getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto hog = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    advancePastDeploy(hog, board);
+
+    for (int i = 0; i < 6; ++i) hog->update(board); // 6 of the 10 wind-up ticks
+    REQUIRE(building->hp == 100000);
+    hog->applyFreeze(3, 0.0f);
+    // 3 stunned ticks, then the full 10-tick wind-up again, then the hit.
+    REQUIRE(updatesUntilHit(hog, building, board) == 3 + 10 + 1);
+}
+
+TEST_CASE("An Evolution winds up like its base card, and every load-time row names a registered card",
+          "[card_registry][load_time]") {
+    auto& reg = CardRegistry::getInstance();
+    REQUIRE(reg.getCard(125)->name == "Skeletons"); // Evo Skeletons
+    REQUIRE(LoadTimes::forName(reg.getCard(125)->name) == LoadTimes::forName(reg.getCard(24)->name));
+    REQUIRE(LoadTimes::forName("Skeletons") == 6);
+
+    // A typo'd row would silently leave its card at no load time.
+    std::vector<std::string> names;
+    for (int id = 0; id <= 200; ++id) {
+        if (const CardDefinition* c = reg.getCard(id)) names.push_back(c->name);
+    }
+    int n = 0;
+    const LoadTimes::Row* rows = LoadTimes::table(n);
+    REQUIRE(n > 80);
+    for (int i = 0; i < n; ++i) {
+        INFO(rows[i].name);
+        REQUIRE(std::find(names.begin(), names.end(), std::string(rows[i].name)) != names.end());
+        REQUIRE(rows[i].ticks > 0);
+    }
 }

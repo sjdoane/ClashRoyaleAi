@@ -55,9 +55,8 @@ def test_the_extra_scalar_offsets_still_point_at_the_extra_scalars():
         "pointing at the time fraction")
 
 
-#: ELIXIR_REGEN_RATE is private to GameManager and not bound, so it is restated
-#: here and measured below.
-_REGEN_PER_TICK = 0.035     # GameManager.h: `const float ELIXIR_REGEN_RATE`
+#: GameManager::ELIXIR_REGEN_RATE, read from the binding and measured below.
+_REGEN_PER_TICK = _CE.ELIXIR_REGEN_RATE
 
 #: The bar's ceiling (PlayerState clamps to it) and the env's default
 #: max_ticks, which normalises the time scalar. Neither is bound.

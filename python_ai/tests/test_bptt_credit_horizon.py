@@ -65,11 +65,11 @@ def test_the_bptt_gradient_horizon_covers_a_full_card_rotation():
 
 
 def test_the_rotation_is_derived_from_the_engine_not_from_a_constant():
-    """The instrument, checked against the documented 0.035 rate: two independent
-    derivations agreeing.
+    """The instrument, checked against the bound ELIXIR_REGEN_RATE: two
+    independent derivations agreeing.
     """
-    assert measured_ticks_per_elixir() == torch.tensor(1 / 0.035).item() or \
-        abs(measured_ticks_per_elixir() - 1 / 0.035) < 0.01
+    rate = clash_royale_env.ClashRoyaleEnv.ELIXIR_REGEN_RATE
+    assert abs(measured_ticks_per_elixir() - 1 / rate) < 0.01
     assert 25 < card_rotation_decisions() < 40, (
         "the derived rotation left the plausible range; the deck, the elixir "
         "rate or skip_frames changed and this bottleneck needs re-deriving")

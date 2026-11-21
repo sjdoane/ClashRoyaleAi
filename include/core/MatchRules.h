@@ -12,11 +12,13 @@ public:
         int loserTeam;
     };
 
-    // The end of regulation: 1800 ticks = 3:00, the real schedule. The same
-    // instant as GameManager::TRIPLE_ELIXIR_TICK, one fact with two
-    // consequences; GameManager static_asserts they agree, since this header
-    // knows nothing about elixir.
+    // The end of regulation: 1800 ticks = 3:00, the real schedule.
     static constexpr int REGULATION_END_TICK = 1800;
+    // The end of overtime: 3000 ticks = 5:00. Real matches never run past it:
+    // the latest play in 14,305 IL_Replay matches is at 298.95 s. The match
+    // ends here whatever ClashEnv's maxTicks (GameManager::step applies
+    // TimeoutRules), so a caller passing 3600 still gets a real-length match.
+    static constexpr int MATCH_END_TICK = 3000;
 
     // Surviving towers per side, and the weakest one's hp. Uses isTower(),
     // never the 'R' symbol, which Mortar (card 93) shares.
@@ -67,8 +69,9 @@ public:
     //   4. overtime expires                     -> tower-hp tiebreak
     //
     // 2 and 3 are one predicate: from REGULATION_END_TICK on, any difference in
-    // surviving tower count ends the match. Rule 4 is TimeoutRules, called once
-    // at maxTicks from ClashEnv::calculateReward.
+    // surviving tower count ends the match. Rule 4 is TimeoutRules, applied by
+    // GameManager::step at MATCH_END_TICK (and by ClashEnv::calculateReward at
+    // a shorter maxTicks).
     static Outcome evaluateAtTick(const Board& board, int tick) {
         const Outcome king = evaluate(board);
         if (king.over) return king;

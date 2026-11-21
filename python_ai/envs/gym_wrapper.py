@@ -60,6 +60,12 @@ DEFAULT_DECK_ABILITY_SLOTS = sum(
     or clash_royale_env.get_card_info(_cid)["is_hero"]
 )
 
+# Offsets that derive each Python-side generator from the env seed, so one seed
+# reproduces a whole match (UPSTREAM_REQUESTS.md item 45). Distinct, so the
+# streams are not the same sequence; arbitrary otherwise.
+DECK_SEED_OFFSET = 7
+TEACHER_SEED_OFFSET = 1013
+
 # Per-card spell flags, from the engine.
 SPELL_BY_CARD_ID = {
     _cid: clash_royale_env.get_card_info(_cid)["is_spell"]
@@ -132,10 +138,11 @@ class MicroRoyaleEnv(gym.Env):
             #: Matches this worker has played per deck, for the count-weighted
             #: update.
             self._deck_pool_counts = {d.name: 0 for d in all_decks}
-            # `is None`, not `or`: worker 0's seed is 0.
-            seed_cfg = env_config.get("scenario_seed")
-            self._deck_rng = random.Random(
-                random.randrange(1 << 30) if seed_cfg is None else seed_cfg)
+        # Deck draws (pool and randomize_opp_deck alike). `is None`, not `or`:
+        # worker 0's seed is 0. Unseeded only when no seed is ever given.
+        seed_cfg = env_config.get("scenario_seed")
+        self._deck_rng = random.Random(
+            random.randrange(1 << 30) if seed_cfg is None else seed_cfg)
         max_ticks = env_config.get("max_ticks", 3600)
         # The opponent's elixir-rate multiplier (1.0 = normal). Measurement
         # harnesses only; the curriculum does not use it.
@@ -173,7 +180,11 @@ class MicroRoyaleEnv(gym.Env):
         self.scenario_defensive = False
         if self.opponent_kind == "teacher":
             from python_ai.opponents.teacher import UtilityTeacher
-            self.teacher = UtilityTeacher(self.opp_deck, team=1)
+            # Seeded from the env seed: its profile, lane bias and epsilon
+            # draws were the last unseeded generator in a teacher match.
+            self.teacher = UtilityTeacher(
+                self.opp_deck, team=1,
+                seed=None if seed_cfg is None else int(seed_cfg) + TEACHER_SEED_OFFSET)
             self.teacher.set_stage(int(env_config.get("teacher_stage", 0)))
             self.teacher.reset()
 
@@ -202,11 +213,16 @@ class MicroRoyaleEnv(gym.Env):
         # super().reset() seeds only the wrapper's np_random, which nothing
         # reads; ClashEnv::seed seeds both engine generators (heuristic
         # opponent, opening hand) and resets. Only when a seed is given: later
-        # resets continue the stream. sample_random_deck() is not seedable, so
-        # randomize_opp_deck runs are not reproducible (UPSTREAM_REQUESTS.md
-        # item 23C).
+        # resets continue the stream. randomize_opp_deck draws its deck with a
+        # seed from _deck_rng, so it reproduces too (item 23C, item 45).
         if seed is not None:
             self.game.seed(int(seed))
+            # Every Python-side generator restarts from the same seed too, so
+            # reset(seed=s) replays the match whatever this env played before.
+            self._deck_rng.seed(int(seed) + DECK_SEED_OFFSET)
+            self._scenario_rng = np.random.default_rng(int(seed))
+            if self.teacher is not None and hasattr(self.teacher, "rng"):
+                self.teacher.rng = np.random.default_rng(int(seed) + TEACHER_SEED_OFFSET)
         if self.deck_pool is not None:
             # Sampled per worker, per episode: workers are separate processes,
             # and per-episode sampling keeps each PPO batch a mix of matchups.
@@ -224,7 +240,8 @@ class MicroRoyaleEnv(gym.Env):
         elif self.randomize_opp_deck:
             # The engine's sampler respects Champion/Evolution slot rules,
             # which a naive random.sample would violate.
-            random_deck = list(clash_royale_env.sample_random_deck())
+            random_deck = list(clash_royale_env.sample_random_deck(
+                seed=self._deck_rng.randrange(1 << 31)))
             self.game.set_opponent_deck(random_deck)
             # The deck actually faced this episode; self.opp_deck stays the
             # fixed fallback.

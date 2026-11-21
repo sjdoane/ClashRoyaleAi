@@ -29,6 +29,10 @@ public:
             std::string bombName, bool groundOnly = false)
         : radius(radius), damage(damage), fuseTicks(fuseTicks), knockback(knockback),
           sourceCardId(sourceCardId), bombName(std::move(bombName)), groundOnly(groundOnly) {}
+    // Read-only, for get_card_stats (card-stats audit, patch 0003).
+    float getRadius() const { return radius; }
+    int getDamage() const { return damage; }
+    int getFuseTicks() const { return fuseTicks; }
 
     void apply(Board& board, const Vector2D& position, int team) const override {
         auto bomb = std::make_shared<AreaSpell>(board.allocateId(), position.x, position.y, team, radius, damage,

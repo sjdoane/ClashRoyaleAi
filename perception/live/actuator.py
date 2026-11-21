@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import base64
 import queue
+import re
+import shutil
 import struct
 import subprocess
 import threading
@@ -61,7 +63,7 @@ from clashroyalebuildabot.constants import (
 
 from live.adapter import TILE_Y_OFFSET
 
-ADB = Path(r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe")
+ADB = Path(shutil.which("adb") or r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe")
 
 TOUCH_DEVICE = "/dev/input/event4"          # "BlueStacks Virtual Touch"
 ABS_MT_POSITION_X, ABS_MT_POSITION_Y = 53, 54
@@ -221,6 +223,7 @@ class AdbActuator:
         self.errors = 0
         self.last_error: BaseException | None = None
         self.raw: RawTouch | None = None
+        self.panel = (DISPLAY_WIDTH, DISPLAY_HEIGHT)
         self._proc: subprocess.Popen | None = None
         if not dry_run and not self.adb.exists():
             raise ActuationError(f"adb not found at {self.adb}")
@@ -307,22 +310,40 @@ class AdbActuator:
             cmd = [str(self.adb)]
             if self.serial:
                 cmd += ["-s", self.serial]
-            out = subprocess.run(cmd + ["shell", f"wm size; ls {TOUCH_DEVICE}"],
+            out = subprocess.run(cmd + ["shell", "wm size; getevent -pl"],
                                  capture_output=True, text=True,
                                  timeout=15).stdout
-            if TOUCH_DEVICE not in out:
+            size = re.search(r"(\d+)x(\d+)", out)
+            # The event number differs between emulators; the name does not.
+            device = re.search(r"add device \d+: (\S+)\s+name:\s+\"[^\"]*Touch\"",
+                               out)
+            if size is None:
                 return None
-            size = [w for w in out.replace("x", " ").split()
-                    if w.isdigit()]
-            if len(size) < 2:
+            self.panel = (int(size[1]), int(size[2]))
+            if device is None:
                 return None
-            return RawTouch(int(size[0]), int(size[1]))
+            raw = RawTouch(*self.panel, device=device[1])
+            # Writable is not enough: BlueStacks Air answers EINVAL to every
+            # write, and the persistent shell would hide that, so each tap
+            # would vanish while the loop reports it sent. A bare SYN_REPORT
+            # is harmless to the device and proves the write path.
+            probe = subprocess.run(
+                cmd + ["shell", raw._write(_input_event(EV_SYN, SYN_REPORT, 0))],
+                capture_output=True, text=True, timeout=15)
+            if probe.returncode != 0 or probe.stderr.strip():
+                return None
+            return raw
         except Exception:                                   # noqa: BLE001
             return None
 
     @property
     def backend(self) -> str:
         return "raw-evdev" if self.raw is not None else "input-tap"
+
+    def _panel_xy(self, tap: Tap) -> str:
+        """`input tap` wants panel pixels; a Tap is in the 720x1280 display."""
+        return (f"{round(tap.x * self.panel[0] / DISPLAY_WIDTH)} "
+                f"{round(tap.y * self.panel[1] / DISPLAY_HEIGHT)}")
 
     def _adb(self, *args: str) -> list[str]:
         cmd = [str(self.adb)]
@@ -390,9 +411,9 @@ class AdbActuator:
                 if self.raw is not None:
                     self._shell(self.raw.placement_script(card, target))
                 else:
-                    self._shell(f"input tap {card.x} {card.y}; "
+                    self._shell(f"input tap {self._panel_xy(card)}; "
                                 f"sleep {TAP_GAP_S}; "
-                                f"input tap {target.x} {target.y}")
+                                f"input tap {self._panel_xy(target)}")
             except Exception as exc:                        # noqa: BLE001
                 # A failed tap must not kill the worker, or the loop would look
                 # like it was acting while nothing reached the game.

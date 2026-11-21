@@ -78,7 +78,7 @@ REBUILD_MAX_DRAWS = 50000
 
 # ClashEnv::MAX_BUILDING_HP, the building channels' normaliser. Read from the
 # engine at runtime; this is the type-checker fallback.
-_FALLBACK_MAX_BUILDING_HP = 4008.0
+_FALLBACK_MAX_BUILDING_HP = 4824.0  # CrownTower::KING_HP (patch 0007)
 
 # PlayerState's deckQueue length, deck (8) minus hand (4): the confirmed deals
 # needed to pin the opening queue order.

@@ -57,7 +57,7 @@ static int probe() {
     if (s < 0) return 1;
     const int c = cellIndex(e, 11, 9);
     expect(c >= 0, "cell (11,9) is legal for the Cannon");
-    expect(e.d0(s) == 2534.0f, "no defence: 2534 (whole Princess Tower), got " + std::to_string(e.d0(s)));
+    expect(e.d0(s) == 3052.0f, "no defence: 3052 (whole Princess Tower), got " + std::to_string(e.d0(s)));
     const float at0 = e.rolloutAtTick(s, c, 0), at20 = e.rolloutAtTick(s, c, 20),
                 at33 = e.rolloutAtTick(s, c, 33);
     expect(at0 == 0.0f, "Cannon (11,9) at once: 0, got " + std::to_string(at0));

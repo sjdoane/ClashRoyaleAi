@@ -41,17 +41,20 @@ private:
     bool returnsToSender;
     int returnDelayTicks;
     bool outboundHitLanded = false;
+    // Card-stats audit (patch 0003): see CombatEntity::splashAppliesOnHit.
+    bool splashAppliesOnHit = false;
 
 public:
     Projectile(int id, float x, float y, int team, std::weak_ptr<Entity> target, float speed, int damage,
         std::vector<std::shared_ptr<IOnHitEffect>> onHitEffects = {},
         bool returnsToSender = false, int returnDelayTicks = 0,
         int attackerId = -1, int attackerCardId = -1, float splashRadius = 0.0f,
-        bool lineSplash = false, float lineSplashRange = 0.0f)
+        bool lineSplash = false, float lineSplashRange = 0.0f, bool splashAppliesOnHit = false)
         : Entity(id, x, y, 1, team, '-'), target(target), speed(speed), damage(damage),
         onHitEffects(std::move(onHitEffects)), attackerId(attackerId), attackerCardId(attackerCardId),
         splashRadius(splashRadius), lineSplash(lineSplash), lineSplashRange(lineSplashRange), origin{ x, y },
-        returnsToSender(returnsToSender), returnDelayTicks(returnDelayTicks) {}
+        returnsToSender(returnsToSender), returnDelayTicks(returnDelayTicks),
+        splashAppliesOnHit(splashAppliesOnHit) {}
 
     bool isTargetable() const override { return false; }
 
@@ -131,7 +134,8 @@ private:
             applyLineSplashDamage(board, origin, t->position, lineSplashRange, splashRadius,
                 t->id, attackerId, team, attackerCardId, damage);
         } else {
-            applySplashDamage(board, t->position, splashRadius, t->id, attackerId, team, attackerCardId, damage);
+            applySplashDamage(board, t->position, splashRadius, t->id, attackerId, team, attackerCardId, damage,
+                true, splashAppliesOnHit ? &onHitEffects : nullptr);
         }
     }
 };

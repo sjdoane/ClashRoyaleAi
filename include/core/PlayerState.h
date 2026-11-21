@@ -46,10 +46,22 @@ public:
         Vector2D lastSquadWipePosition{ 0.0f, 0.0f };
     };
 
+    // The bar's cap and the opening bar, named so GameManager and
+    // OpponentStateEstimator share them instead of restating 10 and 5.
+    static constexpr float MAX_ELIXIR = 10.0f;
+    static constexpr float STARTING_ELIXIR = 5.0f;
+
     float elixir;
     std::vector<int> hand;
+    // Ticks before a card that has just cycled into the hand can be played.
+    // Measured, not guessed: across 638,300 plays in IL_Replay (RoyaleAPI
+    // replays of real Hog 2.6 matches), the card that entered the hand at play
+    // i is next played at least 1.5 s later, a sharp edge (2,816 at 1.45 s,
+    // 8,188 at 1.50 s on the 20 Hz clock) above a thin human-error floor.
+    // It was 20 (2.0 s). perception/UPSTREAM_REQUESTS.md item 39.
+    static constexpr int CYCLE_IN_COOLDOWN_TICKS = 15;
     // Parallel to hand. > 0 means the card just cycled in and is not yet
-    // playable (20 ticks); 0 for the opening hand.
+    // playable (CYCLE_IN_COOLDOWN_TICKS); 0 for the opening hand.
     std::vector<int> handCooldownTicks;
     std::deque<int> deckQueue;
     std::unordered_map<int, EvolutionSlotState> evolutionState;
@@ -79,7 +91,7 @@ public:
     }
 
     void initializeDeck(const std::vector<int>& deckList) {
-        elixir = 5.0f;
+        elixir = STARTING_ELIXIR;
         hand.clear();
         deckQueue.clear();
         evolutionState.clear();
@@ -102,7 +114,7 @@ public:
     // there is swapped with an eligible card from the queue. A legal deck holds
     // each at most once, so a swap always exists.
     void initializeDeck(const std::vector<int>& deckList, std::mt19937& rng) {
-        elixir = 5.0f;
+        elixir = STARTING_ELIXIR;
         hand.clear();
         deckQueue.clear();
         evolutionState.clear();
@@ -160,7 +172,7 @@ public:
         deckQueue.pop_front();
         deckQueue.push_back(cardId);
         hand[handIndex] = nextCard;
-        handCooldownTicks[handIndex] = 20;
+        handCooldownTicks[handIndex] = CYCLE_IN_COOLDOWN_TICKS;
 
         bool useEvolvedForm = false;
         if (cardDef->isEvolution) {

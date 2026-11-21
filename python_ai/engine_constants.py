@@ -62,15 +62,16 @@ CYCLE_START = clash_royale_env.ClashRoyaleEnv.CYCLE_START
 CYCLE_BLOCK_SIZE = clash_royale_env.ClashRoyaleEnv.CYCLE_BLOCK_SIZE
 
 def _own_tower_hp_total():
-    """Total starting HP of our three towers, read from a fresh board's tower
-    scalars (hp / MAX_BUILDING_HP).
+    """Total starting HP of our three towers, from a fresh board's tower max HP.
+
+    Read through get_tower_max_hp rather than the observation: since UPSTREAM
+    item 44 the tower scalars are fractions of each tower's own max (1.0 when
+    full), so they no longer carry absolute HP.
     """
     E = clash_royale_env.ClashRoyaleEnv
     probe = E(list(range(8)), list(range(8)), 100)
-    obs = np.asarray(probe.reset(), dtype=np.float32)
-    tail = E.EXTRA_SCALARS_START
-    # tail: 0 time | 1-2 elixir spent | 3-5 own king/left/right | 6-8 enemy
-    return float(obs[tail + 3:tail + 6].sum()) * E.MAX_BUILDING_HP
+    probe.reset()
+    return float(sum(probe.get_tower_max_hp(0, slot) for slot in range(3)))
 
 OWN_TOWER_HP_TOTAL = _own_tower_hp_total()
 

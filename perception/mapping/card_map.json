@@ -373,7 +373,7 @@
     "electrogiant": {
       "real_name": "Electro Giant",
       "sim_id": 84,
-      "sim_evo_id": null,
+      "sim_evo_id": 179,
       "cost": 7.0,
       "is_spell": false,
       "is_building": false,
@@ -418,7 +418,7 @@
     "elitebarbarians": {
       "real_name": "Elite Barbarians",
       "sim_id": 17,
-      "sim_evo_id": null,
+      "sim_evo_id": 178,
       "cost": 6.0,
       "is_spell": false,
       "is_building": false,
@@ -583,7 +583,7 @@
     "giant": {
       "real_name": "Giant",
       "sim_id": 2,
-      "sim_evo_id": null,
+      "sim_evo_id": 177,
       "cost": 5.0,
       "is_spell": false,
       "is_building": false,
@@ -865,6 +865,21 @@
       "needs_review": false,
       "notes": ""
     },
+    "heroballoon": {
+      "real_name": "Hero Balloon",
+      "sim_id": 181,
+      "sim_evo_id": null,
+      "cost": 5.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
     "herobarbarianbarrel": {
       "real_name": "Hero Barbarian Barrel",
       "sim_id": 174,
@@ -879,6 +894,66 @@
       "aliases": [],
       "needs_review": true,
       "notes": "Registry id >= 165 (Spirit Empress / Hero cards). Confirm this card exists in the recorded build before enabling."
+    },
+    "heroberserker": {
+      "real_name": "Hero Berserker",
+      "sim_id": 187,
+      "sim_evo_id": null,
+      "cost": 2.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
+    "herobowler": {
+      "real_name": "Hero Bowler",
+      "sim_id": 185,
+      "sim_evo_id": null,
+      "cost": 5.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
+    "herodarkprince": {
+      "real_name": "Hero Dark Prince",
+      "sim_id": 184,
+      "sim_evo_id": null,
+      "cost": 4.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
+    "heroelectrowizard": {
+      "real_name": "Hero Electro Wizard",
+      "sim_id": 186,
+      "sim_evo_id": null,
+      "cost": 4.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
     },
     "herogiant": {
       "real_name": "Hero Giant",
@@ -924,6 +999,21 @@
       "aliases": [],
       "needs_review": true,
       "notes": "Registry id >= 165 (Spirit Empress / Hero cards). Confirm this card exists in the recorded build before enabling."
+    },
+    "heroicewizard": {
+      "real_name": "Hero Ice Wizard",
+      "sim_id": 183,
+      "sim_evo_id": null,
+      "cost": 3.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
     },
     "heroknight": {
       "real_name": "Hero Knight",
@@ -999,6 +1089,36 @@
       "aliases": [],
       "needs_review": true,
       "notes": "Registry id >= 165 (Spirit Empress / Hero cards). Confirm this card exists in the recorded build before enabling."
+    },
+    "herotombstone": {
+      "real_name": "Hero Tombstone",
+      "sim_id": 188,
+      "sim_evo_id": null,
+      "cost": 3.0,
+      "is_spell": false,
+      "is_building": true,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
+    "herovalkyrie": {
+      "real_name": "Hero Valkyrie",
+      "sim_id": 182,
+      "sim_evo_id": null,
+      "cost": 4.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": true,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0017. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
     },
     "herowizard": {
       "real_name": "Hero Wizard",
@@ -1270,6 +1390,21 @@
       "needs_review": false,
       "notes": ""
     },
+    "miniongiant": {
+      "real_name": "Minion Giant",
+      "sim_id": 176,
+      "sim_evo_id": null,
+      "cost": 4.0,
+      "is_spell": false,
+      "is_building": false,
+      "is_champion": false,
+      "is_hero": false,
+      "real_verified": false,
+      "real_only": false,
+      "aliases": [],
+      "needs_review": true,
+      "notes": "Added in patch 0014. In the official API card list (data/cards/api_cards_20261118.json), so it exists live; real_verified stays false until the detector has the label."
+    },
     "minionhorde": {
       "real_name": "Minion Horde",
       "sim_id": 42,
@@ -1318,7 +1453,7 @@
     "mirror": {
       "real_name": "Mirror",
       "sim_id": 164,
-      "sim_evo_id": null,
+      "sim_evo_id": 180,
       "cost": 3.0,
       "is_spell": true,
       "is_building": false,

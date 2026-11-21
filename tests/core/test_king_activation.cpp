@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr int KING_HP = 4008;
+constexpr int KING_HP = CrownTower::KING_HP;
 
 // Where an enemy dummy stands relative to the King, satisfying both bounds:
 //   inside  the King's reach    7.0 + 2.0 (King r) + 0.4 (troop r) = 9.4

@@ -1,5 +1,6 @@
 #pragma once
 #include "CardStats.h"
+#include "LoadTimes.h"
 #include "Board.h"
 #include "MeleeTroop.h"
 #include "RangedTroop.h"
@@ -7,6 +8,8 @@
 #include "RangedBuildingTargeter.h"
 #include "Building.h"
 #include "AreaSpell.h"
+#include "ArenaLayout.h"
+#include <algorithm>
 #include <stdexcept>
 
 // One factory per Archetype (CardStats.h). Nothing here is specific to a card.
@@ -26,6 +29,7 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     // its own). Set here because every troop and building passes through;
     // spells and deploy effects do not, since a spell has its own delay.
     entity->deployTicksRemaining = stats.deployTicks;
+    entity->loadTicks = stats.loadTicksOverride >= 0 ? stats.loadTicksOverride : LoadTimes::forName(stats.name);
     entity->isFlying = stats.isFlying;
     entity->targetsAir = stats.targetsAir;
     entity->deathEffect = stats.deathEffect;
@@ -52,6 +56,10 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->periodicIntervalTicks = stats.periodicIntervalTicks;
     entity->periodicTicksUntilNext = stats.periodicIntervalTicks; // first fire after one full interval
     entity->periodicHotIntervalTicks = stats.periodicHotIntervalTicks;
+    entity->selfPeriodicEffect = stats.selfPeriodicEffect;
+    entity->selfPeriodicIntervalTicks = stats.selfPeriodicIntervalTicks;
+    entity->selfPeriodicTicksUntilNext = stats.selfPeriodicFirstTicks;
+    entity->crownTowerHitMultiplier = stats.crownTowerHitMultiplier;
     entity->periodicSideOffset = stats.periodicSideOffset;
     entity->auraRadius = stats.auraRadius;
     entity->auraMaxTargets = stats.auraMaxTargets;
@@ -99,12 +107,15 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->hitSpeedRampMidFraction = stats.hitSpeedRampMidFraction;
     entity->hitSpeedRampFullFraction = stats.hitSpeedRampFullFraction;
     entity->burstEveryNAttacks = stats.burstEveryNAttacks;
+    entity->magazineSize = stats.magazineSize;
+    entity->magazineReloadTicks = stats.magazineReloadTicks;
     entity->burstDamageMultiplier = stats.burstDamageMultiplier;
     entity->onDamageTakenEffect = stats.onDamageTaken;
     entity->healOnHitAmount = stats.healOnHitAmount;
     entity->healOnHitMaxHp = stats.healOnHitMaxHp;
     entity->healOnHitSecondPulseDelayTicks = stats.healOnHitSecondPulseDelayTicks;
     entity->onHitSpawnEffect = stats.onHitSpawnEffect;
+    entity->splashAppliesOnHit = stats.splashAppliesOnHit;
     entity->onHitPullRadius = stats.onHitPullRadius;
     entity->onHitPullDistance = stats.onHitPullDistance;
     entity->onHitPullDamage = stats.onHitPullDamage;
@@ -136,12 +147,22 @@ inline float placementRadius(Archetype archetype) {
 // point, once per card rather than per squad member. Most cards set none.
 inline void spawnDeployEffect(const CardStats& stats, float x, float y, int team, Board& board) {
     if (stats.spawnEffectRadius <= 0.0f) return;
-    auto effect = std::make_shared<AreaSpell>(
-        board.allocateId(), x, y, team, stats.spawnEffectRadius, stats.spawnEffectDamage,
-        0, stats.symbol, stats.spawnEffectOnHit);
-    effect->name = stats.name;
-    effect->cardId = stats.id;
-    board.addEntity(effect);
+    // Card-stats audit (patch 0003): one impact per offset (Evolved Cannon's
+    // barrage), with optional knockback and reduced Crown Tower damage.
+    std::vector<Vector2D> offsets = stats.spawnEffectOffsets;
+    if (offsets.empty()) offsets.push_back(Vector2D{ 0.0f, 0.0f });
+    const float forward = (team == 0) ? 1.0f : -1.0f;
+    for (const auto& o : offsets) {
+        const float ex = std::clamp(x + o.x, 0.0f, static_cast<float>(ArenaLayout::WIDTH - 1));
+        const float ey = std::clamp(y + forward * o.y, 0.0f, static_cast<float>(ArenaLayout::HEIGHT - 1));
+        auto effect = std::make_shared<AreaSpell>(
+            board.allocateId(), ex, ey, team, stats.spawnEffectRadius, stats.spawnEffectDamage,
+            0, stats.symbol, stats.spawnEffectOnHit, false, 1, 0, false, 1.0f, 0, stats.spawnEffectKnockback);
+        effect->name = stats.name;
+        effect->cardId = stats.id;
+        effect->crownTowerDamage = stats.spawnEffectCrownTowerDamage;
+        board.addEntity(effect);
+    }
 }
 
 inline void spawnMeleeSquad(const CardStats& stats, float x, float y, int team, Board& board) {
@@ -198,9 +219,12 @@ inline void spawnRangedBuildingTargeter(const CardStats& stats, float x, float y
 inline void spawnDefensiveBuilding(const CardStats& stats, float x, float y, int team, Board& board) {
     auto building = std::make_shared<Building>(
         board.allocateId(), x, y, stats.hp, team, stats.symbol,
-        stats.attackRange, stats.damage, stats.attackCooldown);
+        stats.attackRange, stats.damage, stats.attackCooldown, stats.lifetimeTicks);
     applyCardMetadata(building, stats);
     board.addEntity(building);
+    // Card-stats audit (patch 0003): buildings never fired their deploy burst,
+    // so Evolved Cannon's barrage was silently dropped.
+    spawnDeployEffect(stats, x, y, team, board);
 }
 
 inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board& board) {

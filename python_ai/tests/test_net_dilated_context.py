@@ -100,7 +100,7 @@ def test_trunk_output_shape_and_lstm_input_width_are_unchanged():
     net = MicroRoyaleNet(num_ability_slots=0)
     assert (net.pooled_h, net.pooled_w) == (9, 5)
     assert net.cnn_out_dim == 1440
-    assert net.lstm.input_size == net.cnn_out_dim + 64
+    assert net.lstm.input_size == net.cnn_out_dim + net.scalar_feature_dim == net.cnn_out_dim + 80
     x = torch.randn(3, N_CHANNELS, BOARD_H, BOARD_W)
     assert net.cnn_trunk(x).shape == (3, 32, 9, 5)
 

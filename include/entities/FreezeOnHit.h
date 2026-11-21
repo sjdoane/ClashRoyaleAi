@@ -10,6 +10,9 @@ class FreezeOnHit : public IOnHitEffect {
 
 public:
     FreezeOnHit(int ticks, float slowFactor) : ticks(ticks), slowFactor(slowFactor) {}
+    // Read-only, for get_card_stats (card-stats audit, patch 0003).
+    int getTicks() const { return ticks; }
+    float getSlowFactor() const { return slowFactor; }
 
     void apply(std::shared_ptr<CombatEntity> target) const override {
         target->applyFreeze(ticks, slowFactor);

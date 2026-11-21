@@ -7,7 +7,7 @@ does exactly this:
     deckQueue.pop_front();
     deckQueue.push_back(cardId);      // the card just played goes to the back
     hand[handIndex] = nextCard;       // the front fills the slot it vacated
-    handCooldownTicks[handIndex] = 20;
+    handCooldownTicks[handIndex] = CYCLE_IN_COOLDOWN_TICKS;   // 15 ticks
 
 A strict 8-slot FIFO, preserving hand position as the real game does. The queue
 is four long and grows only at the back, one entry per play, so:
@@ -21,7 +21,7 @@ play on the play history alone determines their cycle exactly. Opponent hand
 prediction is bookkeeping, not a guess, which is why this module has no
 heuristics.
 
-Not modelled: `handCooldownTicks`, the 2 s before a freshly cycled slot can be
+Not modelled: `handCooldownTicks`, the 1.5 s before a freshly cycled slot can be
 played. It affects legality, not what the cycle contains, and perception only
 reports plays that already happened.
 """

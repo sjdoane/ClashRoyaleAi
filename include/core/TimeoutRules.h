@@ -28,8 +28,8 @@ public:
             return { true, aliveCount[0] < aliveCount[1] ? 0 : 1 };
         }
         // 2. Equal counts: the lower weakest tower loses, by ABSOLUTE hp. The
-        //    real game compares percentages, and with King 4008 vs Princess
-        //    2534 the two often disagree; absolute is a deliberate divergence.
+        //    real game compares percentages, and with King 4824 vs Princess
+        //    3052 the two often disagree; absolute is a deliberate divergence.
         if (weakestHp[0] != weakestHp[1]) {
             return { true, weakestHp[0] < weakestHp[1] ? 0 : 1 };
         }

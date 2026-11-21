@@ -15,18 +15,14 @@ seconds, and across the registry it is the real hit speed times ten:
 132 rows agreeing on one ratio define the tick more reliably than any single
 constant.
 
-The engine regenerates 0.035 elixir per tick: 2.857 s per elixir against the
-real game's 2.8, about 2% slow. Over a match that would put a derived opponent
-elixir ~1.3 low by three minutes, turning the "opponent elixir went negative =>
-a placement was missed" alarm into false positives. So the two rates are kept
-separate:
+The engine regenerates 1/28 elixir per tick: 2.8 s per elixir, the real
+game's rate (UPSTREAM_REQUESTS.md item 38; it was 0.035 = 2.857 s, 2% slow, and
+this module used to keep the two rates apart for that reason). They now agree,
+and both names are kept so callers that state which rate they mean still read:
 
   * REAL_SECONDS_PER_ELIXIR_1X drives the opponent elixir model (the real
     opponent).
   * SIM_ELIXIR_REGEN_PER_TICK describes the engine.
-
-Neither is corrected to match the other; that would be a gameplay change to the
-simulator.
 """
 
 from __future__ import annotations
@@ -36,7 +32,7 @@ TICKS_PER_SECOND = 10
 
 # GameManager.h ELIXIR_REGEN_RATE, applied once per tick in step(). Asserted
 # against the live engine in tests/test_timebase.py.
-SIM_ELIXIR_REGEN_PER_TICK = 0.035
+SIM_ELIXIR_REGEN_PER_TICK = 1.0 / 28.0
 
 # Real-game single-elixir rate.
 REAL_SECONDS_PER_ELIXIR_1X = 2.8
@@ -51,7 +47,7 @@ MAX_ELIXIR = 10.0
 # the real game), exported so a comparison can state its correction.
 SIM_ELIXIR_RATE_ERROR = (
     REAL_SECONDS_PER_ELIXIR_1X * SIM_ELIXIR_REGEN_PER_TICK * TICKS_PER_SECOND
-)  # == 0.98: the simulator produces 98% of the real elixir per unit time.
+)  # == 1.0 since item 38 (0.98 before: the engine ran 2% slow).
 
 
 def seconds_to_ticks(seconds: float) -> int:

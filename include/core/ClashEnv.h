@@ -10,11 +10,14 @@
 #include "Troop.h"
 #include "CombatEntity.h"
 #include "GameLogger.h"
+#include "OpponentStateEstimator.h"
 #include <vector>
 #include <random>
 #include <tuple>
 #include <unordered_set>
 #include <cmath>
+#include <algorithm>
+#include <array>
 
 struct StepResult {
     std::vector<float> observation;
@@ -73,7 +76,10 @@ public:
     // highest registered id.
     static constexpr int NUM_CARD_IDS = CARD_ID_COUNT;
     static constexpr float MAX_TROOP_HP = 4256.0f;
-    static constexpr float MAX_BUILDING_HP = 4008.0f;
+    // The level-11 King's hp: the normaliser for deployed buildings (Cannon,
+    // Tesla...). Crown Towers do NOT use it: each reads hp over ITS OWN maximum
+    // (towerHpFraction), so a full tower is 1.0 at any level (UPSTREAM item 44).
+    static constexpr float MAX_BUILDING_HP = static_cast<float>(CrownTower::KING_HP);
 
     // Normalisers for the attribute channels, from the registry's real spread.
     // Every attribute is clamped to 1.0, so an outlier card saturates rather
@@ -123,6 +129,98 @@ public:
         + HAND_SIZE                                    // hand costs
         + HAND_SIZE * NUM_CARD_IDS;                    // hand identity one-hots
     static constexpr int CYCLE_START = EXTRA_SCALARS_START + NUM_EXTRA_SCALARS;
+
+    // --- levels (UPSTREAM_REQUESTS.md item 44) ---
+    // Four scalars after the cycle blocks, from the observer's side:
+    //
+    //   0 own card level | 1 own tower level | 2 opp card level | 3 opp tower level
+    //
+    // each (level - TOURNAMENT_LEVEL) / (MAX_LEVEL - TOURNAMENT_LEVEL), so the
+    // level-11 match every earlier run trained on reads all zeros, and a
+    // level-15 opponent 0.8. Not cheating: the real game shows both players'
+    // King levels on the towers. Without them a curriculum over opponent level
+    // is not Markovian (the same board is a different fight at 11 and 15).
+    static constexpr int NUM_LEVEL_SCALARS = 4;
+    static constexpr int LEVEL_START = CYCLE_START + CYCLE_BLOCK_SIZE;
+    static float levelScalar(int level) {
+        return static_cast<float>(level - CardLevels::TOURNAMENT_LEVEL)
+             / static_cast<float>(CardLevels::MAX_LEVEL - CardLevels::TOURNAMENT_LEVEL);
+    }
+
+    // --- opponent state (perception/UPSTREAM_REQUESTS.md item 46) ---
+    // After the level section, at OPP_STATE_START, from the observer's side:
+    //
+    //   +OPP_ELIXIR_OFFSET   4   opponent elixir estimate/10, lower/10, upper/10,
+    //                            confidence -- OpponentStateEstimator, fed by a
+    //                            simulated detector, never the true bar
+    //   +OWN_EVO_OFFSET      8   per own hand slot: is an Evolution, evo charge
+    //                            (1.0 = its next deployment is evolved)
+    //   +OWN_ABILITY_OFFSET  8   per own Champion/Hero deck slot 1, 2: slot holds
+    //                            one, deployed, ability ready, cooldown left / max
+    //   +OPP_ABILITY_OFFSET  8   per opponent Champion/Hero, by first sighting:
+    //                            seen, estimated cooldown left / max, ability
+    //                            cost/10, recency of the last seen activation
+    //   +OPP_EVO_OFFSET    370   known[c] then charge[c] per Evolution id c
+    //
+    // Not cheating: elixir, evo charge and cooldowns follow from what is on
+    // screen and the published rules, and the estimate carries the errors a
+    // live detector makes (DetectionNoise), so training and play match.
+    static constexpr int NUM_ABILITY_SLOTS = 2;
+    static constexpr int ABILITY_FEATURES = OpponentStateEstimator::ABILITY_FEATURES;
+    static constexpr int NUM_OPP_ABILITY_CARDS = OpponentStateEstimator::MAX_TRACKED_ABILITY_CARDS;
+    static constexpr int OPP_ELIXIR_OFFSET = 0;
+    static constexpr int OWN_EVO_OFFSET = OPP_ELIXIR_OFFSET + OpponentStateEstimator::ELIXIR_FEATURES;
+    static constexpr int OWN_ABILITY_OFFSET = OWN_EVO_OFFSET + 2 * HAND_SIZE;
+    static constexpr int OPP_ABILITY_OFFSET = OWN_ABILITY_OFFSET + NUM_ABILITY_SLOTS * ABILITY_FEATURES;
+    static constexpr int OPP_EVO_OFFSET = OPP_ABILITY_OFFSET + NUM_OPP_ABILITY_CARDS * ABILITY_FEATURES;
+    static constexpr int OPP_STATE_SIZE = OPP_EVO_OFFSET + 2 * NUM_CARD_IDS;
+    static constexpr int OPP_STATE_START = LEVEL_START + NUM_LEVEL_SCALARS;
+
+    // The simulated detector between the engine's events and the estimator.
+    // Defaults are the live rates measured 2026-11-18
+    // (runs/live/PERCEPTION_FILL_2026-11-18.md, runs/sim_fidelity/OPP_STATE_REPORT.md):
+    // troop births 9/9 and emitted 1.5 s after birth (-0.75..+0.5 s birth
+    // error, an Archer Queen ~3.5 s later still), spells 50/51 at 0.25-1.25 s,
+    // 2 false casts in 52. Disabled = every event reported exactly, on time.
+    struct DetectionNoise {
+        bool enabled = true;
+        float missTroop = 0.03f;
+        float missSpell = 0.04f;
+        float unknownCard = 0.02f;
+        float falsePlay = 0.02f;
+        int troopEmitTicks = 15;
+        int birthErrMinTicks = -7;
+        int birthErrMaxTicks = 5;
+        float lateTroop = 0.05f;
+        int lateExtraTicks = 35;
+        int spellSightMaxTicks = 3;
+        int spellEmitMinTicks = 2;
+        int spellEmitMaxTicks = 12;
+        float evoRecognised = 0.9f;
+        float abilityDetected = 0.0f;   // live has no ability detector (no YOLO class)
+        int abilityEmitTicks = 5;
+    };
+
+    // One delivered report, for measuring the estimator against the truth.
+    struct DeliveredReport {
+        int trueTick;
+        int emitTick;
+        OpponentStateEstimator::Report report;
+        int trueCardId;
+        bool trueEvolved;
+    };
+
+    // A Crown Tower's hp over its OWN maximum (its level's), in [0, 1]. The
+    // building channel and the six tower scalars both use it, so a full
+    // level-15 King reads 1.0 rather than 1.45 (UPSTREAM item 44). Live
+    // perception reports exactly this fraction (hud_live: hp / that tower's
+    // max). Deployed buildings keep hp / MAX_BUILDING_HP.
+    static float towerHpFraction(const Entity& tower) {
+        const auto* b = static_cast<const Building*>(&tower);
+        const int maxHp = b->getMaxHp();
+        if (maxHp <= 0) return 0.0f;
+        return std::clamp(static_cast<float>(tower.hp) / static_cast<float>(maxHp), 0.0f, 1.0f);
+    }
     // Ceiling on cumulative per-match elixir spend, the normaliser of scalars
     // 1-2. Sized for a full-length match under the elixir phases (~278
     // including the starting 5), so the spend scalars never saturate mid-match.
@@ -136,6 +234,24 @@ private:
     HeuristicOpponent heuristicOpponent;
     GameLogger logger;
 
+    // observers[t]: what team t has been able to work out about team 1 - t.
+    struct ObserverFeed {
+        OpponentStateEstimator est;
+        size_t consumed = 0;   // into game.getObservedEvents(1 - t)
+        struct Pending { int emitTick; long order; DeliveredReport d; };
+        std::vector<Pending> pending;
+        std::vector<DeliveredReport> delivered;
+        // Each observer's detector draws from its own stream: the draws then
+        // depend only on its own event order, never on when the other side's
+        // observation was read (stepSelfPlayFast reads neither).
+        std::mt19937 rng;
+    };
+    std::array<ObserverFeed, 2> observers;
+    // The detectors' streams are their own, so they never shift
+    // HeuristicOpponent's rolls.
+    DetectionNoise detectionNoise;
+    long pendingOrder = 0;
+
     // Distinguishes the snapshot constructor from the ordinary (shallow) copy
     // constructor, which pybind11 relies on.
     struct SnapshotTag {};
@@ -148,7 +264,10 @@ private:
           maxTicks(other.maxTicks),
           currentTick(other.currentTick),
           rng(other.rng),
-          heuristicOpponent(other.heuristicOpponent) {}
+          heuristicOpponent(other.heuristicOpponent),
+          observers(other.observers),
+          detectionNoise(other.detectionNoise),
+          pendingOrder(other.pendingOrder) {}
 
     // The observation from `team`'s own point of view: the network always sees
     // itself as team 0 (near low y, channels 0-3), so it can drive either side.
@@ -205,7 +324,9 @@ private:
             else typeOffset = 0;
 
             float maxHp = isBuilding ? MAX_BUILDING_HP : MAX_TROOP_HP;
-            float normalizedHp = std::min(static_cast<float>(entity->hp) / maxHp, 1.0f);
+            float normalizedHp = entity->isTower()
+                ? towerHpFraction(*entity)
+                : std::min(static_cast<float>(entity->hp) / maxHp, 1.0f);
             // "Ally" is whichever team this observation is for.
             bool isAlly = (entity->team == team);
             int channel = (isAlly ? 0 : 4) + typeOffset;
@@ -283,7 +404,7 @@ private:
             const bool isKing = (entity->cardId == GameManager::TOWER_KING_ID);
             const int which = isKing ? 0
                 : (entity->position.x < ArenaLayout::CENTER_X ? 1 : 2);
-            towerHp[side][which] = entity->hp / MAX_BUILDING_HP;
+            towerHp[side][which] = towerHpFraction(*entity);
         }
         for (int which = 0; which < 3; ++which) obs.push_back(towerHp[0][which]);
         for (int which = 0; which < 3; ++which) obs.push_back(towerHp[1][which]);
@@ -301,7 +422,11 @@ private:
         const int now = currentTick;
         for (int block = 0; block < NUM_CYCLE_BLOCKS; ++block) {
             for (int cardId = 0; cardId < NUM_CARD_IDS; ++cardId) {
-                const int last = game.getLastPlayedTick(opponent, cardId);
+                // An Evolution or Hero id is never written (plays fold to the
+                // face card), so its slot stays 0; reading it through the
+                // folding getter would light the base card twice.
+                const int last = (faceCardIdOf(cardId) == cardId)
+                    ? game.getLastPlayedTick(opponent, cardId) : -1;
                 if (last < 0) {
                     // Never played: both blocks 0. seen=0 means "no
                     // information"; seen=1 with recency ~0 means "they have it,
@@ -320,7 +445,167 @@ private:
             }
         }
 
+        // --- levels (item 44), at LEVEL_START ---
+        obs.push_back(levelScalar(game.getTeamCardLevel(team)));
+        obs.push_back(levelScalar(game.getTeamTowerLevel(team)));
+        obs.push_back(levelScalar(game.getTeamCardLevel(opponent)));
+        obs.push_back(levelScalar(game.getTeamTowerLevel(opponent)));
+
+        // --- opponent state (item 46), at OPP_STATE_START ---
+        writeOpponentState(team, obs);
+
         return obs;
+    }
+
+    void resetObservers() {
+        OpponentStateEstimator::Config cfg;
+        // The estimator's prior on unseen plays is the detector's own miss
+        // rate: trained under the noise it is told about.
+        cfg.assumedMissRate = detectionNoise.enabled
+            ? 0.5f * (detectionNoise.missTroop + detectionNoise.missSpell) : 0.0f;
+        for (auto& f : observers) {
+            f.est.setConfig(cfg);
+            f.est.reset(game.getCurrentTick());
+            f.consumed = 0;
+            f.pending.clear();
+            f.delivered.clear();
+        }
+    }
+
+    static int uniformInt(std::mt19937& g, int lo, int hi) {
+        if (hi <= lo) return lo;
+        return std::uniform_int_distribution<int>(lo, hi)(g);
+    }
+    static bool chance(std::mt19937& g, float p) {
+        if (p <= 0.0f) return false;
+        if (p >= 1.0f) return true;
+        return std::uniform_real_distribution<float>(0.0f, 1.0f)(g) < p;
+    }
+
+    // One engine event through the simulated detector: dropped, delayed,
+    // back-dated, mis-identified, as live perception would report it.
+    void enqueueObserved(ObserverFeed& f, const GameManager::ObservedEvent& ev) {
+        const DetectionNoise& n = detectionNoise;
+        OpponentStateEstimator::Report r;
+        r.tick = ev.tick;
+        r.kind = ev.kind;
+        int emit = ev.tick;
+        auto push = [&](const OpponentStateEstimator::Report& rep, int emitTick) {
+            f.pending.push_back({ emitTick, pendingOrder++, { ev.tick, emitTick, rep, ev.cardId, ev.evolved } });
+        };
+        if (ev.kind == OpponentStateEstimator::KIND_ABILITY) {
+            if (n.enabled && !chance(f.rng, n.abilityDetected)) return;
+            r.cardId = ev.cardId;
+            r.cost = ev.cost;
+            if (n.enabled) emit += n.abilityEmitTicks;
+            push(r, emit);
+            return;
+        }
+        // What the screen shows: the base card, unless the evolved form is
+        // recognised. A Hero is its own card.
+        const int base = OpponentStateEstimator::baseIdOf(ev.cardId);
+        bool seenEvolved = ev.evolved;
+        // An identified card's cost is the one paid: the screen shows Spirit
+        // Empress's form, and Mirror is its mirrored card plus one.
+        r.cost = ev.cost;
+        if (!n.enabled) {
+            r.cardId = seenEvolved ? ev.cardId : base;
+            r.evolved = seenEvolved ? 1 : 0;
+            push(r, emit);
+            return;
+        }
+        if (chance(f.rng, ev.isSpell ? n.missSpell : n.missTroop)) return;
+        if (ev.isSpell) {
+            r.tick = ev.tick + uniformInt(f.rng, 0, n.spellSightMaxTicks);
+            emit = r.tick + uniformInt(f.rng, n.spellEmitMinTicks, n.spellEmitMaxTicks);
+        } else {
+            r.tick = std::max(0, ev.tick + uniformInt(f.rng, n.birthErrMinTicks, n.birthErrMaxTicks));
+            if (chance(f.rng, n.lateTroop)) r.tick += n.lateExtraTicks;
+            emit = std::max(r.tick, ev.tick) + n.troopEmitTicks;
+        }
+        if (chance(f.rng, n.unknownCard)) {
+            r.cardId = -1;
+            r.cost = -1.0f;
+            r.evolved = -1;
+        } else {
+            seenEvolved = ev.evolved && chance(f.rng, n.evoRecognised);
+            r.cardId = seenEvolved ? ev.cardId : base;
+            r.evolved = seenEvolved ? 1 : 0;
+        }
+        push(r, emit);
+        if (chance(f.rng, n.falsePlay)) {
+            OpponentStateEstimator::Report fp;
+            fp.kind = OpponentStateEstimator::KIND_PLAY;
+            fp.tick = ev.tick + uniformInt(f.rng, 0, 40);
+            fp.cardId = -1;
+            fp.cost = static_cast<float>(uniformInt(f.rng, 2, 4));
+            f.pending.push_back({ fp.tick + n.spellEmitMinTicks, pendingOrder++, { -1, fp.tick + n.spellEmitMinTicks, fp, -1, false } });
+        }
+    }
+
+    // Brings observers[team] up to the current tick: new engine events into
+    // the detector, due reports into the estimator, regen to now.
+    void syncObserver(int team) {
+        ObserverFeed& f = observers[team];
+        const int now = game.getCurrentTick();
+        // set_current_tick() can rewind the clock; the estimator never runs
+        // backwards.
+        if (now < f.est.tick()) return;
+        const auto& evs = game.getObservedEvents(1 - team);
+        for (; f.consumed < evs.size(); ++f.consumed) enqueueObserved(f, evs[f.consumed]);
+        std::sort(f.pending.begin(), f.pending.end(), [](const ObserverFeed::Pending& a, const ObserverFeed::Pending& b) {
+            return a.emitTick < b.emitTick || (a.emitTick == b.emitTick && a.order < b.order);
+        });
+        size_t i = 0;
+        for (; i < f.pending.size() && f.pending[i].emitTick <= now; ++i) {
+            f.est.advanceWithSchedule(f.pending[i].emitTick);
+            f.est.report(f.pending[i].d.report);
+            f.delivered.push_back(f.pending[i].d);
+        }
+        f.pending.erase(f.pending.begin(), f.pending.begin() + static_cast<long>(i));
+        f.est.advanceWithSchedule(now);
+    }
+
+    void writeOpponentState(int team, std::vector<float>& obs) {
+        syncObserver(team);
+        const size_t base = obs.size();
+        obs.resize(base + OPP_STATE_SIZE, 0.0f);
+        float* o = obs.data() + base;
+        const OpponentStateEstimator& est = observers[team].est;
+
+        const auto ef = est.elixirFeatures();
+        std::copy(ef.begin(), ef.end(), o + OPP_ELIXIR_OFFSET);
+
+        // Own hand: the engine's own count (PlayerState::playCard's rule).
+        const PlayerState& me = (team == 0) ? game.playerAI : game.playerOpponent;
+        const auto& hand = game.getHand(team);
+        const auto& registry = CardRegistry::getInstance();
+        for (int i = 0; i < HAND_SIZE && i < static_cast<int>(hand.size()); ++i) {
+            const CardDefinition* def = registry.getCard(hand[i]);
+            if (!def || !def->isEvolution) continue;
+            o[OWN_EVO_OFFSET + 2 * i] = 1.0f;
+            auto it = me.evolutionState.find(hand[i]);
+            o[OWN_EVO_OFFSET + 2 * i + 1] = (it == me.evolutionState.end()) ? 0.0f
+                : OpponentStateEstimator::evoCharge(it->second.cyclesUntilEvolved, def->evolutionCycleThreshold);
+        }
+
+        // Own Champion/Hero slots.
+        const auto& deck = game.getDeckConfig(team);
+        for (int k = 0; k < NUM_ABILITY_SLOTS; ++k) {
+            const int slot = k + 1;
+            if (me.championSlots.find(slot) == me.championSlots.end()) continue;
+            float* f = o + OWN_ABILITY_OFFSET + k * ABILITY_FEATURES;
+            f[0] = 1.0f;
+            f[1] = game.isChampionDeployed(team, slot) ? 1.0f : 0.0f;
+            f[2] = game.isChampionAbilityReady(team, slot) ? 1.0f : 0.0f;
+            const CardDefinition* def = (slot < static_cast<int>(deck.size())) ? registry.getCard(deck[slot]) : nullptr;
+            const int cdMax = (def && def->stats) ? def->stats->abilityCooldownTicks : 0;
+            f[3] = cdMax > 0 ? std::clamp(static_cast<float>(game.championCooldownRemaining(team, slot))
+                                          / static_cast<float>(cdMax), 0.0f, 1.0f) : 0.0f;
+        }
+
+        est.writeAbilityFeatures(o + OPP_ABILITY_OFFSET);
+        est.writeEvoBlocks(o + OPP_EVO_OFFSET, NUM_CARD_IDS);
     }
 
     std::vector<float> extractObservation() { return extractObservationForTeam(0); }
@@ -353,7 +638,11 @@ public:
             TowerTroopType aiTowerTroop = TowerTroopType::None,
             TowerTroopType oppTowerTroop = TowerTroopType::None)
         : game(aiDeck, oppDeck, aiTowerTroop, oppTowerTroop), maxTicks(maxTicks), currentTick(0),
-          rng(std::random_device{}()) { heuristicOpponent.reset(rng); }
+          rng(std::random_device{}()) {
+        for (auto& f : observers) f.rng.seed(std::random_device{}());
+        heuristicOpponent.reset(rng);
+        resetObservers();
+    }
 
     // An independent copy for decision-time search (see GameManager::snapshot
     // and Board::deepCopy underneath). The replay logger starts empty: copying
@@ -364,7 +653,7 @@ public:
     ClashEnv snapshot() const { return ClashEnv(*this, SnapshotTag{}); }
 
     // Built from the named offsets, so size and offsets cannot disagree.
-    int observationSize() const { return CYCLE_START + CYCLE_BLOCK_SIZE; }
+    int observationSize() const { return OPP_STATE_START + OPP_STATE_SIZE; }
 
     // How many of `team`'s towers stand (King and Princesses only). The reward
     // puts a deliberately non-potential-based bonus on destroying a tower: the
@@ -408,6 +697,7 @@ public:
         heuristicOpponent.reset(rng);
         logger.logTick(0, game);
         currentTick = 0;
+        resetObservers();
         return extractObservation();
     }
 
@@ -678,6 +968,7 @@ public:
     // episode.
     void seed(unsigned int s) {
         rng.seed(s);
+        for (unsigned t = 0; t < observers.size(); ++t) observers[t].rng.seed(s ^ (0x85EBCA6Bu + t));
         heuristicOpponent.reset(rng);
         game.seed(s ^ 0x9E3779B9u);
         reset();
@@ -687,9 +978,32 @@ public:
         game.setOpponentDeck(deck);
     }
 
+    // The simulated detector feeding the opponent-state estimate (item 46).
+    // Takes effect from the next reset().
+    void setOppDetectionNoise(const DetectionNoise& n) { detectionNoise = n; }
+    const DetectionNoise& getOppDetectionNoise() const { return detectionNoise; }
+
+    // What `team` currently believes about its opponent, synced to now.
+    const OpponentStateEstimator& getOppStateEstimator(int team) {
+        const int t = (team == 1) ? 1 : 0;
+        syncObserver(t);
+        return observers[t].est;
+    }
+    const std::vector<DeliveredReport>& getOppReports(int team) {
+        const int t = (team == 1) ? 1 : 0;
+        syncObserver(t);
+        return observers[t].delivered;
+    }
+
     void setOpponentElixirMultiplier(float multiplier) {
         game.setOpponentElixirMultiplier(multiplier);
     }
+
+    bool setTeamLevel(int team, int cardLevel, int towerLevel = -1) {
+        return game.setTeamLevel(team, cardLevel, towerLevel);
+    }
+    int getTeamCardLevel(int team) const { return game.getTeamCardLevel(team); }
+    int getTeamTowerLevel(int team) const { return game.getTeamTowerLevel(team); }
 
     void saveLog(const std::string& filepath) {
         logger.save(filepath);
@@ -728,6 +1042,17 @@ inline std::vector<int> getAllCardIds() {
         if (def.isEvolution) continue;
         ids.push_back(id);
     }
+    return ids;
+}
+
+// The Evolution ids (patch 0014), so Python never keeps its own copy of the
+// id range. getAllCardIds leaves these out.
+inline std::vector<int> getEvolutionCardIds() {
+    std::vector<int> ids;
+    for (const auto& [id, def] : CardRegistry::getInstance().getAllCards()) {
+        if (def.isEvolution) ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
     return ids;
 }
 

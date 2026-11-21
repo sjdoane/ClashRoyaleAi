@@ -22,6 +22,8 @@ public:
 protected:
     void performAttack(Board& board, std::shared_ptr<Entity> target) override {
         int dealt = getCurrentDamage();
+        const float towerFactor = crownTowerHitFactor(*target);
+        if (towerFactor != 1.0f) dealt = static_cast<int>(dealt * towerFactor);
         target->takeDamage(dealt);
         board.statsEvents.notifyDamageDealt(
             { id, team, cardId, target->id, target->cardId, target->team, dealt, board.currentTick, target->isTower() });

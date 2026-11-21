@@ -36,6 +36,28 @@ def enc(engine):
     return perception_encoder
 
 
+def _opp_state(engine, truth):
+    """The engine's opponent-state section (item 46): not a function of the
+    GameState, so the caller passes it in (live: live_ppo/opp_state.py)."""
+    E = engine.ClashRoyaleEnv
+    return truth[E.OPP_STATE_START:] if getattr(E, "OPP_STATE_SIZE", 0) else None
+
+
+def test_opp_state_is_written_verbatim_and_checked(enc, engine):
+    E = engine.ClashRoyaleEnv
+    if not getattr(E, "OPP_STATE_SIZE", 0):
+        pytest.skip("engine without the opponent-state section")
+    env = _engine_with(engine, [])
+    sec = np.linspace(0.0, 1.0, E.OPP_STATE_SIZE, dtype=np.float32)
+    obs = enc.encode(_blank_state(env), opp_state=sec)
+    assert np.array_equal(obs[E.OPP_STATE_START:E.OPP_STATE_START + E.OPP_STATE_SIZE], sec)
+    # None leaves it zero ("nothing known"); that is NOT what the engine shows
+    # at kickoff, so a live caller on a 0012 model must pass the section
+    assert not enc.encode(_blank_state(env))[E.OPP_STATE_START:].any()
+    with pytest.raises(ValueError):
+        enc.encode(_blank_state(env), opp_state=sec[:-1])
+
+
 def _blank_state(env, units=()):
     return GameState(
         units=tuple(units), my_elixir=env.get_elixir(),
@@ -96,7 +118,7 @@ def test_empty_board_is_bit_exact(enc, engine):
     """River and six towers, none of which perception reports as units."""
     env = _engine_with(engine, [])
     truth = np.asarray(env.get_observation_for_team(0), np.float32)
-    assert np.array_equal(enc.encode(_blank_state(env)), truth)
+    assert np.array_equal(enc.encode(_blank_state(env), opp_state=_opp_state(engine, truth)), truth)
 
 
 @pytest.mark.parametrize("tag,injects", [
@@ -110,21 +132,21 @@ def test_round_trip_is_bit_exact(enc, engine, tag, injects):
     env = _engine_with(engine, injects)
     truth = np.asarray(env.get_observation_for_team(0), np.float32)
     state = _state_from_board(enc, env, [c for c, _, _, _ in injects])
-    assert np.array_equal(enc.encode(state), truth), tag
+    assert np.array_equal(enc.encode(state, opp_state=_opp_state(engine, truth)), truth), tag
 
 
-def test_a_full_princess_is_not_encoded_as_1(enc, engine):
-    """Tower scalars are hp / MAX_BUILDING_HP, so an undamaged Princess reads
-    0.632 (2534/4008), while GameState carries a fraction of the tower's own
-    maximum. Kings hide this (they are 4008), so only the Princesses disagree.
+def test_a_full_tower_reads_1_like_the_engine(enc, engine):
+    """Tower scalars are hp / that tower's OWN max (item 44), the same fraction
+    GameState carries, so every undamaged tower, King or Princess, reads 1.0 and
+    the encoder's value equals the engine's for the same board.
     """
     env = _engine_with(engine, [])
     obs = enc.encode(_blank_state(env))
     extra = enc.SPATIAL_SIZE + 1 + enc.HAND_SIZE + enc.HAND_SIZE * enc.NUM_CARD_IDS
-    king, princess = obs[extra + 3], obs[extra + 4]
-    assert king == pytest.approx(1.0)
-    assert 0.5 < princess < 0.8
-    assert princess < king
+    for k in range(3, 9):
+        assert obs[extra + k] == pytest.approx(1.0)
+    ref = np.asarray(env.get_observation_for_team(0), np.float32)
+    assert np.allclose(obs[extra + 3:extra + 9], ref[extra + 3:extra + 9])
 
 
 def test_a_destroyed_tower_zeroes_its_cells_and_scalar(enc, engine):

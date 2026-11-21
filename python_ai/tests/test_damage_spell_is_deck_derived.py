@@ -92,7 +92,8 @@ def test_a_damage_over_time_spell_is_read_to_completion():
     Curse (43 x 6 = 258) is a second, independent control.
     """
     assert card_probes.spell_effect(POISON)[1] == pytest.approx(92 * 8)
-    assert card_probes.spell_effect(GOBLIN_CURSE)[1] == pytest.approx(43 * 6)
+    # 35 a pulse since patch 0003 (wiki Goblin Curse, level 11); was 43.
+    assert card_probes.spell_effect(GOBLIN_CURSE)[1] == pytest.approx(35 * 6)
 
 
 def test_reading_longer_adds_nothing_for_any_damaging_spell():
@@ -127,15 +128,19 @@ def _lethal_stats(tower_hp, *, damage, cost, elixir=10.0):
 
 
 def test_the_lethal_window_is_the_decks_spell_damage():
-    """A tower on 900 HP is lethal to a Rocket and not to a Fireball."""
+    """A tower on 300 HP is lethal to a Rocket and not to a Fireball.
+
+    300, not 900: since patch 0003 the probe reads Crown Tower damage, Fireball
+    159 and Rocket 371 (wiki, level 11); before, towers took the full damage.
+    """
     _, fb_dmg, fb_cost = card_probes.damage_spell(HOG_26)
     _, rk_dmg, rk_cost = card_probes.damage_spell(ROCKET_26)
-    assert fb_dmg < 900.0 < rk_dmg, "fixture no longer straddles the two spells"
+    assert fb_dmg < 300.0 < rk_dmg, "fixture no longer straddles the two spells"
 
     fireball = shaping.lethal_spell_potential(
-        _lethal_stats(900.0, damage=fb_dmg, cost=fb_cost))
+        _lethal_stats(300.0, damage=fb_dmg, cost=fb_cost))
     rocket = shaping.lethal_spell_potential(
-        _lethal_stats(900.0, damage=rk_dmg, cost=rk_cost))
+        _lethal_stats(300.0, damage=rk_dmg, cost=rk_cost))
     assert float(fireball[0]) == 0.0
     assert float(rocket[0]) == pytest.approx(W.W_LETHAL_SPELL)
 
@@ -229,7 +234,10 @@ def test_the_26_deck_resolves_to_exactly_the_constants_it_used_to_hardcode():
     """
     cid, damage, cost = card_probes.damage_spell(HOG_26)
     assert cid == W.FIREBALL_CARD_ID
-    assert damage == W.FIREBALL_DAMAGE == 689.0
+    # The probe measures the TOWER: 159 Crown Tower damage since patch 0003
+    # (wiki Fireball, level 11). The troop figure is unchanged.
+    assert damage == 159.0
+    assert W.FIREBALL_DAMAGE == 689.0
     assert cost == W.FIREBALL_COST == 4.0   # the retired SPELL_SOLVENCY_RESERVE
 
 

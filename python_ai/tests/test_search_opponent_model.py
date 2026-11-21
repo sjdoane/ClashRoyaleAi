@@ -99,6 +99,6 @@ def test_the_teacher_is_usable_as_the_model_and_actually_plays():
     # Elixir is not a perfect play detector (income accrues): require that the
     # bar did not simply run up untouched.
     after = sim.get_elixir_for_team(1)
-    assert after < before + 20 * 10 * 0.035, (
+    assert after < before + 20 * 10 * CE.ELIXIR_REGEN_RATE, (
         f"team 1 elixir went {before:.2f} -> {after:.2f}, i.e. it banked its "
         f"whole income and never played")

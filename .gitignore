@@ -472,3 +472,9 @@ tools/lab/out/
 # Reflex Lab WASM build output (web/lab/engine/build.ps1)
 web/lab/engine/engine.js
 web/lab/engine/engine.wasm
+build_mac/
+*.so
+*.pyd
+__pycache__/
+.pytest_cache/
+build_*.log

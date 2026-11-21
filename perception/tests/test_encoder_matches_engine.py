@@ -50,11 +50,19 @@ def _towers_only_state(env):
     )
 
 
+def _opp_state(obs):
+    n = getattr(cre.ClashRoyaleEnv, "OPP_STATE_SIZE", 0)
+    return obs[cre.ClashRoyaleEnv.OPP_STATE_START:] if n else None
+
+
 def test_encoder_reproduces_the_engine_observation_exactly():
     env = cre.ClashRoyaleEnv(list(DECK), list(DECK))
     env.reset()
     sim = np.asarray(env.get_observation_for_team(0), dtype=np.float32)
-    live = np.asarray(pe.encode(_towers_only_state(env)), dtype=np.float32)
+    # The opponent-state section (item 46) is not a function of the GameState:
+    # live_ppo/opp_state.py builds it from the bound estimator and hands it in.
+    live = np.asarray(pe.encode(_towers_only_state(env), opp_state=_opp_state(sim)),
+                      dtype=np.float32)
 
     assert live.shape == sim.shape == (env.observation_size(),)
 

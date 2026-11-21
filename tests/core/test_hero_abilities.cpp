@@ -40,7 +40,7 @@ TEST_CASE("Hero Mini P.E.K.K.A. (170) is registered with base Mini PEKKA's stats
     REQUIRE(hero->abilityUsesRemaining == 1);
 }
 
-TEST_CASE("Hero Musketeer (168) is registered with base Musketeer's stats and a repeating-cooldown ability",
+TEST_CASE("Hero Musketeer (168) is registered with base Musketeer's stats and a one-use ability",
         "[card_registry][hero]") {
     Board board;
     const CardDefinition* def = CardRegistry::getInstance().getCard(168);
@@ -55,8 +55,9 @@ TEST_CASE("Hero Musketeer (168) is registered with base Musketeer's stats and a 
     REQUIRE(hero->hp == 721); // base Musketeer hp (id 6)
     REQUIRE(hero->sightRange == Catch::Approx(6.0f));
     REQUIRE(hero->abilityElixirCost == Catch::Approx(3.0f));
-    REQUIRE(hero->abilityCooldownTicks == 220);
-    REQUIRE(hero->abilityUsesRemaining == -1); // unlimited, gated by cooldown and elixir
+    // Single use since the 4 Aug 2026 notes (audit 0003; was a 22 s cooldown).
+    REQUIRE(hero->abilityCooldownTicks == 0);
+    REQUIRE(hero->abilityUsesRemaining == 1);
 }
 
 // ---------------- HeroMiniPekkaBoostEffect ----------------
@@ -163,7 +164,8 @@ TEST_CASE("Hero Knight (166) is registered with base Knight's stats and the Taun
     REQUIRE(hero != nullptr);
     REQUIRE(hero->hp == 1766); // base Knight hp (id 0)
     REQUIRE(hero->abilityElixirCost == Catch::Approx(2.0f));
-    REQUIRE(hero->abilityCooldownTicks == 250);
+    REQUIRE(hero->abilityCooldownTicks == 0); // single use (4 Aug 2026 notes)
+    REQUIRE(hero->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("HeroKnightTauntEffect forces nearby enemies to retarget and grants an expiring shield",
@@ -238,10 +240,11 @@ TEST_CASE("Hero Wizard (167) is registered with base Wizard's stats and the Fier
 
     auto hero = std::dynamic_pointer_cast<CombatEntity>(board.getEntities()[0]);
     REQUIRE(hero != nullptr);
-    REQUIRE(hero->hp == 755); // base Wizard hp (id 11)
+    REQUIRE(hero->hp == 832); // base Wizard hp (id 11; audit 0003)
     REQUIRE(hero->splashRadius == Catch::Approx(1.5f));
     REQUIRE(hero->abilityElixirCost == Catch::Approx(1.0f));
-    REQUIRE(hero->abilityCooldownTicks == 200);
+    REQUIRE(hero->abilityCooldownTicks == 0); // single use (4 Aug 2026 notes)
+    REQUIRE(hero->abilityUsesRemaining == 1);
     REQUIRE_FALSE(hero->isFlying); // not yet activated
 }
 
@@ -334,7 +337,8 @@ TEST_CASE("Hero Giant (169) is registered with base Giant's stats and the Heroic
     REQUIRE(hero != nullptr);
     REQUIRE(hero->hp == 3968); // base Giant hp (id 2)
     REQUIRE(hero->abilityElixirCost == Catch::Approx(2.0f));
-    REQUIRE(hero->abilityCooldownTicks == 140);
+    REQUIRE(hero->abilityCooldownTicks == 0); // single use (4 Aug 2026 notes)
+    REQUIRE(hero->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("HeroGiantHurlEffect throws the highest-HP enemy in range across the lane and stuns it",
@@ -407,7 +411,8 @@ TEST_CASE("Hero Magic Archer (171) is registered with base Magic Archer's stats 
     REQUIRE(hero != nullptr);
     REQUIRE(hero->hp == 529); // base Magic Archer hp (id 63)
     REQUIRE(hero->abilityElixirCost == Catch::Approx(2.0f));
-    REQUIRE(hero->abilityCooldownTicks == 250);
+    REQUIRE(hero->abilityCooldownTicks == 0); // single use (4 Aug 2026 notes)
+    REQUIRE(hero->abilityUsesRemaining == 1);
     REQUIRE(hero->maxSplitTargets == 1); // not yet activated
 }
 
@@ -480,7 +485,8 @@ TEST_CASE("Hero Ice Golem (175) is registered with base Ice Golem's stats and th
     REQUIRE(hero != nullptr);
     REQUIRE(hero->hp == 1315); // base Ice Golem hp (id 40)
     REQUIRE(hero->abilityElixirCost == Catch::Approx(2.0f));
-    REQUIRE(hero->abilityCooldownTicks == 170);
+    REQUIRE(hero->abilityCooldownTicks == 0); // single use (audit 0003; was 17 s)
+    REQUIRE(hero->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("HeroIceGolemSnowstormEffect's first blast damages/slows, discounting Tower damage",

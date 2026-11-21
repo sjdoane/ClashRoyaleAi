@@ -90,9 +90,9 @@ def fig_observation(seeds=40, first=30, last=150):
         ["Spatial channels (21 x 34 x 18)", 0, PLANE * C],
         ["Own elixir", PLANE * C, 1],
         ["Hand costs", PLANE * C + 1, E.HAND_SIZE],
-        ["Hand identity (4 x 185)", PLANE * C + 1 + E.HAND_SIZE, E.HAND_SIZE * E.NUM_CARD_IDS],
+        [f"Hand identity ({E.HAND_SIZE} x {E.NUM_CARD_IDS})", PLANE * C + 1 + E.HAND_SIZE, E.HAND_SIZE * E.NUM_CARD_IDS],
         ["Extra scalars", E.EXTRA_SCALARS_START, E.NUM_EXTRA_SCALARS],
-        ["Opponent card cycle (2 x 185)", E.CYCLE_START, E.CYCLE_BLOCK_SIZE],
+        [f"Opponent card cycle (2 x {E.NUM_CARD_IDS})", E.CYCLE_START, E.CYCLE_BLOCK_SIZE],
     ]
     save("fig3_2_observation.json", {
         "seed": seed, "tick": env.get_current_tick(), "units": best[0], "size": len(obs),

@@ -22,6 +22,15 @@ inline void advancePastDeploy(const std::shared_ptr<Entity>& entity, Board& boar
     for (int i = 0; i < DEPLOY_TIME_TICKS; ++i) entity->update(board);
 }
 
+// Steps a deployed unit that already has its target in range through its
+// attack load time (LoadTimes.h), so its next update() lands the first hit. For
+// tests about what a hit does, not when.
+inline void windUp(const std::shared_ptr<Entity>& entity, Board& board) {
+    auto ce = std::dynamic_pointer_cast<CombatEntity>(entity);
+    const int ticks = ce ? ce->loadTicks : 0;
+    for (int i = 0; i < ticks; ++i) entity->update(board);
+}
+
 // A bare Entity with a no-op update(), for Entity's own state; a valid target,
 // since targeting is Entity-typed. Use StationaryCombatant only where freeze or
 // on-hit effects are needed.

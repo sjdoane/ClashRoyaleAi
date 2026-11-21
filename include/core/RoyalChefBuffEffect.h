@@ -3,36 +3,39 @@
 #include "CombatEntity.h"
 #include "Board.h"
 
-// Royal Chef's periodic pancake: buffs the nearest ally's damage and tops up
-// its hp by 10%, approximating the real "+1 level" (there are no levels). Its
-// own scan instead of applyAreaBuff, which cannot exclude the tower at distance
-// 0.
+// Royal Chef's pancake (patch 0019; Clash Royale wiki, Royal Chef): +1 Level
+// for one allied troop anywhere in the arena (CombatEntity::gainLevel, past the
+// level cap too). Buildings, Crown Towers and troops under 33% of their full
+// hp are never fed. Troops with fewer pancakes come first, then higher hp, so
+// a push's tank is fed before its support and the pancakes spread out. When
+// the pancake is cooked is GameManager's (cookRoyalChef); this only serves.
+//
+// It was a +10% hp top-up with a permanent 1.10x damage buff, once per troop,
+// fed to the nearest ally within 6 tiles of the tower every 28 s, before the
+// engine had levels.
 class RoyalChefBuffEffect : public IPeriodicEffect {
-    float radius;
-    float damageMultiplier;
-
 public:
-    RoyalChefBuffEffect(float radius, float damageMultiplier)
-        : radius(radius), damageMultiplier(damageMultiplier) {}
+    static constexpr float MIN_HP_FRACTION = 0.33f;
 
-    void apply(Board& board, const Vector2D& position, int team) const override {
-        std::shared_ptr<CombatEntity> nearest;
-        float nearestDist = radius;
+    // Feeds one troop of `team`; false if none qualifies (the pancake waits).
+    static bool serve(Board& board, int team) {
+        std::shared_ptr<CombatEntity> best;
         for (const auto& entity : board.getEntities()) {
-            if (entity->team != team || !entity->isAlive()) continue;
-            float dist = position.distanceTo(entity->position);
-            if (dist <= 0.01f || dist > nearestDist) continue;
-            auto combatEntity = std::dynamic_pointer_cast<CombatEntity>(entity);
-            if (!combatEntity) continue;
-            // Each ally is served once; repeat servings would compound without
-            // bound. See CombatEntity::royalChefServed.
-            if (combatEntity->royalChefServed) continue;
-            nearest = combatEntity;
-            nearestDist = dist;
+            if (entity->team != team || !entity->isAlive() || entity->isTower() || entity->isBuilding()) continue;
+            auto c = std::dynamic_pointer_cast<CombatEntity>(entity);
+            if (!c) continue;
+            const int full = c->fullHp > 0 ? c->fullHp : c->hp;
+            if (static_cast<float>(c->hp) < MIN_HP_FRACTION * static_cast<float>(full)) continue;
+            if (!best || c->royalChefServings < best->royalChefServings
+                || (c->royalChefServings == best->royalChefServings && c->hp > best->hp)) {
+                best = c;
+            }
         }
-        if (!nearest) return;
-        nearest->royalChefServed = true;
-        nearest->applyBuff(damageMultiplier, 999999);
-        nearest->hp += nearest->hp / 10;
+        if (!best) return false;
+        best->royalChefServings++;
+        best->gainLevel();
+        return true;
     }
+
+    void apply(Board& board, const Vector2D&, int team) const override { serve(board, team); }
 };

@@ -40,6 +40,7 @@ if str(_ENGINE) not in sys.path:
 if str(_ROOT.parent) not in sys.path:
     sys.path.insert(0, str(_ROOT.parent))
 
+from capture.adb import AdbSource  # noqa: E402
 from capture.window import WindowSource  # noqa: E402
 from clashroyalebuildabot.constants import (  # noqa: E402
     SCREENSHOT_HEIGHT,
@@ -48,7 +49,7 @@ from clashroyalebuildabot.constants import (  # noqa: E402
 from clashroyalebuildabot.detectors.detector import Detector  # noqa: E402
 from clashroyalebuildabot.namespaces.cards import Cards  # noqa: E402
 from live.action_gate import MAX_STALENESS_MS, ActionGate  # noqa: E402
-from live.actuator import AdbActuator  # noqa: E402
+from live.actuator import ADB, AdbActuator  # noqa: E402
 from live.adapter import build_game_state  # noqa: E402
 from live.elixir_ledger import ElixirLedger  # noqa: E402
 from live.hand_tracker import HandTracker  # noqa: E402
@@ -57,31 +58,12 @@ from live.pipeline import PerceptionWorker, Stages  # noqa: E402
 from live.placement_confirm import PlacementConfirmer  # noqa: E402
 
 def _training_deck_ids() -> list[int]:
-    """`gym_wrapper.DEFAULT_DECK`, parsed from source rather than imported.
-
-    Importing it would pull in gymnasium and torch, which perception's venv
-    does not carry. Parsing keeps one source of truth without the dependency.
-    Strict: a DEFAULT_DECK that is missing or not a plain list of int literals
-    raises, since a guessed deck means playing cards the policy has never seen.
+    """`python_ai.deck.DEFAULT_DECK`, the deck the policy trains on. That module
+    is a leaf importing only the engine, so this pulls in no gymnasium or torch.
     """
-    import ast  # noqa: PLC0415
+    from python_ai.deck import DEFAULT_DECK  # noqa: PLC0415
 
-    source_path = (Path(__file__).resolve().parent.parent.parent
-                   / "python_ai" / "envs" / "gym_wrapper.py")
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(t, ast.Name) and t.id == "DEFAULT_DECK"
-                   for t in node.targets):
-            continue
-        value = ast.literal_eval(node.value)
-        if not isinstance(value, list) or not all(isinstance(v, int) for v in value):
-            raise RuntimeError(
-                f"DEFAULT_DECK in {source_path} is not a list of int literals; "
-                "it can no longer be read without importing gym_wrapper.")
-        return value
-    raise RuntimeError(f"no DEFAULT_DECK assignment found in {source_path}")
+    return list(DEFAULT_DECK)
 
 
 def _deck_from_training() -> list:
@@ -558,6 +540,15 @@ def main() -> int:
     ap.add_argument("--act", action="store_true",
                     help="actually tap. Without it the loop only watches.")
     ap.add_argument("--window", default="BlueStacks App Player")
+    ap.add_argument("--capture", choices=("window", "adb", "wda", "mirror"),
+                    default="window" if sys.platform == "win32" else "adb",
+                    help="live frame source; window capture is Windows-only, "
+                         "wda is an iPhone through WebDriverAgent, mirror is an "
+                         "iPhone through macOS iPhone Mirroring")
+    ap.add_argument("--wda-url", default="http://127.0.0.1:8100",
+                    help="WebDriverAgent endpoint (iproxy 8100 8100)")
+    ap.add_argument("--ios-geometry", type=Path, default=None,
+                    help="crop JSON from tools/calibrate_ios.py (--capture wda/mirror)")
     ap.add_argument("--serial", action="store_true",
                     help="run perception inline instead of on its own thread. "
                          "The original design, kept for comparison: it pins "
@@ -634,6 +625,28 @@ def main() -> int:
             from capture.frames import RecordingSource  # noqa: PLC0415
             source = RecordingSource(args.frames)
             print(f"replaying {source.frame_count} frames from {args.frames}")
+    elif args.capture == "adb":
+        source = AdbSource(ADB)
+    elif args.capture == "wda":
+        if args.ios_geometry is None:
+            raise SystemExit("--capture wda needs --ios-geometry "
+                             "(run tools/calibrate_ios.py first)")
+        from capture.wda import IosGeometry, WdaClient, WdaSource  # noqa: PLC0415
+        wda = WdaClient(args.wda_url)
+        ios_geo = IosGeometry.load(args.ios_geometry)
+        source = WdaSource(wda, ios_geo)
+        print(f"capture: iPhone via WDA {args.wda_url}, crop {ios_geo.crop}")
+    elif args.capture == "mirror":
+        if args.ios_geometry is None:
+            raise SystemExit("--capture mirror needs --ios-geometry "
+                             "(run tools/calibrate_ios.py --mirror first)")
+        from capture.mirror import MirrorClient, MirrorSource, MirrorWindow  # noqa: PLC0415
+        from capture.wda import IosGeometry  # noqa: PLC0415
+        mirror = MirrorWindow()
+        wda = MirrorClient(mirror)
+        ios_geo = IosGeometry.load(args.ios_geometry)
+        source = MirrorSource(mirror, ios_geo)
+        print(f"capture: iPhone Mirroring window {mirror.bounds}, crop {ios_geo.crop}")
     else:
         source = WindowSource(args.window)
     detector = Detector(DECK)
@@ -676,7 +689,11 @@ def main() -> int:
         from match_nav import ensure_in_match  # noqa: PLC0415
         ensure_in_match(detector)
 
-    actuator = AdbActuator(dry_run=not args.act)
+    if args.capture in ("wda", "mirror") and not args.frames:
+        from live.wda_actuator import WdaActuator  # noqa: PLC0415
+        actuator = WdaActuator(wda, ios_geo, dry_run=not args.act)
+    else:
+        actuator = AdbActuator(dry_run=not args.act)
     if args.act:
         print(f"actuator backend: {actuator.backend}")
     if args.policy == "neural":
@@ -699,7 +716,7 @@ def main() -> int:
     print(f"deck costs: {', '.join(f'{c:.0f}' for c in costs)}")
     # Printed in full: the loop is consistent whatever deck it holds, so this
     # line is what makes "live matches training" auditable.
-    print("deck (derived from gym_wrapper.DEFAULT_DECK): "
+    print("deck (derived from python_ai.deck.DEFAULT_DECK): "
           + ", ".join(c.name for c in DECK))
     ledger = ElixirLedger(costs=costs)
 

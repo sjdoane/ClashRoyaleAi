@@ -70,6 +70,17 @@ public:
     // CardFactories::spawnSpell, like configureRoll.
     int crownTowerDamage = -1;
 
+    // Card level (CardLevels.h): the damage of every application and the
+    // published crown-tower figure. Bodies the spell spawns (Graveyard) are
+    // scaled on their own as they enter play.
+    void scaleToLevel(int level) override {
+        damage = CardLevels::scale(damage, level);
+        tierSingleDamage = CardLevels::scale(tierSingleDamage, level);
+        tierFewDamage = CardLevels::scale(tierFewDamage, level);
+        tierManyDamage = CardLevels::scale(tierManyDamage, level);
+        crownTowerDamage = CardLevels::scale(crownTowerDamage, level);
+    }
+
     // With a ring (Graveyard: 3.3 tiles), application k spawns at the k-th of
     // seven fixed points, cycled: the cast point, then six on the ring 60
     // degrees apart, starting on the caster's forward axis. The real layout is

@@ -19,6 +19,10 @@ class AreaDamageOnDeath : public IDeathEffect {
 public:
     AreaDamageOnDeath(float radius, int damage, std::shared_ptr<IOnHitEffect> onHit = nullptr)
         : radius(radius), damage(damage), onHit(std::move(onHit)) {}
+    // Read-only, for get_card_stats (card-stats audit, patch 0003).
+    float getRadius() const { return radius; }
+    int getDamage() const { return damage; }
+    const std::shared_ptr<IOnHitEffect>& getOnHit() const { return onHit; }
 
     void apply(Board& board, const Vector2D& position, int team) const override {
         for (const auto& entity : board.getEntities()) {

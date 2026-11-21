@@ -32,7 +32,7 @@ def test_frame_index_conversion():
 
 
 def test_elixir_regen_matches_engine(engine):
-    """ELIXIR_REGEN_RATE is 0.035/tick, measured."""
+    """ELIXIR_REGEN_RATE is 1/28 per tick, measured."""
     deck = [15, 25, 6, 1, 0, 41, 7, 10]
     env = engine.ClashRoyaleEnv(deck, deck, 3600)
     env.reset()
@@ -56,16 +56,15 @@ def test_starting_elixir_matches_engine(engine):
 
 
 def test_simulator_elixir_runs_slow_relative_to_real_game():
-    """The 2% gap as an asserted fact: "fixing" ELIXIR_REGEN_RATE to match the
-    real game fails here and forces the opponent-elixir model to be revisited
-    too.
+    """Since item 38 the engine runs at the real 2.8 s; a drift either way fails
+    here and forces the opponent-elixir model to be revisited too.
     """
     sim_seconds_per_elixir = 1.0 / (
         timebase.SIM_ELIXIR_REGEN_PER_TICK * timebase.TICKS_PER_SECOND
     )
-    assert sim_seconds_per_elixir == pytest.approx(2.857, abs=0.001)
+    assert sim_seconds_per_elixir == pytest.approx(2.8, abs=0.001)
     assert timebase.REAL_SECONDS_PER_ELIXIR_1X == 2.8
-    assert timebase.SIM_ELIXIR_RATE_ERROR == pytest.approx(0.98, abs=0.001)
+    assert timebase.SIM_ELIXIR_RATE_ERROR == pytest.approx(1.0, abs=0.001)
 
 
 def test_phase_multipliers_only_scale_real_rate():

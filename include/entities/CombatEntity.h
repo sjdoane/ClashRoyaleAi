@@ -1,5 +1,6 @@
 #pragma once
 #include "CardEntity.h"
+#include "CardLevels.h"
 #include "Board.h"
 #include "LanePath.h"
 #include "OnHitEffect.h"
@@ -7,6 +8,7 @@
 #include "DeathEffect.h"
 #include "PeriodicEffect.h"
 #include "AbilityEffect.h"
+#include "SelfPeriodicEffect.h"
 #include <memory>
 #include <limits>
 #include <vector>
@@ -24,7 +26,8 @@ inline void applyAreaHeal(Board& board, const Vector2D& origin, float radius, in
 // hitsAir false: a ground-only attacker's splash skips flying units (the Bomb
 // Tower's bombs; Building::performAttack passes its own targetsAir).
 inline void applySplashDamage(Board& board, const Vector2D& origin, float radius, int excludeId,
-    int attackerId, int attackerTeam, int attackerCardId, int dealt, bool hitsAir = true);
+    int attackerId, int attackerTeam, int attackerCardId, int dealt, bool hitsAir = true,
+    const std::vector<std::shared_ptr<IOnHitEffect>>* splashOnHit = nullptr);
 // Declared early for Evolved Valkyrie's on-hit pull in update().
 inline void applyPullNearby(Board& board, const Vector2D& origin, float radius, float distance,
     int excludeId, int attackerTeam);
@@ -59,6 +62,7 @@ protected:
     // attacking). Not ticksSinceLastHit, which also resets on losing a target.
     static constexpr int TICKS_SINCE_ATTACK_NEVER = 1 << 20;
     int ticksSinceAttack = TICKS_SINCE_ATTACK_NEVER;
+
 
     // The freezes in force, each running its own duration (see applyFreeze).
     struct FreezeSlot { int ticks = 0; float factor = 1.0f; };
@@ -102,6 +106,14 @@ public:
     // and a new unit has not been stunned. The implicit copy carries it, so
     // snapshots keep the exact remaining deploy time.
     int deployTicksRemaining = 0;
+    // Attack load time (LoadTimes.h): after coming into range of a new
+    // target, wind up this many ticks before the first hit. 0 = hit at once.
+    int loadTicks = 0;
+    // The target the current wind-up is for, -1 for none. A stun, leaving
+    // range, losing the target or switching target cancels it, so the next
+    // engagement winds up from the start, as in the real game.
+    int windupTargetId = -1;
+    float windupRemaining = 0.0f;
 
     // Damage-over-time mark (Dart Goblin / Firecracker Evolutions; see
     // applyDot, PoisonOnHit). Ticks down independently of freeze and curse.
@@ -153,6 +165,9 @@ public:
     // air alike, regardless of targetsAir. A free function (applySplashDamage)
     // because Projectile needs it too.
     float splashRadius = 0.0f;
+    // Card-stats audit (patch 0003): on-hit effects also land on splash
+    // victims (Ice Spirit). CardStats::splashAppliesOnHit.
+    bool splashAppliesOnHit = false;
 
     // Shield (Guards, Royal Recruits, Dark Prince, Cannon Cart): a second hp
     // pool that absorbs damage from any source first. Does not regenerate.
@@ -208,6 +223,43 @@ public:
     std::shared_ptr<IPeriodicEffect> periodicEffect;
     int periodicIntervalTicks = 0;
     int periodicTicksUntilNext = 0;
+    // The self-periodic hook (SelfPeriodicEffect.h, patch 0015): runs after
+    // the deploy, first after selfPeriodicTicksUntilNext, then every
+    // selfPeriodicIntervalTicks once it fires. selfPeriodicState is the
+    // effect's per-body memory (-1 = unset).
+    std::shared_ptr<ISelfPeriodicEffect> selfPeriodicEffect;
+    int selfPeriodicIntervalTicks = 0;
+    int selfPeriodicTicksUntilNext = 0;
+    int selfPeriodicState = -1;
+    // Fires left before the hook clears itself (-1 = unlimited): a Hero
+    // ability that runs a fixed number of pulses or shots (patch 0017).
+    int selfPeriodicFiresLeft = -1;
+    // The hook belongs to an ability window and ends with it.
+    bool selfPeriodicEndsWithWindow = false;
+    // A Hero ability's timed window (patch 0017, HeroAbilityEffects.h): while
+    // abilityWindowTicksRemaining > 0 the unit may be rooted, hold its normal
+    // attack, take less damage, attack and move faster, not drop below
+    // windowMinHp, and deal less to Crown Towers. All reset when it ends.
+    int abilityWindowTicksRemaining = 0;
+    bool windowRooted = false;
+    bool windowSuppressAttack = false;
+    float windowDamageTakenMultiplier = 1.0f;
+    float windowCooldownMultiplier = 1.0f;
+    float windowMoveMultiplier = 1.0f;
+    float windowCrownTowerMultiplier = 1.0f;
+    int windowMinHp = 0;
+    // A permanent Crown Tower damage cut on this unit's own hits (Hero
+    // Balloon's Skeletrooper: -90%). MeleeTroop::performAttack applies it.
+    float crownTowerHitMultiplier = 1.0f;
+    // Attacks started, for effects that grow with them (Evolved Giant's rage
+    // radius).
+    int attacksStarted = 0;
+    // hp when it first acted, after level scaling: the ceiling for "at 50%
+    // health" checks. 0 until the first update.
+    int fullHp = 0;
+    // The level this body is at (CardLevels.h). scaleToLevel sets it;
+    // loseLevel (Evolved Electro Giant's Level Damper) steps it down.
+    int currentLevel = CardLevels::TOURNAMENT_LEVEL;
     // Evolved Furnace: the faster interval used only while attacking (0 = none),
     // and the alternating sideways spawn offset (0 = on the entity).
     int periodicHotIntervalTicks = 0;
@@ -227,8 +279,18 @@ public:
     // Latch: Mother Witch's hog spawn is armed once (see CursedHogOnHit); the
     // curse's duration still refreshes.
     bool curseDeathSpawnAttached = false;
-    // Latch: the Royal Chef serves each ally once (see RoyalChefBuffEffect).
-    bool royalChefServed = false;
+    // Pancakes this body has eaten (Royal Chef, RoyalChefBuffEffect.h): the
+    // Chef prefers troops that have none.
+    int royalChefServings = 0;
+
+    // A magazine of shots (Dagger Duchess, patch 0019): magazineSize > 0 holds
+    // that many, each attack spends one, and none left means no attack. One
+    // comes back every magazineReloadTicks, counted only while the attack
+    // cooldown is at 0, so an empty magazine fires every cooldown + reload.
+    int magazineSize = 0;
+    int magazineReloadTicks = 0;
+    int magazineRounds = -1;           // -1: fill to magazineSize on the first update
+    int magazineReloadProgress = 0;
 
     // Ally auras on landed attacks: Rune Giant's every-Nth buff, Battle
     // Healer's heal. Independent opt-ins.
@@ -427,6 +489,27 @@ public:
         }
     }
 
+    void endAbilityWindow() {
+        abilityWindowTicksRemaining = 0;
+        windowRooted = windowSuppressAttack = false;
+        windowDamageTakenMultiplier = windowCooldownMultiplier = windowMoveMultiplier = 1.0f;
+        windowCrownTowerMultiplier = 1.0f;
+        windowMinHp = 0;
+        if (selfPeriodicEndsWithWindow) {
+            selfPeriodicEffect = nullptr;
+            selfPeriodicIntervalTicks = 0;
+            selfPeriodicEndsWithWindow = false;
+        }
+    }
+    bool inAbilityWindow() const { return abilityWindowTicksRemaining > 0; }
+    // An attack started within the last attack interval (GameManager::cookRoyalChef).
+    bool isAttacking() const { return ticksSinceAttack <= attackCooldown; }
+    // The multiplier on this unit's hit against `target` for Crown Towers.
+    float crownTowerHitFactor(const Entity& target) const {
+        if (!target.isTower()) return 1.0f;
+        return crownTowerHitMultiplier * (inAbilityWindow() ? windowCrownTowerMultiplier : 1.0f);
+    }
+
     void applyBuff(float multiplier, int ticks) {
         buffDamageMultiplier = multiplier;
         buffTicksRemaining = ticks;
@@ -474,6 +557,9 @@ public:
         if (curseTicksRemaining > 0) {
             amount = static_cast<int>(amount * curseDamageTakenMultiplier);
         }
+        if (inAbilityWindow() && windowDamageTakenMultiplier != 1.0f) {
+            amount = static_cast<int>(amount * windowDamageTakenMultiplier);
+        }
         if (parryIntervalTicks > 0 && parryTicksUntilReady <= 0) {
             parryTicksUntilReady = parryIntervalTicks;
             return; // negated
@@ -485,6 +571,7 @@ public:
         }
         if (amount > 0) {
             Entity::takeDamage(amount);
+            if (inAbilityWindow() && windowMinHp > 0 && hp < windowMinHp) hp = windowMinHp;
             if (onDamageTakenEffect) onDamageTakenEffect->apply(*this);
         }
     }
@@ -609,6 +696,16 @@ public:
             if (transformTicksRemaining <= 0) hp = 0;
         }
 
+        // Magazine reload: counted on ticks the cooldown was already at 0, so
+        // it never runs during the attack interval.
+        if (magazineSize > 0) {
+            if (magazineRounds < 0) magazineRounds = magazineSize;
+            if (magazineRounds < magazineSize && currentCooldown <= 0.0f
+                && ++magazineReloadProgress >= magazineReloadTicks) {
+                magazineRounds++;
+                magazineReloadProgress = 0;
+            }
+        }
         if (wasFrozen) {
             for (auto& s : freezeSlots) {
                 if (s.ticks > 0) s.ticks--;
@@ -667,6 +764,20 @@ public:
         // deploying unit takes none of.
         if (deploying) return;
 
+        if (fullHp <= 0) fullHp = hp;
+        if (selfPeriodicEffect && selfPeriodicIntervalTicks > 0) {
+            if (selfPeriodicTicksUntilNext > 0) selfPeriodicTicksUntilNext--;
+            if (selfPeriodicTicksUntilNext <= 0) {
+                const bool fired = selfPeriodicEffect->apply(board, *this);
+                selfPeriodicTicksUntilNext = fired ? selfPeriodicIntervalTicks : 1;
+                if (fired && selfPeriodicFiresLeft > 0 && --selfPeriodicFiresLeft == 0) {
+                    selfPeriodicEffect = nullptr;
+                    selfPeriodicIntervalTicks = 0;
+                }
+                if (hp <= 0) return;
+            }
+        }
+
         if (periodicIntervalTicks > 0) {
             // Evolved Furnace's Hot Spawning: the fast interval runs only while
             // attacking (an attack started within one attack cycle), and going
@@ -704,6 +815,9 @@ public:
             }
         }
 
+        // A stun, or no target at all, cancels a wind-up.
+        if (!target || stunned) windupTargetId = -1;
+
         if (target) {
             if (wasFrozen) {
                 // A stun resets unconditionally, grace period or not.
@@ -724,14 +838,35 @@ public:
             float effectiveAttackRange = effectiveRangeTo(target);
 
             if (dist <= effectiveAttackRange) {
+                // Load time: a new engagement winds up for loadTicks first,
+                // so the first hit lands loadTicks after coming into range
+                // and later hits follow every attackCooldown. A slow slows
+                // the wind-up as it slows the cooldown.
+                bool loading = false;
+                if (!stunned && loadTicks > 0) {
+                    if (target->id != windupTargetId) {
+                        windupTargetId = target->id;
+                        windupRemaining = static_cast<float>(loadTicks);
+                    }
+                    if (windupRemaining > 0.0f) {
+                        windupRemaining -= wasFrozen ? slowThisTick : 1.0f;
+                        if (windupRemaining < 0.0f) windupRemaining = 0.0f;
+                        loading = true;
+                        // A damage ramp (Inferno) starts at the first hit.
+                        ticksOnTarget = 0;
+                    }
+                }
                 // Not while stunned: a stun holds the cooldown still, and a
                 // unit that was already ready must not swing through it.
-                if (!stunned && currentCooldown == 0.0f) {
+                if (!stunned && !loading && currentCooldown == 0.0f && !windowSuppressAttack
+                    && (magazineSize <= 0 || magazineRounds != 0)) {
                     // Effects are applied by performAttack, since when they
                     // fire depends on when the damage lands (at once for a
                     // direct hit, on arrival for a projectile).
                     lastAttackDistance = dist;
                     ticksSinceAttack = 0;
+                    attacksStarted++;
+                    if (magazineSize > 0 && magazineRounds > 0) magazineRounds--;
                     // Reset here, not on projectile arrival: the only
                     // grace-period card (Inferno Dragon Evolution) attacks
                     // instantly.
@@ -769,6 +904,7 @@ public:
                     }
                     // Temporary ability haste (Cloaking Cape, Getaway Grenade).
                     if (temporaryInvisibilityTicksRemaining > 0) currentCooldown *= temporaryHitSpeedMultiplier;
+                    if (inAbilityWindow()) currentCooldown *= windowCooldownMultiplier;
                     // Blade Rage: refresh the window, then haste the cooldown
                     // just set, so continued hits keep the haste alive.
                     if (selfHasteDurationTicks > 0) {
@@ -834,11 +970,12 @@ public:
                 pullToward(*target, position, dist - effectiveAttackRange + 0.1f);
                 currentCooldown = static_cast<float>(attackCooldown);
             } else {
+                windupTargetId = -1; // out of range: the next engagement winds up again
                 Vector2D beforeMove = position;
                 // Lane-aware approach: a King objective is walked to up this
                 // unit's own lane; any other target is its own position
                 // (LanePath::approachPoint).
-                moveTowards(board, LanePath::approachPoint(board, team, position, target));
+                if (!windowRooted) moveTowards(board, LanePath::approachPoint(board, team, position, target));
                 if (chargeThreshold > 0.0f) chargeProgress += beforeMove.distanceTo(position);
             }
         } else if (wasFrozen || rampGracePeriodTicks <= 0 || ticksSinceLastHit >= rampGracePeriodTicks) {
@@ -850,6 +987,10 @@ public:
         }
         // else: within the grace period with no target, hold the ramp stage for
         // a new target.
+
+        // Counted down after this update's attack and movement, so a window
+        // opened between steps covers exactly its `ticks` updates.
+        if (abilityWindowTicksRemaining > 0 && --abilityWindowTicksRemaining == 0) endAbilityWindow();
 
         clampPosition(board);
     }
@@ -1008,6 +1149,53 @@ public:
         return static_cast<float>(getCurrentDamage()) / static_cast<float>(cooldown);
     }
 
+    // Card level (CardLevels.h, Board::commitPendingEntities). hp, damage and
+    // the flat secondary hits scale; multipliers and timings do not. Effect
+    // objects (on-hit, death, ability) keep their level-11 damage.
+    void scaleToLevel(int level) override {
+        if (CardLevels::isValid(level)) currentLevel = level;
+        hp = CardLevels::scale(hp, level);
+        damage = CardLevels::scale(damage, level);
+        shieldHp = CardLevels::scale(shieldHp, level);
+        onHitPullDamage = CardLevels::scale(onHitPullDamage, level);
+        flightPulseDamage = CardLevels::scale(flightPulseDamage, level);
+        healOnHitMaxHp = CardLevels::scale(healOnHitMaxHp, level);
+        transformCheckMaxHp = CardLevels::scale(transformCheckMaxHp, level);
+    }
+
+    // One level down (Evolved Electro Giant's Level Damper, patch 0015): hp,
+    // damage and shield shrink by one step of CardLevels::MULTIPLIER_PERCENT
+    // (about 9%), never below level 1 or 1 hp. Returns false at level 1.
+    virtual bool loseLevel() {
+        if (currentLevel <= CardLevels::MIN_LEVEL) return false;
+        const double f = static_cast<double>(CardLevels::MULTIPLIER_PERCENT[currentLevel - 2])
+                       / CardLevels::MULTIPLIER_PERCENT[currentLevel - 1];
+        auto down = [f](int v) { return v > 0 ? std::max(1, static_cast<int>(std::lround(v * f))) : v; };
+        currentLevel--;
+        hp = down(hp);
+        fullHp = down(fullHp);
+        damage = down(damage);
+        shieldHp = shieldHp > 0 ? static_cast<int>(std::lround(shieldHp * f)) : shieldHp;
+        return true;
+    }
+
+    // One level up (Royal Chef's pancake, patch 0019): the inverse of
+    // loseLevel. The pancake goes past the level cap; beyond MAX_LEVEL each
+    // step repeats the table's last ratio (409 / 372, about +10%), an
+    // extrapolation since the table stops at 16.
+    virtual void gainLevel() {
+        const int at = std::max(currentLevel, CardLevels::MIN_LEVEL);
+        const int i = std::min(at, CardLevels::MAX_LEVEL - 1);
+        const double f = static_cast<double>(CardLevels::MULTIPLIER_PERCENT[i])
+                       / CardLevels::MULTIPLIER_PERCENT[i - 1];
+        auto up = [f](int v) { return v > 0 ? static_cast<int>(std::lround(v * f)) : v; };
+        currentLevel = at + 1;
+        hp = up(hp);
+        fullHp = up(fullHp);
+        damage = up(damage);
+        shieldHp = up(shieldHp);
+    }
+
 protected:
 
     int getCurrentDamage() const {
@@ -1064,7 +1252,8 @@ protected:
 // with its own DamageDealtEvent. A free function because Projectile, not a
 // CombatEntity, needs it too. No-op for radius <= 0.
 inline void applySplashDamage(Board& board, const Vector2D& origin, float radius, int excludeId,
-        int attackerId, int attackerTeam, int attackerCardId, int dealt, bool hitsAir) {
+        int attackerId, int attackerTeam, int attackerCardId, int dealt, bool hitsAir,
+        const std::vector<std::shared_ptr<IOnHitEffect>>* splashOnHit) {
     if (radius <= 0.0f) return;
     for (const auto& entity : board.getEntities()) {
         if (entity->id == excludeId) continue; // already hit as the primary target
@@ -1074,6 +1263,13 @@ inline void applySplashDamage(Board& board, const Vector2D& origin, float radius
         entity->takeDamage(dealt);
         board.statsEvents.notifyDamageDealt(
             { attackerId, attackerTeam, attackerCardId, entity->id, entity->cardId, entity->team, dealt, board.currentTick, entity->isTower() });
+        // Card-stats audit (patch 0003): Ice Spirit's freeze lands on
+        // everything its splash hits, not just the primary target.
+        if (splashOnHit && !splashOnHit->empty()) {
+            if (auto c = std::dynamic_pointer_cast<CombatEntity>(entity)) {
+                for (const auto& e : *splashOnHit) e->apply(c);
+            }
+        }
     }
 }
 

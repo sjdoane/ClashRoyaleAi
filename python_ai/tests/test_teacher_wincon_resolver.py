@@ -112,7 +112,10 @@ def test_a_goblin_drill_is_measured_and_played_beside_the_enemy_tower():
     import numpy as np
     from python_ai import engine_constants as EC
     assert teacher._wincon_eligible(GOBLIN_DRILL, False)
-    assert teacher.wincon_damage_per_elixir(GOBLIN_DRILL) * 4.0 > 2000.0
+    # 600: the Drill lives 10 s since patch 0003 (wiki Goblin Drill, level
+    # 11), and since patch 0007 the Princess Tower is level 11 (109 dmg every
+    # 0.8 s), so it measures 924 (1404 against the old level-9 tower).
+    assert teacher.wincon_damage_per_elixir(GOBLIN_DRILL) * 4.0 > 600.0
     deck = [GOBLIN_DRILL, 3, 29, 0, 1, 24, 41, 25]
     t = teacher.UtilityTeacher(deck, team=0)
     env = E.ClashRoyaleEnv(deck, deck, 3600)
