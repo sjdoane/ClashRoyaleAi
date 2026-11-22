@@ -58,6 +58,13 @@ public:
 
     virtual bool isTargetable() const { return true; }
 
+    // Whether area damage and area effects (spells, splash, a rolling Log,
+    // death damage) land on this. Invisibility hides a unit from being picked
+    // as a target, nothing more: the game's unit table marks the Royal Ghost
+    // and the cloaked Archer Queen `allow_area_dmg_when_invisible` (patch
+    // 0041). Things that are never bodies (projectiles, spells) stay out.
+    virtual bool takesAreaDamage() const { return isTargetable(); }
+
     // True only for Building and Tower. Lets code outside the Building chain
     // (knockback, pulls) ask without a dynamic_cast, which would need
     // Building.h and create an include cycle.

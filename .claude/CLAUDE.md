@@ -732,6 +732,29 @@ match did not have (62 first-excess events per 100 matches it was held in).
 and dead 10 s after its first hit; before, it was never shot. A lone Bush: one
 hit, then dead (two Bush Goblins).
 
+## 2026-11-22: area damage lands on invisible units (patch 0041)
+
+Every area effect skipped units that could not be targeted, so a cloaked Royal
+Ghost, a Suspicious Bush or a cloaked Archer Queen walked through a Fireball, a
+Log or a Valkyrie's swing unharmed. The game's unit table marks `Ghost` and
+`ArcherQueen` `allow_area_dmg_when_invisible: True`; published descriptions of
+the Bush say spells and splash destroy it. Invisibility now only stops a unit
+being PICKED as a target.
+
+- `Entity::takesAreaDamage()` (default `isTargetable()`, so projectiles and
+  spells stay out; `CombatEntity` returns true).
+- Used by: `applySplashDamage`, `applyLineSplashDamage`, `applyPullNearby`,
+  `AreaSpell` (disc and rolling sweep), `AreaDamageOnDeath`, the Hero
+  Barbarian Barrel's roll. Everything that PICKS a target (findTarget, chains,
+  taunt, nearest-enemy abilities, the area stun of the Electro Giant) still
+  uses `isTargetable()`.
+- Applies to every source of invisibility (Royal Ghost, Bush, Lumberjack
+  ghost, Archer Queen's cloak, Boss Bandit's grenade, Dark Guard); the last two
+  are NOT separately sourced.
+- Test: `python_ai/tests/test_area_damage_lands_on_invisible_units.py`.
+
+**GAMEPLAY-AFFECTING.**
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

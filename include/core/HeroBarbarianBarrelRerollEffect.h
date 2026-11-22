@@ -38,7 +38,7 @@ public:
         int totalDealt = 0;
         for (const auto& entity : board.getEntities()) {
             if (entity->id == self.id) continue;
-            if (entity->team == self.team || !entity->isAlive() || !entity->isTargetable()) continue;
+            if (entity->team == self.team || !entity->isAlive() || !entity->takesAreaDamage()) continue;
             if (entity->isFlying) continue; // the barrel rolls along the ground
 
             float proj = (entity->position.x - oldPos.x) * ux + (entity->position.y - oldPos.y) * uy;

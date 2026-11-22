@@ -500,6 +500,9 @@ public:
     bool isTargetable() const override {
         return (!startsInvisible || visibleTicksRemaining > 0) && temporaryInvisibilityTicksRemaining <= 0;
     }
+    // An invisible unit cannot be picked as a target but is still hit by
+    // whatever lands on its tile (Entity::takesAreaDamage).
+    bool takesAreaDamage() const override { return true; }
 
     // Soul collection: any death within radius, ally or enemy.
     void onNearbyDeath(Board&, const Vector2D& deathPosition, int) override {
@@ -1283,7 +1286,7 @@ inline void applySplashDamage(Board& board, const Vector2D& origin, float radius
     if (radius <= 0.0f) return;
     for (const auto& entity : board.getEntities()) {
         if (entity->id == excludeId) continue; // already hit as the primary target
-        if (entity->team == attackerTeam || !entity->isAlive() || !entity->isTargetable()) continue;
+        if (entity->team == attackerTeam || !entity->isAlive() || !entity->takesAreaDamage()) continue;
         if (!hitsAir && entity->isFlying) continue;
         if (origin.distanceTo(entity->position) > radius) continue;
         entity->takeDamage(dealt);
@@ -1306,7 +1309,7 @@ inline void applyPullNearby(Board& board, const Vector2D& origin, float radius, 
     if (radius <= 0.0f || distance <= 0.0f) return;
     for (const auto& entity : board.getEntities()) {
         if (entity->id == excludeId) continue;
-        if (entity->team == attackerTeam || !entity->isAlive() || !entity->isTargetable()) continue;
+        if (entity->team == attackerTeam || !entity->isAlive() || !entity->takesAreaDamage()) continue;
         if (origin.distanceTo(entity->position) > radius) continue;
         pullToward(*entity, origin, distance);
     }
@@ -1341,7 +1344,7 @@ inline void applyLineSplashDamage(Board& board, const Vector2D& origin, const Ve
 
     for (const auto& entity : board.getEntities()) {
         if (entity->id == excludeId) continue; // already hit as the primary target
-        if (entity->team == attackerTeam || !entity->isAlive() || !entity->isTargetable()) continue;
+        if (entity->team == attackerTeam || !entity->isAlive() || !entity->takesAreaDamage()) continue;
 
         // Project onto the line, clamped to [0, range], then take the
         // perpendicular distance.
