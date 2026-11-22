@@ -755,6 +755,36 @@ being PICKED as a target.
 
 **GAMEPLAY-AFFECTING.**
 
+## 2026-11-22: published sight clip of the building-targeters (patch 0042)
+
+**GAMEPLAY-AFFECTING.** The game's unit table gives the building-targeting
+troops two fields next to SightRange: `SightClip` and `SightClipSide` (Hog
+Rider 9500 / 4000 / 4000, Giant, Royal Giant, Goblin Giant 7500 / 2000 / 2000,
+Ice Golem 7000 / 2000 / 2000, Golem 7000 / 2000 / 1900, Balloon and Skeleton
+Barrel 7700 / - / 2000; none for Battle Ram, Ram Rider, Lava Hound, Wall
+Breakers). Sources: FirstLight-Zero card_specs.json release 15.535.13 and
+RoyaleAPI cards_stats.json, which agree. New table `include/core/SightClips.h`
+(keyed by name like LoadTimes.h), applied in `applyCardMetadata`, used by
+`CombatEntity::withinSightClip` in both `findTarget`s, exposed as
+`sight_clip` / `sight_clip_side` in `get_card_stats`.
+
+- **The reading is inferred**, not published as prose: the sight disc is cut to
+  a box, `sightRange - clipSide` across the arena and `sightRange - clip` along
+  it, measured to the target's footprint. Every clipped troop then reaches
+  5.0-5.7 tiles sideways: lane to arena centre. A Cannon in the middle pulls a
+  Hog or Giant from either lane; one placed 7+ tiles to the side does not,
+  although it is inside the 9.5 / 7.5 disc. The reverse reading (the clip is
+  the half-width) would stop a centre building pulling a Giant at all.
+- Before: disc only, so a Hog left its lane for a Cannon 7-8 tiles to the side
+  when the Cannon was played early (tower HP lost 0 instead of a full Hog).
+- Hero Giant / Hero Ice Golem / Hero Balloon rows are assumed equal to the base
+  troop. Electro Giant and Suspicious Bush publish a clip too but are NOT in
+  the table: their registry sight is still the default 5.5, not the published
+  7.5.
+- Tests: `python_ai/tests/test_sight_clip_of_building_targeters.py`,
+  `tests/core/test_sight_range.cpp` ("a published sight clip cuts the sideways
+  reach"; the raw-range case now uses the unclipped Battle Ram).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

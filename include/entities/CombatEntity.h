@@ -381,6 +381,13 @@ public:
     // attackRange.
     float sightRange = 5.5f;
 
+    // Published sight clip (SightClips.h): the sight disc cut to a box, no
+    // further than sightRange - sightClipSide across the arena and sightRange -
+    // sightClip along it. 0 = not clipped. Only the building-targeting troops
+    // publish one.
+    float sightClip = 0.0f;
+    float sightClipSide = 0.0f;
+
     // HP-threshold transform (Cannon Cart: at <= 50% hp it grounds itself and
     // self-destructs after a fixed lifespan). The fraction is of
     // transformCheckMaxHp, the spawn hp. Grounding reuses applyFreeze(ticks,
@@ -1088,6 +1095,19 @@ protected:
         return sightRange;
     }
 
+    // The published sight clip (SightClips.h). Measured to the target's
+    // footprint, as findTarget ranks; the unit's own reach is far inside the
+    // box, so there is nothing to floor.
+    bool withinSightClip(const Entity& target) const {
+        if (sightClip <= 0.0f && sightClipSide <= 0.0f) return true;
+        const float r = target.getTargetingRadius();
+        if (sightClipSide > 0.0f
+            && std::fabs(target.position.x - position.x) - r > sightRange - sightClipSide) return false;
+        if (sightClip > 0.0f
+            && std::fabs(target.position.y - position.y) - r > sightRange - sightClip) return false;
+        return true;
+    }
+
     // Re-validates the locked target by id rather than re-scanning for the
     // closest. nullptr if there is no lock or the target is no longer legal.
     std::shared_ptr<Entity> resolveCurrentTarget(Board& board) const {
@@ -1123,7 +1143,8 @@ protected:
             // footprint distance (Entity::getTargetingRadius); the sight gate
             // uses centre distance.
             const float rank = dist - entity->getTargetingRadius();
-            if (rank <= effectiveSightWith(myRadius, *entity) && rank < minSightDistance) {
+            if (rank <= effectiveSightWith(myRadius, *entity) && withinSightClip(*entity)
+                && rank < minSightDistance) {
                 minSightDistance = rank;
                 closestInSight = entity;
             }

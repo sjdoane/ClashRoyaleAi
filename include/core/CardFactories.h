@@ -1,6 +1,7 @@
 #pragma once
 #include "CardStats.h"
 #include "LoadTimes.h"
+#include "SightClips.h"
 #include "Board.h"
 #include "MeleeTroop.h"
 #include "RangedTroop.h"
@@ -78,6 +79,11 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->recoilDistance = stats.recoilDistance;
     entity->minAttackRange = stats.minAttackRange;
     entity->sightRange = stats.sightRange;
+    // Published sight clip of the building-targeters (SightClips.h).
+    if (const SightClips::Row* clipRow = SightClips::find(stats.name)) {
+        entity->sightClip = clipRow->clip;
+        entity->sightClipSide = clipRow->clipSide;
+    }
     entity->transformAtHpFraction = stats.transformAtHpFraction;
     entity->transformCheckMaxHp = stats.hp;
     entity->transformLifetimeTicks = stats.transformLifetimeTicks;

@@ -48,7 +48,8 @@ protected:
             // effectiveSightWith on centre distance, as in
             // CombatEntity::findTarget.
             const float rank = dist - entity->getTargetingRadius();
-            if (rank <= effectiveSightWith(myRadius, *entity) && rank < minSightDistance) {
+            if (rank <= effectiveSightWith(myRadius, *entity) && withinSightClip(*entity)
+                && rank < minSightDistance) {
                 minSightDistance = rank;
                 closestInSight = entity;
             }

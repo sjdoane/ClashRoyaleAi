@@ -502,11 +502,22 @@ TEST_CASE("the nearest-building rule holds for every catalogued sight range",
 TEST_CASE("sight still bounds acquisition at the raw catalogued range",
           "[targeting][sight][centre_to_centre]") {
     // Rule 1 alone. At y = 20 the tower is 14.0 away, so the Cannon is always
-    // the nearest building and only sight can refuse it. 10.0 is outside the
-    // Hog's 9.5. The gate uses footprint distance, so a Cannon (radius 1.0) is
-    // refused past 10.5 centre.
-    REQUIRE(driftAt(15, 20.0f, 11.0f) == Catch::Approx(0.0f).margin(0.05f));
-    REQUIRE(driftAt(15, 20.0f, 9.0f) < -0.3f);
+    // the nearest building and only sight can refuse it. The Battle Ram
+    // publishes no sight clip, so its 6.5 is a plain disc. The gate uses
+    // footprint distance, so a Cannon (radius 1.0) is refused past 7.5 centre.
+    REQUIRE(driftAt(81, 20.0f, 8.0f) > -0.05f);   // never towards the Cannon
+    REQUIRE(driftAt(81, 20.0f, 7.0f) < -0.3f);
+}
+
+TEST_CASE("a published sight clip cuts the sideways reach of a building-targeter",
+          "[targeting][sight][sight_clip]") {
+    // SightClips.h: Hog Rider 9.5 sight, side clip 4.0, so a building pulls it
+    // from at most 5.5 to the side (footprint; 6.5 centre for a Cannon). The
+    // Giant's 7.5 with a 2.0 clip gives the same 5.5.
+    const int card = GENERATE(15, 2);
+    INFO("card id " << card);
+    REQUIRE(driftAt(card, 20.0f, 7.0f) > -0.05f);    // never towards the Cannon
+    REQUIRE(driftAt(card, 20.0f, 6.0f) < -0.1f);
 }
 
 TEST_CASE("sight is never shorter than the unit's own attack reach",

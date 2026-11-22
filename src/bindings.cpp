@@ -70,6 +70,12 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     d["attack_range"] = s.attackRange;
     d["min_attack_range"] = s.minAttackRange;
     d["sight_range"] = s.sightRange;
+    // Published sight clip (SightClips.h); 0 = not clipped.
+    {
+        const SightClips::Row* clipRow = SightClips::find(s.name);
+        d["sight_clip"] = clipRow ? clipRow->clip : 0.0f;
+        d["sight_clip_side"] = clipRow ? clipRow->clipSide : 0.0f;
+    }
     d["deploy_ticks"] = s.deployTicks;
     d["count"] = static_cast<int>(s.spawnOffsets.size());
     py::list offs;
