@@ -193,6 +193,20 @@ public:
 
     bool isCharging() const { return chargeThreshold > 0.0f && chargeProgress >= chargeThreshold; }
 
+    // A knockback (The Log, Fireball, Giant Snowball, Rocket) stops a charge:
+    // the distance run so far is lost and the troop must run chargeThreshold
+    // tiles again before its next hit is a charged one. Published for The Log
+    // against Prince and Dark Prince; the same rule is applied to every
+    // knockback and every charging card. Two exceptions already in the
+    // engine are kept: a charge that has stuck (Evolved Battle Ram) stays,
+    // and a dash that is past the point of immunity (Bandit) is not stopped
+    // by a spell that could not hurt it.
+    void onKnockedBack() override {
+        if (chargeThreshold <= 0.0f || chargeHasStuck) return;
+        if (chargeGrantsInvulnerability && chargeProgress >= chargeThreshold * 0.5f) return;
+        chargeProgress = 0.0f;
+    }
+
     // Sticky charge (Evolved Battle Ram): once reached, the charge bonus
     // applies to every hit for the rest of its life. chargeHasStuck is
     // internal.

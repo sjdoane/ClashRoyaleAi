@@ -406,6 +406,118 @@ untouched; everything is in `web/lab/`, `tools/lab/` and `tools/promo/cdp.py`.
   `<meta name="lab-build">`, and the footer shows "Build abc1234." -- the way
   to confirm a deploy replaced the old page.
 
+## 2026-11-21: thrown spells fly from the King Tower (patch 0030)
+
+**Fireball, Arrows, Rocket, Giant Snowball and Goblin Barrel now take a time
+that depends on where they are aimed.** Each was a fixed fuse (Goblin Barrel 8
+ticks, Fireball ~11) from any distance. The real cards are thrown from the
+caster's King Tower, so `spawnSpell` now sets the fuse from the distance.
+
+| | published speed | real tiles/s | ticks to the enemy Princess Tower | was |
+|---|---|---|---|---|
+| Goblin Barrel (109; evolution 132) | 400 | 8.33 | 28 | 8 |
+| Fireball (7) | 600 | 12.5 | 19 | 11 |
+| Rocket (30) | 350 | 7.29 | 32 | fixed |
+| Giant Snowball (100; evolution 158) | 800 | 16.7 | 14 | fixed |
+| Arrows (3) | 1100 | 22.9 | 10 | fixed |
+
+**The divisor is 48, not 60, and it is measured.** A thrown projectile covers
+published speed / 48 real tiles per second: eight Goblin Barrels recorded
+frame by frame flew King Tower to Princess Tower (23.2 real tiles) in
+2.72-2.81 s, which is 8.41 tiles/s (400/48 = 8.33; "60 = 1 tile/s" predicts
+3.48 s). Fireball (7 throws, 12.3 tiles/s), Rocket (2) and Giant Snowball (1)
+fit the same divisor within 7%. Arrows was not measured; it takes the same rule
+on its published 1100. The Log's ROLL is a different motion and does follow
+/60 (see the rolling-spell note below); do not "unify" the two.
+
+How it is built, so nobody re-derives it:
+
+- `CardStats::spellProjectileSpeed` (0 = not thrown), set in the registry with
+  `.withThrownFromKingTower(publishedSpeed)`. `thrownSpellFlightTicks(stats, x,
+  y, team)` in `CardFactories.h` is the one place the rule lives.
+- Distance is measured on the REAL 32-row arena: `ArenaLayout::realRow(y)`
+  squeezes out the engine's two extra rows (14 and 19), so a throw across the
+  river is not charged for rows the real board lacks. Launch point is
+  `(CENTER_X, kingY(team))`. Minimum 1 tick. No randomness.
+- `withSpellDelay` on these five cards is now ignored (the registry keeps it as
+  the fallback); every other spell (The Log, Barbarian Barrel, Zap, Lightning,
+  Poison, Earthquake, Tornado, Freeze, Rage, Graveyard, Royal Delivery, ...)
+  keeps its fixed delay.
+- **A spell in the air is in no observation channel.** Read it with
+  `env.get_pending_spells()`: one dict per spell that has not landed yet, with
+  `team`, `card_id`, `x`, `y`, `ticks_to_impact` (1 = the next step lands it)
+  and `thrown`. `clash_royale_env.spell_flight_ticks(card_id, x, y, team=0,
+  evolved=False)` answers "how long would this take" without casting, and
+  `get_card_stats(id)["base"]["spell_projectile_speed"]` exposes the speed.
+- Tests: `tests/core/test_card_factories.cpp` (`[flight]`),
+  `tests/core/test_arena_layout.cpp` (`[real_row]`),
+  `python_ai/tests/test_thrown_spell_flight.py`.
+
+**GAMEPLAY-AFFECTING, and Fireball is in `DEFAULT_DECK`.** A Goblin Barrel on
+a Princess Tower lands 2.8 s after the cast instead of 0.8 s and its Goblins
+first stab at 4.4 s instead of 2.4 s, so answers that were too late now work
+(a Log 2.0-2.6 s after the throw on the tile in front of the tower) and an
+instant Fireball on the landing tile now lands BEFORE the Goblins and misses.
+A Fireball on our own side lands sooner than before (5 ticks on our own
+Princess Tower), one across the board later. Every win rate earned before this
+date describes different spell timing. Checkpoints still load — the
+observation and the action space did not move.
+
+## 2026-11-21: a knockback stops a charge (patch 0031)
+
+A Prince hit by The Log kept his charge: `chargeProgress` was only ever
+cleared by landing a hit, so his first swing on the tower was the doubled one
+(782) whether or not he had been knocked back. The real Log resets the charge
+of Prince and Dark Prince (published). Now `pushAway` and `pushAlong` call
+`Entity::onKnockedBack()`, and `CombatEntity` drops a charge that was building
+or held. Two existing rules are kept: a charge that has stuck (Evolved Battle
+Ram) stays, and a dash past its point of immunity (Bandit) is not stopped.
+
+- It applies to EVERY knockback (The Log, Fireball, Giant Snowball, Rocket)
+  and EVERY charging card (Prince, Dark Prince, Battle Ram, Ram Rider, ...).
+  Only The Log on Prince / Dark Prince is published; the rest is the same rule
+  applied uniformly, not separately sourced.
+- A pull (`pullToward`: Tornado, hooks) does NOT reset. Stuns and freezes do
+  not reset either; in the real game they do. Not changed here.
+- Measured through the bindings: Prince injected at (3, 16) against our left
+  Princess Tower, Log at (3, 8) cast 15-25 ticks later: first hit 391 instead
+  of 782. A Log cast at tick 10 knocks him back far enough to run three tiles
+  again and he still lands 782, as he should.
+- Tests: `tests/entities/test_combat_entity.cpp` (`[charge][knockback]`),
+  `python_ai/tests/test_knockback_resets_charge.py`.
+
+**GAMEPLAY-AFFECTING** for any deck with a charging card on either side;
+none is in `DEFAULT_DECK`, but The Log and Fireball are, and they are now
+worth more against those cards. Checkpoints still load.
+
+## 2026-11-21: a roller is a body, not a live corridor (patch 0033)
+
+`AreaSpell::updateRoll` hit every unit anywhere in the corridor BEHIND the
+leading edge for the whole 3 s roll, so anything that arrived after the Log had
+gone by was still rolled over. With the real Goblin Barrel flight of patch 0030
+that made every early Log work: one cast on the same tick as the throw killed
+Goblins that landed 2 s after it had passed. The real Log is a projectile 1.2
+tiles long (published `projectile_radius_y` 600 each way, the same for the
+Barbarian Barrel).
+
+- `AreaSpell::rollBodyDepth` / `CardStats::spellRollBodyDepth`
+  (`.withRollBodyDepth(1.2f)` on The Log 33, Barbarian Barrel 101, Hero
+  Barbarian Barrel 174); a unit is skipped once it is wholly behind the
+  trailing edge. 0, the default, keeps the old whole-corridor rule, so a
+  roller built by hand in a test behaves as before.
+- `position` is still the LEADING edge and the 10.1 / 4.5 reach is unchanged.
+  Whether the published range is to the body's centre (reach 0.6 longer) is
+  not known and not changed.
+- Exposed as `get_card_stats(id)["base"]["roll_body_depth"]`.
+- Tests: `tests/entities/test_area_spell.cpp` (`[roll][body]`),
+  `python_ai/tests/test_log_rolls_past.py`.
+
+**GAMEPLAY-AFFECTING, and The Log is in `DEFAULT_DECK`.** A Log now has to
+arrive while its target is there. Against a Goblin Barrel on a Princess Tower
+the cast window has a start as well as an end (see the sweep in the patch-0030
+report); against troops already walking in the lane nothing changes.
+Checkpoints still load.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
@@ -1376,7 +1488,7 @@ advancing every tick and damaging each target **at most once**.
 
 | | width | range | speed | knockback |
 |---|---|---|---|---|
-| The Log (33) | 3.9 | 10.1 | 0.34 tiles/tick (measured) | 0.8 |
+| The Log (33) | 3.9 | 10.1 | 0.34 tiles/tick (measured) | 0.7 (published; 0.8 until patch 0032, 2026-11-21) |
 | Barbarian Barrel (101, 174) | 2.6 | 4.5 | 0.5 tiles/tick | none |
 
 **The Log's speed is measured, not guessed** (UPSTREAM_REQUESTS.md item 43). It

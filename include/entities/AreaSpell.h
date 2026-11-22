@@ -91,6 +91,19 @@ public:
     // 2026 notes): with every point on the ring, a Graveyard centred on a
     // defended tower never connected. 0 spawns every body at the cast point.
     float spawnRingRadius = 0.0f;
+
+    // Thrown from the caster's King Tower (CardStats::spellProjectileSpeed):
+    // the fuse is then a flight, which the opponent can see. Set by
+    // CardFactories::spawnSpell.
+    bool thrown = false;
+    // False until the first application (or, for a roller, the first tick of
+    // the roll): the spell is still on its fuse and has touched nothing.
+    bool landed = false;
+    // Updates left before the first application, -1 once it has happened. A
+    // spell reading n here applies on the n-th update from now, so n more
+    // ticks of the match. Read-only view for ClashEnv::getPendingSpells.
+    int ticksToImpact() const { return landed ? -1 : delayTicks + 1; }
+
     AreaSpell(int id, float x, float y, int team, float radius, int damage, int delayTicks, char symbol = '*',
         std::shared_ptr<IOnHitEffect> onHit = nullptr, bool groundOnly = false,
         int remainingHits = 1, int tickInterval = 0,
@@ -126,6 +139,11 @@ public:
     float rollWidth = 0.0f;   // FULL width, not a radius
     float rollSpeed = 0.0f;   // tiles per tick
     float rollKnockback = 0.0f;
+    // Length of the rolling body along the roll, behind its leading edge. The
+    // body is what hits: a unit that arrives in the corridor after the body
+    // has passed (Goblins landing from a Barrel behind an early Log) is not
+    // touched. 0 keeps the whole swept corridor live for the whole roll.
+    float rollBodyDepth = 0.0f;
     float rollTravelled = 0.0f;
     int rollDirY = 0;         // +1 for team 0, -1 for team 1
     Vector2D rollOrigin{0.0f, 0.0f};
@@ -148,6 +166,7 @@ public:
             delayTicks--;
             return;
         }
+        landed = true;
         if (isRolling()) {
             updateRoll(board);
             return;
@@ -302,6 +321,8 @@ private:
             // edge (9.00 away) but never its centre (10.50); pinned in
             // tests/entities/test_area_spell.cpp.
             if (dy - r > rollTravelled) continue;
+            // Already behind the body's trailing edge: the roll has gone by.
+            if (rollBodyDepth > 0.0f && dy + r < rollTravelled - rollBodyDepth) continue;
 
             sweptIds.push_back(entity->id);
 

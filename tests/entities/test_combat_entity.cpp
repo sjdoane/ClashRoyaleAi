@@ -1,6 +1,7 @@
 #include <catch_amalgamated.hpp>
 #include "test_helpers.h"
 #include "MeleeTroop.h"
+#include "AreaSpell.h"
 #include "CappedSpawnOnHitEffect.h"
 #include "PoisonOnHit.h"
 #include "Building.h"
@@ -883,6 +884,117 @@ TEST_CASE("chargeIsSticky keeps every subsequent hit charged instead of resettin
 
     attacker->update(board); // and again, indefinitely ("constantly ramming")
     REQUIRE(target->hp == 10000 - 200 - 200 - 200);
+}
+
+// --- a knockback stops a charge (The Log on a Prince) ---
+
+namespace {
+// A charger one tick's run (4.0 tiles, past the 3.0 threshold) from being in
+// reach of a 10000-hp target at (0, 5): after one update it stands at (0, 4),
+// charged, with the hit still to come.
+std::shared_ptr<MeleeTroop> chargedAttacker(Board& board, std::shared_ptr<DummyEntity>& target) {
+    target = std::make_shared<DummyEntity>(1, 0.0f, 5.0f, 10000, 1);
+    spawn(board, target);
+    auto attacker = std::make_shared<MeleeTroop>(2, 0.0f, 0.0f, 100, 0, 4.0f, 1.0f, 100, 10, 'p');
+    attacker->setIgnoresRiver(true);
+    attacker->chargeThreshold = 3.0f;
+    attacker->chargeMultiplier = 2.0f;
+    spawn(board, attacker);                  // on the board, so a spell finds it
+    attacker->update(board);
+    REQUIRE(attacker->isCharging());
+    REQUIRE(target->hp == 10000);
+    return attacker;
+}
+}
+
+TEST_CASE("A knockback throws away the charge a troop had built", "[combat_entity][charge][knockback]") {
+    SECTION("a push along a direction, as from a rolling Log") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        pushAlong(*attacker, 0.0f, -1.0f, 0.5f); // back to (0, 3.5), still in reach
+        REQUIRE(attacker->chargeProgress == 0.0f);
+        REQUIRE_FALSE(attacker->isCharging());
+        attacker->update(board);
+        REQUIRE(target->hp == 10000 - 100); // a plain hit, not the doubled one
+    }
+    SECTION("a push away from a point, as from a Fireball") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        // An enemy spell just behind the target's side of the attacker: 10
+        // damage and 0.5 tiles of knockback, thrown straight back.
+        AreaSpell spell(3, 0.0f, 4.3f, 1, 2.5f, 10, 0, '*', nullptr, false, 1, 0, false, 1.0f, 0, 0.5f);
+        spell.update(board);
+        REQUIRE(attacker->hp == 90);
+        REQUIRE(attacker->position.y == Catch::Approx(3.5f));
+        REQUIRE(attacker->chargeProgress == 0.0f);
+        attacker->update(board);
+        REQUIRE(target->hp == 10000 - 100);
+    }
+    SECTION("without the knockback the same hit is the charged one") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        attacker->update(board);
+        REQUIRE(target->hp == 10000 - 200);
+    }
+}
+
+TEST_CASE("A knocked-back charger has to run the whole distance again", "[combat_entity][charge][knockback]") {
+    Board board;
+    auto target = std::make_shared<DummyEntity>(1, 0.0f, 12.0f, 10000, 1);
+    spawn(board, target);
+    auto attacker = std::make_shared<MeleeTroop>(2, 0.0f, 0.0f, 100, 0, 1.0f, 1.0f, 100, 10, 'p');
+    attacker->setIgnoresRiver(true);
+    attacker->chargeThreshold = 3.0f;
+    attacker->chargeMultiplier = 2.0f;
+    attacker->sightRange = 20.0f;                          // sees the target from the start
+
+    for (int i = 0; i < 2; ++i) attacker->update(board);   // 2.0 of the 3.0 run
+    REQUIRE(attacker->chargeProgress == Catch::Approx(2.0f));
+    pushAlong(*attacker, 0.0f, -1.0f, 0.8f);
+    REQUIRE(attacker->chargeProgress == 0.0f);
+    for (int i = 0; i < 2; ++i) attacker->update(board);
+    REQUIRE_FALSE(attacker->isCharging());                 // 2.0 again, not 4.0
+    for (int i = 0; i < 2; ++i) attacker->update(board);
+    REQUIRE(attacker->isCharging());                       // 4.0 since the knock
+}
+
+TEST_CASE("A pull does not stop a charge, and a knockback leaves a stuck charge and an immune dash alone",
+          "[combat_entity][charge][knockback]") {
+    SECTION("a pull toward a point (Tornado, a hook) is not a knockback") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        pullToward(*attacker, Vector2D{ 0.0f, 0.0f }, 0.5f);
+        REQUIRE(attacker->isCharging());
+    }
+    SECTION("a charge that has stuck (Evolved Battle Ram) stays") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        attacker->chargeIsSticky = true;
+        attacker->update(board);                 // charged hit: the charge sticks
+        REQUIRE(target->hp == 10000 - 200);
+        REQUIRE(attacker->chargeHasStuck);
+        pushAlong(*attacker, 0.0f, -1.0f, 0.5f);
+        REQUIRE(attacker->isCharging());
+    }
+    SECTION("a dash past the point of immunity (Bandit) is not stopped") {
+        Board board;
+        std::shared_ptr<DummyEntity> target;
+        auto attacker = chargedAttacker(board, target);
+        attacker->chargeGrantsInvulnerability = true;
+        pushAlong(*attacker, 0.0f, -1.0f, 0.5f);
+        REQUIRE(attacker->isCharging());
+    }
+    SECTION("a troop with no charge is only moved") {
+        MeleeTroop plain(2, 0.0f, 0.0f, 100, 0, 1.0f, 1.0f, 100, 10, 'p');
+        pushAway(plain, Vector2D{ 0.0f, 1.0f }, 0.5f);
+        REQUIRE(plain.position.y == Catch::Approx(-0.5f));
+        REQUIRE(plain.chargeProgress == 0.0f);
+    }
 }
 
 TEST_CASE("A card without charge configured (chargeThreshold 0, the default) never deals bonus damage", "[combat_entity][charge]") {

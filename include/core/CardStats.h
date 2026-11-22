@@ -88,6 +88,12 @@ struct CardStats {
     // Barrel) opt in; most spells hit air and ground.
     float spellRadius = 0.0f;
     int spellDelayTicks = 0;
+    // Thrown spells (Fireball, Goblin Barrel, Rocket, Arrows, Giant Snowball):
+    // the published projectile speed. The spell leaves the caster's King Tower
+    // and lands after a flight that grows with the distance, replacing
+    // spellDelayTicks (CardFactories::thrownSpellFlightTicks). 0 = not thrown:
+    // the effect starts spellDelayTicks after the cast wherever it is cast.
+    int spellProjectileSpeed = 0;
     bool spellGroundOnly = false;
     // Multi-hit spells (Poison, Arrows); see AreaSpell::remainingHits.
     int spellRemainingHits = 1;
@@ -127,6 +133,9 @@ struct CardStats {
     float spellRollWidth = 0.0f;
     float spellRollSpeed = 0.0f;
     float spellRollKnockback = 0.0f;
+    // Length of the rolling body behind its leading edge (AreaSpell::
+    // rollBodyDepth); 0 = the whole swept corridor stays live.
+    float spellRollBodyDepth = 0.0f;
 
     // Spell-spawns-troops (Goblin Barrel, Royal Delivery, Graveyard); see
     // AreaSpell::spawnOnDetonate.
@@ -561,8 +570,20 @@ struct CardStats {
         spellRollKnockback = knockback;
         return *this;
     }
+    // The roller is a body `depth` tiles long, not a corridor that stays live
+    // behind it (published projectile_radius_y, doubled).
+    CardStats& withRollBodyDepth(float depth) {
+        spellRollBodyDepth = depth;
+        return *this;
+    }
     CardStats& withSpellSpawn(std::shared_ptr<IPeriodicEffect> effect) {
         spellSpawnEffect = std::move(effect);
+        return *this;
+    }
+    // publishedSpeed is the game-data projectile speed (Fireball 600), not
+    // tiles per tick; see spellProjectileSpeed.
+    CardStats& withThrownFromKingTower(int publishedSpeed) {
+        spellProjectileSpeed = publishedSpeed;
         return *this;
     }
     CardStats& withSecondaryUnit(CardStats unit) {

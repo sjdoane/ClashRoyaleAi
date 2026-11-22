@@ -467,6 +467,7 @@ TEST_CASE("The Log rolls at the measured 0.34 tiles/tick and still reaches the t
     const auto& stats = *CardRegistry::getInstance().getCard(33)->stats;
     REQUIRE(stats.spellRollSpeed == Catch::Approx(0.34f));
     REQUIRE(stats.spellRollRange == Catch::Approx(10.1f));
+    REQUIRE(stats.spellRollKnockback == Catch::Approx(0.7f)); // published pushback, 700
 
     const float towerY = ArenaLayout::princessY(1);
     Board board;
@@ -483,6 +484,44 @@ TEST_CASE("The Log rolls at the measured 0.34 tiles/tick and still reaches the t
     REQUIRE(tower->hp == 2534 - 269);     // reached, once
     for (int i = 0; i < 10; ++i) log.update(board);
     REQUIRE_FALSE(log.isAlive());         // the 10.1 roll ends at ~30 ticks
+}
+
+TEST_CASE("a rolling body hits what is under it, not what arrives after it has passed", "[area_spell][roll][body]") {
+    // The Log is a body 1.2 tiles long. Goblins that land from a Barrel in the
+    // corridor behind it are not rolled over; with no depth configured the
+    // whole swept corridor stays live, as every roller was before.
+    for (const float depth : { 1.2f, 0.0f }) {
+        Board board;
+        AreaSpell log = makeRoller(1, 9.0f, 10.0f, 0, 200, 10.0f, 3.9f, 1.0f, 0.0f);
+        log.rollBodyDepth = depth;
+        for (int i = 0; i < 5; ++i) log.update(board);     // leading edge at y 15, trailing at 13.8
+        REQUIRE(log.position.y == Catch::Approx(15.0f));
+
+        auto behind = std::make_shared<DummyEntity>(2, 9.0f, 12.0f, 1000, 1);
+        auto under = std::make_shared<DummyEntity>(3, 9.0f, 14.5f, 1000, 1);
+        auto ahead = std::make_shared<DummyEntity>(4, 9.0f, 18.0f, 1000, 1);
+        spawn(board, behind);
+        spawn(board, under);
+        spawn(board, ahead);
+        for (int i = 0; i < 5; ++i) log.update(board);
+
+        REQUIRE(under->hp == 800);
+        REQUIRE(ahead->hp == 800);
+        REQUIRE(behind->hp == (depth > 0.0f ? 1000 : 800));
+    }
+}
+
+TEST_CASE("The Log and the Barbarian Barrels roll as a 1.2-tile body", "[area_spell][roll][body][registry]") {
+    // Published projectile_radius_y 600 for both rolling projectiles.
+    for (int id : { 33, 101, 174 }) {
+        REQUIRE(CardRegistry::getInstance().getCard(id)->stats->spellRollBodyDepth == Catch::Approx(1.2f));
+    }
+    Board board;
+    CardFactories::spawnSpell(*CardRegistry::getInstance().getCard(33)->stats, 9.0f, 10.0f, 0, board);
+    REQUIRE(board.pendingEntityCount() == 1);
+    auto log = std::dynamic_pointer_cast<AreaSpell>(board.getPendingEntity(0));
+    REQUIRE(log);
+    REQUIRE(log->rollBodyDepth == Catch::Approx(1.2f));
 }
 
 TEST_CASE("The Log throws edge-caught units SIDEWAYS and centred ones FORWARD", "[area_spell][roll][knockback]") {

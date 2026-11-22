@@ -160,3 +160,26 @@ TEST_CASE("isOnBridge reproduces the real river row WWBBWWWWWWWWWWBBWW",
     INFO("engine row: " << row);
     REQUIRE(row == "WWBBWWWWWWWWWWBBWW");
 }
+
+TEST_CASE("realRow squeezes out the two rows the real 32-row arena lacks", "[arena_layout][real_row]") {
+    // Identity on a team's own half up to row 13, engine 15-18 are real 14-17,
+    // engine 20 and up are real 18 and up (live_ppo/tile_map.py, "tower").
+    REQUIRE(ArenaLayout::realRow(0.0f) == Catch::Approx(0.0f));
+    REQUIRE(ArenaLayout::realRow(13.0f) == Catch::Approx(13.0f));
+    REQUIRE(ArenaLayout::realRow(15.0f) == Catch::Approx(14.0f));
+    REQUIRE(ArenaLayout::realRow(18.0f) == Catch::Approx(17.0f));
+    REQUIRE(ArenaLayout::realRow(20.0f) == Catch::Approx(18.0f));
+    REQUIRE(ArenaLayout::realRow(33.0f) == Catch::Approx(31.0f));
+    // Continuous and never decreasing, and the same from either end.
+    float previous = ArenaLayout::realRow(0.0f);
+    for (float y = 0.25f; y <= 33.0f; y += 0.25f) {
+        const float row = ArenaLayout::realRow(y);
+        REQUIRE(row >= previous);
+        REQUIRE(row - previous <= 0.25f + 1e-4f);
+        REQUIRE(ArenaLayout::realRow(ArenaLayout::mirrorY(y)) == Catch::Approx(31.0f - row).margin(1e-4));
+        previous = row;
+    }
+    // The real King-to-enemy-Princess line: 5.5 across, 22.5 along.
+    REQUIRE(ArenaLayout::realRow(ArenaLayout::princessY(1)) - ArenaLayout::realRow(ArenaLayout::kingY(0))
+            == Catch::Approx(22.5f));
+}

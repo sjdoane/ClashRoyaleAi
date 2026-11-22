@@ -85,6 +85,9 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     // Spells.
     d["spell_radius"] = s.spellRadius;
     d["spell_delay_ticks"] = s.spellDelayTicks;
+    // 0 = not thrown: spell_delay_ticks applies. Otherwise the published
+    // projectile speed, and the delay is spell_flight_ticks(card, x, y, team).
+    d["spell_projectile_speed"] = s.spellProjectileSpeed;
     d["spell_hits"] = s.spellRemainingHits;
     d["spell_tick_interval"] = s.spellTickInterval;
     d["spell_knockback"] = s.spellKnockback;
@@ -94,6 +97,7 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     d["roll_width"] = s.spellRollWidth;
     d["roll_speed"] = s.spellRollSpeed;
     d["roll_knockback"] = s.spellRollKnockback;
+    d["roll_body_depth"] = s.spellRollBodyDepth;
     // Deploy burst.
     d["spawn_effect_radius"] = s.spawnEffectRadius;
     d["spawn_effect_damage"] = s.spawnEffectDamage;
@@ -412,6 +416,27 @@ PYBIND11_MODULE(clash_royale_env, m) {
         // Clamped to [0, max_ticks]; sets both engine clocks.
         .def("set_current_tick", &ClashEnv::setCurrentTick, py::arg("tick"))
         .def("get_current_tick", &ClashEnv::getCurrentTick)
+        .def("get_pending_spells", [](const ClashEnv& env) {
+                py::list out;
+                for (const auto& p : env.getPendingSpells()) {
+                    py::dict d;
+                    d["team"] = p.team;
+                    d["card_id"] = p.cardId;
+                    d["x"] = p.x;
+                    d["y"] = p.y;
+                    d["ticks_to_impact"] = p.ticksToImpact;
+                    d["thrown"] = p.thrown;
+                    out.append(d);
+                }
+                return out;
+             },
+             "Spells cast but not yet applied, either team's: a list of dicts "
+             "{team, card_id, x, y, ticks_to_impact, thrown}. x / y are the "
+             "target in board coordinates (team 0's frame); ticks_to_impact is "
+             "the number of further ticks until the first application; thrown "
+             "marks a projectile from the caster's King Tower, whose flight "
+             "depends on the distance (spell_flight_ticks). Read-only; these "
+             "spells are in no observation channel.")
         // The elixir phase (1.0 / 2.0 / 3.0) now.
         .def("get_elixir_multiplier", &ClashEnv::getElixirMultiplier)
         // Card-cycle tracking (item 24). `inject` bypasses playCard, where the
@@ -535,6 +560,19 @@ PYBIND11_MODULE(clash_royale_env, m) {
     // {"base": stats, "evolved": stats | None, "evolution_cycle_threshold",
     //  "evolved_uses", "units": {...}}. Units: ticks (10/s), tiles; speeds in
     // engine tiles/tick plus the wiki tier number they came from.
+    m.def("spell_flight_ticks", [](int cardId, float x, float y, int team, bool evolved) {
+            const CardDefinition* def = CardRegistry::getInstance().getCard(cardId);
+            if (!def || !def->stats || !def->isSpell) {
+                throw std::invalid_argument("spell_flight_ticks: not a spell card id " + std::to_string(cardId));
+            }
+            const CardStats& stats = (evolved && def->evolvedStats) ? *def->evolvedStats : *def->stats;
+            return CardFactories::thrownSpellFlightTicks(stats, x, y, team);
+        }, py::arg("card_id"), py::arg("x"), py::arg("y"), py::arg("team") = 0, py::arg("evolved") = false,
+        "Ticks from casting this spell at board point (x, y) (team 0's frame) "
+        "to its first application. Thrown spells fly from `team`'s King Tower, "
+        "so the answer grows with the distance; every other spell returns its "
+        "fixed spell_delay_ticks.");
+
     m.def("get_card_stats", [](int cardId) {
         const CardDefinition* def = CardRegistry::getInstance().getCard(cardId);
         if (!def || !def->stats) {

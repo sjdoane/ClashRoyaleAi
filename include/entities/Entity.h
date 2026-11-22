@@ -128,6 +128,11 @@ public:
         const std::unordered_map<int, std::shared_ptr<Entity>>& byOldId) {
         (void)byOldId;
     }
+
+    // Called by pushAway / pushAlong after they have moved this entity: a
+    // knockback is an interruption, not just a displacement (CombatEntity
+    // drops a charge that was building).
+    virtual void onKnockedBack() {}
 };
 
 // Repositioning helpers shared by every pull and push (hooks, Tornado,
@@ -136,6 +141,8 @@ public:
 //
 // All of them are no-ops on a building, enforced here once rather than at each
 // call site. Nothing may move an entity by writing `position` directly.
+// The two pushes (pushAway, pushAlong) also tell the entity it was knocked back
+// (Entity::onKnockedBack); the pulls and the lane mirror do not.
 inline bool exemptFromForcedMovement(const Entity& entity) {
     return entity.isBuilding();
 }
@@ -171,6 +178,7 @@ inline void pushAway(Entity& entity, const Vector2D& point, float distance) {
     if (dist <= 0.01f) return; // coincident: no direction
     entity.position.x += (entity.position.x - point.x) / dist * distance;
     entity.position.y += (entity.position.y - point.y) / dist * distance;
+    entity.onKnockedBack();
 }
 
 // Moves `entity` `distance` tiles along an explicit direction, with the same
@@ -184,4 +192,5 @@ inline void pushAlong(Entity& entity, float dirX, float dirY, float distance) {
     if (len <= 0.0001f) return; // no direction
     entity.position.x += dirX / len * distance;
     entity.position.y += dirY / len * distance;
+    entity.onKnockedBack();
 }

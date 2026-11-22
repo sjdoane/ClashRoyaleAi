@@ -231,9 +231,14 @@ TEST_CASE("two snapshots given different actions diverge from each other", "[gam
     GameManager withPlay = position.snapshot();
     GameManager withoutPlay = position.snapshot();
 
+    // A body, not the deck's Fireball: thrown 2.5 tiles from its own King
+    // Tower a Fireball lands within two ticks and leaves nothing on the board
+    // to tell the branches apart for the rest of the horizon.
     bool played = false;
     for (int slot = 0; slot < 4 && !played; ++slot) {
-        played = withPlay.playCard(0, withPlay.getHand(0)[slot], 9.0f, 5.0f);
+        const int card = withPlay.getHand(0)[slot];
+        if (CardRegistry::getInstance().getCard(card)->isSpell) continue;
+        played = withPlay.playCard(0, card, 9.0f, 5.0f);
     }
     REQUIRE(played);
 

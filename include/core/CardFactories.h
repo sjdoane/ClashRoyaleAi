@@ -10,6 +10,7 @@
 #include "AreaSpell.h"
 #include "ArenaLayout.h"
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 // One factory per Archetype (CardStats.h). Nothing here is specific to a card.
@@ -227,9 +228,44 @@ inline void spawnDefensiveBuilding(const CardStats& stats, float x, float y, int
     spawnDeployEffect(stats, x, y, team, board);
 }
 
+// Thrown spells: published projectile speed N flies N / 48 real tiles per
+// second, not the N / 60 of the usual reading ("Medium 60 = 1 tile/s").
+// Measured frame by frame on spells leaving a King Tower (launch = first frame
+// the projectile shows on the tower, landing = first frame of the burst):
+//   Goblin Barrel (400): 8 flights onto a Princess Tower, 23.2 tiles, 2.72 to
+//     2.81 s (mean 2.76; /60 predicts 3.48), and one onto the King Tower,
+//     26 tiles, 3.28 s.
+//   Fireball (600): 7 flights of 6.9 to 27 tiles in 0.57 to 2.02 s; a line
+//     through the origin fits at 12.3 tiles/s (/60 predicts 10).
+//   Rocket (350): 15.3 tiles in 2.06 s and ~1.97 s (/60 predicts 2.62).
+//   Giant Snowball (800): 23.2 tiles in 1.30 s (/60 predicts 1.74).
+// Published / measured tiles-per-second is 47.6, 48.8, 46.5 and 45; 48 is
+// within the measurement error of each. The Log's roll is not part of this:
+// it does follow /60 (CardRegistry.h, The Log).
+inline constexpr float THROWN_SPEED_PER_TILE_PER_SECOND = 48.0f;
+inline constexpr float SPELL_TICKS_PER_SECOND = 10.0f;
+
+// Ticks from the cast to the first application of a spell cast by `team` at
+// (x, y). A thrown spell (CardStats::spellProjectileSpeed) leaves the centre of
+// the caster's King Tower -- also when that tower is gone -- and its flight is
+// the straight-line distance in real-arena tiles (ArenaLayout::realRow) over
+// its speed, rounded to the nearest tick and never under one. Every other
+// spell keeps its fixed spellDelayTicks. A pure function of the card and the
+// two points: no board state, no randomness.
+inline int thrownSpellFlightTicks(const CardStats& stats, float x, float y, int team) {
+    if (stats.spellProjectileSpeed <= 0) return stats.spellDelayTicks;
+    const float dx = x - ArenaLayout::CENTER_X;
+    const float dy = ArenaLayout::realRow(y) - ArenaLayout::realRow(ArenaLayout::kingY(team));
+    const float tiles = std::sqrt(dx * dx + dy * dy);
+    const float tilesPerTick = static_cast<float>(stats.spellProjectileSpeed)
+        / (THROWN_SPEED_PER_TILE_PER_SECOND * SPELL_TICKS_PER_SECOND);
+    return std::max(1, static_cast<int>(std::lround(tiles / tilesPerTick)));
+}
+
 inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board& board) {
     auto spell = std::make_shared<AreaSpell>(
-        board.allocateId(), x, y, team, stats.spellRadius, stats.damage, stats.spellDelayTicks, stats.symbol,
+        board.allocateId(), x, y, team, stats.spellRadius, stats.damage,
+        thrownSpellFlightTicks(stats, x, y, team), stats.symbol,
         stats.spellOnHit, stats.spellGroundOnly, stats.spellRemainingHits, stats.spellTickInterval,
         stats.spellBuffsAllies, stats.spellBuffMultiplier, stats.spellBuffDurationTicks, stats.spellKnockback,
         stats.spellSpawnEffect, stats.spellClonesAllies, stats.spellTargetTopHpCount,
@@ -240,12 +276,14 @@ inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board
     // constructor is shared with call sites that have no card behind them.
     spell->crownTowerDamage = stats.spellCrownTowerDamage;
     spell->spawnRingRadius = stats.spellSpawnRingRadius;
+    spell->thrown = stats.spellProjectileSpeed > 0;
     // Rolling spells (The Log, Barbarian Barrel) are configured after
     // construction: configureRoll latches the roll origin from the spawn
     // position, so it must run before the first update.
     if (stats.spellRollRange > 0.0f) {
         spell->configureRoll(stats.spellRollRange, stats.spellRollWidth,
                              stats.spellRollSpeed, stats.spellRollKnockback);
+        spell->rollBodyDepth = stats.spellRollBodyDepth;
     }
     board.addEntity(spell);
 }

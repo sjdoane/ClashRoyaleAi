@@ -1,6 +1,8 @@
 #include <catch_amalgamated.hpp>
 #include "test_helpers.h"
 #include "CardFactories.h"
+#include "CardRegistry.h"
+#include "ArenaLayout.h"
 #include "CardStats.h"
 #include "MeleeTroop.h"
 #include "RangedTroop.h"
@@ -412,4 +414,116 @@ TEST_CASE("ProximityGatedPeriodicSpawnEffect ignores allies when checking for a 
     board.commitPendingEntities();
 
     REQUIRE(board.getEntities().size() == 1); // no spawn -- the nearby unit is an ally, not an enemy
+}
+
+// --- thrown spells: the flight from the King Tower ---
+
+namespace {
+    CardStats makeThrownSpellStats(int publishedSpeed) {
+        CardStats stats;
+        stats.name = "TestThrownSpell";
+        stats.archetype = Archetype::Spell;
+        stats.spellRadius = 2.5f;
+        stats.damage = 500;
+        stats.spellDelayTicks = 10;
+        stats.symbol = 'O';
+        stats.withThrownFromKingTower(publishedSpeed);
+        return stats;
+    }
+}
+
+TEST_CASE("A spell that is not thrown keeps its fixed delay wherever it is cast", "[card_factories][flight]") {
+    CardStats stats = makeThrownSpellStats(0);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(stats, 3.0f, 6.0f, 0) == 10);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(stats, 14.0f, 27.0f, 0) == 10);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(stats, 14.0f, 27.0f, 1) == 10);
+}
+
+TEST_CASE("A thrown spell's flight is the real-arena distance from the caster's King Tower over speed / 48", "[card_factories][flight]") {
+    // Goblin Barrel, published speed 400 = 8.33 tiles/s. King Tower to an
+    // enemy Princess Tower is 23.2 real tiles (5.5 across, 22.5 along): 2.8 s,
+    // against 2.76 s measured over 8 flights. Onto the enemy King Tower (26
+    // tiles) 3.1 s, against 3.28 s measured once.
+    CardStats barrel = makeThrownSpellStats(400);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(barrel, ArenaLayout::LEFT_LANE_X, ArenaLayout::princessY(1), 0) == 28);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(barrel, ArenaLayout::RIGHT_LANE_X, ArenaLayout::princessY(1), 0) == 28);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(barrel, ArenaLayout::CENTER_X, ArenaLayout::kingY(1), 0) == 31);
+
+    // Fireball, published 600 = 12.5 tiles/s: 1.9 s onto that tower, under a
+    // second in defence.
+    CardStats fireball = makeThrownSpellStats(600);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(fireball, ArenaLayout::LEFT_LANE_X, ArenaLayout::princessY(1), 0) == 19);
+    REQUIRE(CardFactories::thrownSpellFlightTicks(fireball, ArenaLayout::LEFT_LANE_X, 10.0f, 0) == 7);
+
+    // Never under one tick, even cast on the King Tower itself.
+    REQUIRE(CardFactories::thrownSpellFlightTicks(fireball, ArenaLayout::CENTER_X, ArenaLayout::kingY(0), 0) == 1);
+}
+
+TEST_CASE("A thrown spell's flight is the same for both teams and never shrinks with distance", "[card_factories][flight]") {
+    CardStats stats = makeThrownSpellStats(400);
+    int previous = 0;
+    for (float y = ArenaLayout::kingY(0); y <= 33.0f; y += 0.5f) {
+        const int ticks = CardFactories::thrownSpellFlightTicks(stats, ArenaLayout::CENTER_X, y, 0);
+        REQUIRE(ticks >= previous);
+        previous = ticks;
+        for (float x : { 0.0f, 3.0f, 8.5f, 14.0f, 17.0f }) {
+            REQUIRE(CardFactories::thrownSpellFlightTicks(stats, x, y, 0)
+                    == CardFactories::thrownSpellFlightTicks(stats, ArenaLayout::mirrorX(x), ArenaLayout::mirrorY(y), 1));
+        }
+    }
+}
+
+TEST_CASE("spawnSpell gives a thrown spell its flight as the fuse and reports it until it lands", "[card_factories][flight]") {
+    Board board;
+    auto enemy = std::make_shared<DummyEntity>(99, ArenaLayout::LEFT_LANE_X, 27.0f, 1000, 1);
+    spawn(board, enemy);
+
+    CardStats stats = makeThrownSpellStats(600);
+    const int flight = CardFactories::thrownSpellFlightTicks(stats, ArenaLayout::LEFT_LANE_X, 27.0f, 0);
+    REQUIRE(flight == 19);
+
+    CardFactories::spawnSpell(stats, ArenaLayout::LEFT_LANE_X, 27.0f, 0, board);
+    board.commitPendingEntities();
+    auto spell = std::dynamic_pointer_cast<AreaSpell>(board.getEntities().back());
+    REQUIRE(spell != nullptr);
+    REQUIRE(spell->thrown);
+
+    // ticksToImpact n: the n-th update from now applies the spell.
+    for (int remaining = flight + 1; remaining > 1; --remaining) {
+        REQUIRE_FALSE(spell->landed);
+        REQUIRE(spell->ticksToImpact() == remaining);
+        spell->update(board);
+        REQUIRE(enemy->hp == 1000);   // still in the air
+    }
+    REQUIRE(spell->ticksToImpact() == 1);
+    spell->update(board);
+    REQUIRE(spell->landed);
+    REQUIRE(spell->ticksToImpact() == -1);
+    REQUIRE(enemy->hp == 500);
+
+    // A copy made mid-flight (Board::deepCopy uses snapshot) resumes the fuse.
+    CardFactories::spawnSpell(stats, ArenaLayout::LEFT_LANE_X, 27.0f, 0, board);
+    board.commitPendingEntities();
+    auto second = std::dynamic_pointer_cast<AreaSpell>(board.getEntities().back());
+    for (int i = 0; i < 5; ++i) second->update(board);
+    auto copy = std::dynamic_pointer_cast<AreaSpell>(second->snapshot());
+    REQUIRE(copy->thrown);
+    REQUIRE(copy->ticksToImpact() == second->ticksToImpact());
+}
+
+TEST_CASE("The registry's thrown spells carry their published projectile speeds", "[card_factories][flight][registry]") {
+    // Fireball 600, Goblin Barrel 400, Rocket 350, Arrows 1100, Giant
+    // Snowball 800 (game data); nothing else is thrown from the King Tower.
+    const auto& registry = CardRegistry::getInstance();
+    REQUIRE(registry.getCard(7)->stats->spellProjectileSpeed == 600);
+    REQUIRE(registry.getCard(109)->stats->spellProjectileSpeed == 400);
+    REQUIRE(registry.getCard(30)->stats->spellProjectileSpeed == 350);
+    REQUIRE(registry.getCard(3)->stats->spellProjectileSpeed == 1100);
+    REQUIRE(registry.getCard(100)->stats->spellProjectileSpeed == 800);
+    // Evolved forms fly like their base card.
+    REQUIRE(registry.getCard(132)->evolvedStats->spellProjectileSpeed == 400);
+    REQUIRE(registry.getCard(158)->evolvedStats->spellProjectileSpeed == 800);
+    for (int id : { 29, 31, 32, 33, 101, 103, 106, 107, 110, 111 }) {
+        REQUIRE(registry.getCard(id)->stats->spellProjectileSpeed == 0);
+    }
 }

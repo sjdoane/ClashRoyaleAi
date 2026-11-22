@@ -939,6 +939,36 @@ public:
     // The matching read.
     int getCurrentTick() const { return currentTick; }
 
+    // --- spells on their fuse ---
+    // A spell between its cast and its first application is on the board but
+    // in no observation channel (it is not targetable). This is the read-only
+    // list of them, either team's: what a player sees as a Goblin Barrel or a
+    // Fireball in the air. x / y are the target point in board coordinates
+    // (team 0's frame, not mirrored); ticksToImpact is how many more ticks
+    // until the first application (AreaSpell::ticksToImpact), so it reads the
+    // full flight after the step that cast the spell and 1 before the step
+    // that lands it; thrown tells a King-Tower projectile from a fixed-delay
+    // spell (Zap, The Log's wind-up, Graveyard's first skeleton).
+    struct PendingSpell {
+        int team;
+        int cardId;
+        float x;
+        float y;
+        int ticksToImpact;
+        bool thrown;
+    };
+    std::vector<PendingSpell> getPendingSpells() const {
+        std::vector<PendingSpell> out;
+        for (const auto& entity : game.getBoard().getEntities()) {
+            if (!entity->isAlive()) continue;
+            const auto* spell = dynamic_cast<const AreaSpell*>(entity.get());
+            if (!spell || spell->landed) continue;
+            out.push_back({ spell->team, spell->cardId, spell->position.x, spell->position.y,
+                            spell->ticksToImpact(), spell->thrown });
+        }
+        return out;
+    }
+
     // The elixir phase in force (1.0 / 2.0 / 3.0), so readers need not know the
     // boundary ticks.
     float getElixirMultiplier() const { return game.getElixirMultiplier(); }

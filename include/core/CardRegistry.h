@@ -694,14 +694,26 @@ private:
             .withDamageRamp(20, 40, 0.05f, 0.1875f).withSightRange(6.0f));
 
         // === Spells ===
-        // Arrows: 3 volleys of 123, not one 369 hit.
-        add(spell(3, "Arrows", 3.0f, 3.5f, 123, 10, '*').withRepeats(3, 2).withCrownTowerDamage(31) /* audit 0003: wiki Arrows, level 11 */);
+        // Thrown spells (withThrownFromKingTower: Arrows, Fireball, Rocket,
+        // Giant Snowball, Goblin Barrel) leave the caster's King Tower and land
+        // after a flight that grows with the distance; the number is the
+        // published projectile speed and CardFactories::thrownSpellFlightTicks
+        // holds the measurements and the conversion. Their delayTicks argument
+        // is no longer read: it is the fixed delay each had before (Fireball
+        // 1.0 s and Goblin Barrel 0.8 s from anywhere; a real Fireball takes
+        // 0.6 s to 2.0 s, a real Barrel 2.8 s to an enemy Princess Tower).
+        // Arrows: 3 volleys of 123, not one 369 hit. The flight is to the
+        // first volley; its speed is published only (not measured here).
+        add(spell(3, "Arrows", 3.0f, 3.5f, 123, 10, '*').withRepeats(3, 2).withCrownTowerDamage(31) /* audit 0003: wiki Arrows, level 11 */
+            .withThrownFromKingTower(1100));
         add(spell(7, "Fireball", 4.0f, 2.5f, 689, 10, 'O')
             .withKnockback(1.0f)
-            .withCrownTowerDamage(159)); // audit 0003: wiki Fireball, level 11 (25% since 1/6/2026)
+            .withCrownTowerDamage(159) // audit 0003: wiki Fireball, level 11 (25% since 1/6/2026)
+            .withThrownFromKingTower(600));
         add(spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withCrownTowerDamage(48) /* audit 0003: wiki Zap, level 11 */);
         add(spell(30, "Rocket", 6.0f, 2.0f, 1485, 15, 'r')
-            .withKnockback(1.0f).withCrownTowerDamage(371) /* audit 0003: wiki Rocket, level 11 */);
+            .withKnockback(1.0f).withCrownTowerDamage(371) /* audit 0003: wiki Rocket, level 11 */
+            .withThrownFromKingTower(350));
         add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j').withCrownTowerDamage(286) /* audit 0003: wiki Lightning, level 11 */);
         // Poison: 92 damage every second for 8 s; whoever stands in it takes
         // each pulse. A Crown Tower takes 21 per pulse (168 in all: official
@@ -720,10 +732,16 @@ private:
         // rolls in 3 videos took 2.96 s median motion start to stop, and the
         // moving-phase slope was 3.47 screen tiles/s (UPSTREAM_REQUESTS.md
         // item 43). It agrees with the published speed 200 read as 60 = 1
-        // tile/s (3.33). Knockback (0.8) is not sourced.
+        // tile/s (3.33). Knockback 0.7 tiles is the published pushback (700; 0.7
+        // tiles since the 7/2/2023 balance update), on the scale that gives
+        // Fireball its 1.0. It was an unsourced 0.8.
+        // The body is 1.2 tiles long (published projectile_radius_y 600, each
+        // way): what lands in the corridor after it has rolled by is not hit,
+        // so a Log cast as a Goblin Barrel is thrown rolls past under it.
         add(spell(33, "The Log", 2.0f, 3.9f, 269, 8, 'o')
             .withGroundOnly()
-            .withRollingSweep(10.1f, 3.9f, 0.34f, 0.8f)
+            .withRollingSweep(10.1f, 3.9f, 0.34f, 0.7f)
+            .withRollBodyDepth(1.2f)
             .withCrownTowerDamage(35)); // audit 0003: wiki The Log, level 11 (13% since 1/6/2026)
 
         // --- the 2026 roster expansion (ids 46+) ---
@@ -1030,7 +1048,8 @@ private:
         // === Spells (expansion) ===
         add(spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
             .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
-            .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */);
+            .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */
+            .withThrownFromKingTower(800));
         // Barbarian Barrel: rolls 4.5 tiles at width 2.6 (published), and its
         // Barbarian spawns where the barrel stops. No knockback: the real
         // barrel does not throw what it rolls over. Cast on its own side only,
@@ -1039,6 +1058,7 @@ private:
             .withGroundOnly()
             .withOwnSideOnly()
             .withRollingSweep(4.5f, 2.6f, 0.5f, 0.0f)
+            .withRollBodyDepth(1.2f) // published projectile_radius_y 600, as The Log
             .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(barbarianBarrelBarbarianStats())) /* audit 0003: wiki Barbarian Barrel, level 11 */);
         // Goblin Curse: only the damage over time is modelled, not the
         // damage-taken amplification or the Goblin on cursed death.
@@ -1069,8 +1089,12 @@ private:
         add(spell(108, "Rage", 2.0f, 3.0f, 0, 8, '(')
             .withSpellBuff(1.35f, 45));
         // Goblin Barrel: drops 3 Goblins; the barrel itself deals no damage.
+        // Thrown from the King Tower at published speed 400: 2.8 s onto an
+        // enemy Princess Tower (measured 2.76 s over 8 flights), where it used
+        // to land 0.8 s after the cast from anywhere.
         add(spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
-            .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats())));
+            .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()))
+            .withThrownFromKingTower(400));
         // Graveyard: 12 Skeletons (official June 2026), the first 2.2 s after
         // the cast (delay 21: an AreaSpell applies on the update after its
         // delay reaches 0), then one every 0.5 s, cycling seven fixed points --
@@ -1299,10 +1323,12 @@ private:
         // approximated as 6 Goblins at one landing point.
         addEvolution(132,
             spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
-                .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats())),
+                .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()))
+                .withThrownFromKingTower(400),
             spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
                 .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()
-                    .withOffsets({ {-0.4f,0.0f},{0.4f,0.0f},{0.0f,0.4f},{-0.4f,0.4f},{0.4f,0.4f},{0.0f,-0.4f} }))),
+                    .withOffsets({ {-0.4f,0.0f},{0.4f,0.0f},{0.0f,0.4f},{-0.4f,0.4f},{0.4f,0.4f},{0.0f,-0.4f} })))
+                .withThrownFromKingTower(400),
             2, 1);
 
         // Skeleton Army: 16 skeletons (skeletonArmyEvolvedOffsets) and shadows
@@ -1603,10 +1629,12 @@ private:
         addEvolution(158,
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
-                .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */,
+                .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */
+                .withThrownFromKingTower(800),
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(40, 0.7f))
-                .withKnockback(-4.5f).withCrownTowerDamage(54) /* audit 0003: wiki Giant Snowball/Evolution, level 11 */,
+                .withKnockback(-4.5f).withCrownTowerDamage(54) /* audit 0003: wiki Giant Snowball/Evolution, level 11 */
+                .withThrownFromKingTower(800),
             2, 1);
 
         // Goblin Giant ("Sack-trick"): the real knife Goblins every 2.2 s below
@@ -1843,6 +1871,7 @@ private:
                 .withGroundOnly()
                 .withOwnSideOnly()
                 .withRollingSweep(4.5f, 2.6f, 0.5f, 0.0f)
+                .withRollBodyDepth(1.2f) // published projectile_radius_y 600, as The Log
                 .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(heroBarbarianBarrelBarbarianStats())).withCrownTowerDamage(108) /* wiki Barbarian Barrel/Hero gives 232 / CT 116, before the 6 Oct 2026 nerf to 215; CT kept at half (patch 0014) */;
             heroBarbarianBarrelSpellStats.isHero = true;
             add(heroBarbarianBarrelSpellStats);
