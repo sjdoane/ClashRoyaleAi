@@ -550,6 +550,7 @@ private:
             .withIgnoresRiver());
 
         add(troop(17, "Elite Barbarians", 6.0f, Archetype::MeleeSquad, 1341, SPEED_FAST, 1.2f, 384, 14, 'e')
+            .withSightRange(6.0f)   /* published AngryBarbarian SightRange 6000 (patch 0045) */
             .withOffsets({ {-0.5f, 0.0f}, {0.5f, 0.0f} }));
 
         // The death-potion radius, multiplier and duration are not sourced.
@@ -977,9 +978,11 @@ private:
         // Damage 184: the official 26 Aug 2026 notes (163 -> 184); the wiki
         // still lists 163.
         add(troop(84, "Electro Giant", 7.0f, Archetype::MeleeBuildingTargeter, 3952, SPEED_SLOW, 1.2f, 184, 18, '|')
+            .withSightRange(7.5f)   /* published ElectroGiant SightRange 7500 (patch 0045) */
             .withSplash(1.5f)
             .withPeriodicEffect(50, std::make_shared<AreaStunEffect>(2.5f, 5)) /* audit 0003: wiki Electro Giant, level 11 */);
         add(troop(85, "Suspicious Bush", 2.0f, Archetype::MeleeBuildingTargeter, 81, SPEED_MEDIUM, 0.5f, 256, 14, '}')
+            .withSightRange(7.5f)   /* published SuspiciousBush SightRange 7500 (patch 0045) */
             // Visible from its first hit for as long as it keeps hitting (one
             // hit interval, patch 0040): the Bush is revealed once it reaches
             // a building, so the tower it attacks can shoot it.
@@ -1742,8 +1745,10 @@ private:
         // here: he walks to his targets and throws once one is in the band.
         addEvolution(178,
             troop(17, "Elite Barbarians", 6.0f, Archetype::MeleeSquad, 1341, SPEED_FAST, 1.2f, 384, 14, 'e')
+            .withSightRange(6.0f)   /* published AngryBarbarian SightRange 6000 (patch 0045) */
                 .withOffsets({ {-0.5f, 0.0f}, {0.5f, 0.0f} }),
             troop(17, "Elite Barbarians", 6.0f, Archetype::MeleeSquad, 1341, SPEED_FAST, 1.2f, 384, 14, 'e')
+            .withSightRange(6.0f)   /* published AngryBarbarian SightRange 6000 (patch 0045) */
                 .withOffsets({ {-0.5f, 0.0f}, {0.5f, 0.0f} })
                 .withSelfPeriodicEffect(1, 50, std::make_shared<EvoEliteBarbarianSpearEffect>(3.0f, 4.5f, 220, 1.35f, 25, 1.5f)),
             1, 1);
@@ -1755,9 +1760,11 @@ private:
         // to level 1. Crown Towers are exempt; no damage.
         addEvolution(179,
             troop(84, "Electro Giant", 7.0f, Archetype::MeleeBuildingTargeter, 3952, SPEED_SLOW, 1.2f, 184, 18, '|')
+            .withSightRange(7.5f)   /* published ElectroGiant SightRange 7500 (patch 0045) */
                 .withSplash(1.5f)
                 .withPeriodicEffect(50, std::make_shared<AreaStunEffect>(2.5f, 5)),
             troop(84, "Electro Giant", 7.0f, Archetype::MeleeBuildingTargeter, 3952, SPEED_SLOW, 1.2f, 184, 18, '|')
+            .withSightRange(7.5f)   /* published ElectroGiant SightRange 7500 (patch 0045) */
                 .withSplash(1.5f)
                 .withPeriodicEffect(50, std::make_shared<AreaStunEffect>(2.5f, 5))
                 .withSelfPeriodicEffect(25, 60, std::make_shared<LevelDamperEffect>(6.0f)),

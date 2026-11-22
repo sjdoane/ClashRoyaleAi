@@ -835,6 +835,25 @@ centre with a floor at attack reach.
 - Tests: `tests/entities/test_combat_entity.cpp` ("sight is measured BODY TO
   BODY"), `python_ai/tests/test_sight_is_measured_body_to_body.py`.
 
+
+## 2026-11-22: three published sight ranges that were the default 5.5 (patch 0045)
+
+**GAMEPLAY-AFFECTING.** The game's unit table (FirstLight-Zero card_specs.json,
+release 15.535.13) gives `AngryBarbarian` (Elite Barbarians) SightRange 6000,
+`ElectroGiant` 7500 and `SuspiciousBush` 7500, the last two with SightClip /
+SightClipSide 2000 / 2000. The registry had no `withSightRange` on any of them,
+so all three read the 5.5 default; the 2026-08-23 catalogue pinned that default
+as if it were sourced.
+
+- Elite Barbarians (17, and both forms of 178): 6.0. They turn for a kiting
+  unit half a tile further out.
+- Electro Giant (84, both forms of 179) and Suspicious Bush (85): 7.5, and
+  their rows join `SightClips.h` (2.0 / 2.0), so they are pulled by a building
+  exactly as a Giant is: 6 tiles to the side yes, 7 no. At 5.5 a Cannon in the
+  middle of the arena did not pull an Electro Giant at all.
+- Tests: `python_ai/tests/test_published_sight_of_elite_barbarians_electro_giant_bush.py`,
+  `tests/core/test_sight_range.cpp` (catalogue rows).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

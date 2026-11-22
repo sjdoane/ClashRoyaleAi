@@ -50,9 +50,8 @@
 // both have a row). HERO rows are ASSUMED equal to the base troop: the hero
 // forms are not in either file.
 //
-// NOT APPLIED: Electro Giant and Suspicious Bush. Their registry rows still
-// carry the default 5.5 sight, not the published 7.5; a clip on top of that
-// would shrink it to 3.5. They get their row when their sight is corrected.
+// Electro Giant and Suspicious Bush joined in patch 0045, when their registry
+// sight was corrected from the default 5.5 to the published 7.5.
 //
 // Keyed by registry NAME, like LoadTimes.h, so Evolutions inherit the row.
 namespace SightClips {
@@ -70,6 +69,8 @@ inline const Row* table(int& count) {
         { "Giant",           2.0f, 2.0f },   // FLZ, CRAPI
         { "Royal Giant",     2.0f, 2.0f },   // FLZ, CRAPI
         { "Goblin Giant",    2.0f, 2.0f },   // FLZ, CRAPI
+        { "Electro Giant",   2.0f, 2.0f },   // FLZ
+        { "Suspicious Bush", 2.0f, 2.0f },   // FLZ
         { "Ice Golem",       2.0f, 2.0f },   // FLZ, CRAPI
         { "Golem",           2.0f, 1.9f },   // FLZ, CRAPI
         { "Golemite",        2.0f, 2.0f },   // CRAPI
