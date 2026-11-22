@@ -232,18 +232,30 @@ TEST_CASE("MeleeSquad archetype: multiple units at their offsets (Goblins)", "[c
     const CardDefinition* goblins = CardRegistry::getInstance().getCard(4);
     REQUIRE(goblins != nullptr);
 
+    // Patch 0037: a formation is written in its owner's frame (+y toward the
+    // enemy), so team 1's is the mirror image in y of team 0's. Offsets:
+    // (-0.5,-0.5) (0.5,-0.5) (-0.5,0.5) (0.5,0.5).
     goblins->spawnEntity(10.0f, 10.0f, 1, board);
     board.commitPendingEntities();
 
     REQUIRE(board.getEntities().size() == 4);
     REQUIRE(board.getEntities()[0]->position.x == Catch::Approx(9.5f));
-    REQUIRE(board.getEntities()[0]->position.y == Catch::Approx(9.5f));
+    REQUIRE(board.getEntities()[0]->position.y == Catch::Approx(10.5f));
     REQUIRE(board.getEntities()[1]->position.x == Catch::Approx(10.5f));
-    REQUIRE(board.getEntities()[1]->position.y == Catch::Approx(9.5f));
+    REQUIRE(board.getEntities()[1]->position.y == Catch::Approx(10.5f));
     REQUIRE(board.getEntities()[2]->position.x == Catch::Approx(9.5f));
-    REQUIRE(board.getEntities()[2]->position.y == Catch::Approx(10.5f));
+    REQUIRE(board.getEntities()[2]->position.y == Catch::Approx(9.5f));
     REQUIRE(board.getEntities()[3]->position.x == Catch::Approx(10.5f));
-    REQUIRE(board.getEntities()[3]->position.y == Catch::Approx(10.5f));
+    REQUIRE(board.getEntities()[3]->position.y == Catch::Approx(9.5f));
+
+    Board ours;
+    goblins->spawnEntity(10.0f, 10.0f, 0, ours);
+    ours.commitPendingEntities();
+    REQUIRE(ours.getEntities().size() == 4);
+    REQUIRE(ours.getEntities()[0]->position.y == Catch::Approx(9.5f));
+    REQUIRE(ours.getEntities()[1]->position.y == Catch::Approx(9.5f));
+    REQUIRE(ours.getEntities()[2]->position.y == Catch::Approx(10.5f));
+    REQUIRE(ours.getEntities()[3]->position.y == Catch::Approx(10.5f));
     for (const auto& e : board.getEntities()) {
         REQUIRE(e->team == 1);
         REQUIRE(std::dynamic_pointer_cast<MeleeTroop>(e) != nullptr);
@@ -1188,6 +1200,36 @@ TEST_CASE("Goblin Barrel drops 3 Goblins directly at the target, dealing no sepa
     REQUIRE(goblinCount == 3);
 }
 
+TEST_CASE("Goblin Barrel lands one Goblin beyond the target and two short of it, for either side", "[card_registry][spell][spawn][patch0037]") {
+    // Published spawn offsets (x 0 / 500 / -500, y 500 apart); the recording of
+    // 2026-11-20 shows which way round: on a Princess Tower one Goblin lands
+    // behind it and two on its river-side corners. "Beyond" is +y for team 0
+    // and -y for team 1.
+    for (int team : { 0, 1 }) {
+        Board board;
+        const float targetY = team == 0 ? 20.0f : 13.0f;
+        CardRegistry::getInstance().getCard(109)->spawnEntity(9.0f, targetY, team, board);
+        board.commitPendingEntities();
+        auto spell = std::dynamic_pointer_cast<AreaSpell>(board.getEntities().back());
+        REQUIRE(spell != nullptr);
+        while (spell->isAlive()) spell->update(board);
+        board.commitPendingEntities();
+
+        const float forward = team == 0 ? 1.0f : -1.0f;
+        std::vector<Vector2D> landed;
+        for (const auto& e : board.getEntities()) {
+            if (e->name == "Goblins") landed.push_back(e->position);
+        }
+        REQUIRE(landed.size() == 3);
+        REQUIRE(landed[0].x == Catch::Approx(9.0f));
+        REQUIRE(landed[0].y == Catch::Approx(targetY + forward * 0.5f));
+        REQUIRE(landed[1].x == Catch::Approx(9.5f));
+        REQUIRE(landed[1].y == Catch::Approx(targetY - forward * 0.5f));
+        REQUIRE(landed[2].x == Catch::Approx(8.5f));
+        REQUIRE(landed[2].y == Catch::Approx(targetY - forward * 0.5f));
+    }
+}
+
 TEST_CASE("Graveyard rains Skeletons over its duration, one small batch per tick", "[card_registry][spell][spawn]") {
     Board board;
     CardRegistry::getInstance().getCard(110)->spawnEntity(9.0f, 9.0f, 0, board);
@@ -1796,7 +1838,7 @@ TEST_CASE("every spawned unit moves at the speed of its own playable card",
     REQUIRE(offenders.empty());
 }
 
-// ---------------- attack load time (UPSTREAM item 40) ----------------
+// ---------------- attack load time and first hit (UPSTREAM item 40, patch 0034) ----------------
 
 namespace {
 // Updates `unit` until `target` loses hp, returning how many updates it took;
@@ -1813,23 +1855,65 @@ int updatesUntilHit(const std::shared_ptr<Entity>& unit, const std::shared_ptr<E
 }
 }
 
-TEST_CASE("A Hog Rider's first hit lands its load time after it reaches the building, then every hit speed",
+TEST_CASE("A Hog Rider's first hit lands hit speed minus load time after it reaches the building, then every hit speed",
           "[card_registry][load_time]") {
-    // 1.0 s load, 1.6 s hit speed (FLZ HogRider).
+    // 1.0 s load, 1.6 s hit speed (FLZ HogRider): first hit 0.6 s. A live
+    // recording has it 0.58-0.75 s after the Hog reaches the tower (patch 0034).
     REQUIRE(LoadTimes::forName("Hog Rider") == 10);
+    REQUIRE(LoadTimes::firstHitTicks("Hog Rider", 16) == 6);
     Board board;
     auto building = std::make_shared<Building>(999, 5.0f, 5.5f, 100000, 1, 'C', 5.0f, 10, 10);
     spawn(board, building);
     CardRegistry::getInstance().getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);
     board.commitPendingEntities();
     auto hog = board.getEntities().back();
-    REQUIRE(std::dynamic_pointer_cast<CombatEntity>(hog)->loadTicks == 10);
+    REQUIRE(std::dynamic_pointer_cast<CombatEntity>(hog)->loadTicks == 6);
     advancePastDeploy(hog, board);
 
-    // In range from the first live tick: wind up 10 ticks, hit on the 11th.
-    REQUIRE(updatesUntilHit(hog, building, board) == 11);
+    // In range from the first live tick: wind up 6 ticks, hit on the 7th.
+    REQUIRE(updatesUntilHit(hog, building, board) == 7);
     // Then the period is the hit speed, with no second wind-up on the same target.
     REQUIRE(updatesUntilHit(hog, building, board) == CardRegistry::getInstance().getCard(15)->stats->attackCooldown);
+}
+
+TEST_CASE("The first-hit wind-up is hit speed minus load time", "[card_registry][load_time]") {
+    // Published hit speed and load time, and the first hit they give.
+    struct Row { int id; const char* name; int hitSpeed; int load; int firstHit; };
+    const Row rows[] = {
+        { 15, "Hog Rider", 16, 10, 6 },
+        { 6, "Musketeer", 10, 3, 7 },
+        { 168, "Hero Musketeer", 10, 3, 7 },
+        { 40, "Ice Golem", 25, 15, 10 },
+        { 0, "Knight", 12, 7, 5 },
+        { 61, "Princess", 30, 27, 3 },
+        { 52, "Miner", 13, 8, 5 },
+        { 4, "Goblins", 11, 7, 4 },      // load time from the recording, patch 0038
+    };
+    auto& reg = CardRegistry::getInstance();
+    for (const Row& r : rows) {
+        INFO(r.name);
+        const CardDefinition* card = reg.getCard(r.id);
+        REQUIRE(card != nullptr);
+        REQUIRE(card->name == r.name);
+        REQUIRE(card->stats->attackCooldown == r.hitSpeed);
+        REQUIRE(LoadTimes::forName(card->name) == r.load);
+        Board board;
+        card->spawnEntity(5.0f, 5.0f, 0, board);
+        board.commitPendingEntities();
+        auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+        REQUIRE(unit != nullptr);
+        REQUIRE(unit->loadTicks == r.firstHit);
+    }
+    // No row: no wind-up. A load time no shorter than the hit speed (the
+    // Inferno beams) cannot be done in advance, and stays the whole wind-up.
+    REQUIRE(LoadTimes::firstHitTicks("No Such Card", 10) == 0);
+    // A row that carries its own published hit speed uses it, not the engine's
+    // cooldown: a spirit jumps 0.2 s after reaching range (0.3 s - 0.1 s).
+    REQUIRE(LoadTimes::firstHitTicks("Ice Spirit", reg.getCard(72)->stats->attackCooldown) == 2);
+    REQUIRE(LoadTimes::firstHitTicks("Executioner", reg.getCard(36)->stats->attackCooldown) == 5);
+    REQUIRE(LoadTimes::firstHitTicksFor(12, 4) == 12);
+    REQUIRE(LoadTimes::firstHitTicksFor(10, 10) == 10);
+    REQUIRE(LoadTimes::firstHitTicksFor(9, 10) == 1);
 }
 
 TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]") {
@@ -1841,11 +1925,43 @@ TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]")
     auto hog = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
     advancePastDeploy(hog, board);
 
-    for (int i = 0; i < 6; ++i) hog->update(board); // 6 of the 10 wind-up ticks
+    for (int i = 0; i < 4; ++i) hog->update(board); // 4 of the 6 wind-up ticks
     REQUIRE(building->hp == 100000);
     hog->applyFreeze(3, 0.0f);
-    // 3 stunned ticks, then the full 10-tick wind-up again, then the hit.
-    REQUIRE(updatesUntilHit(hog, building, board) == 3 + 10 + 1);
+    // 3 stunned ticks, then the full 6-tick wind-up again, then the hit.
+    REQUIRE(updatesUntilHit(hog, building, board) == 3 + 6 + 1);
+}
+
+TEST_CASE("Switching between targets in range keeps the hit-speed rhythm; a new engagement winds up again",
+          "[card_registry][load_time]") {
+    // Knight: hit speed 1.2 s, first hit 0.5 s. Two targets in reach.
+    Board board;
+    auto first = std::make_shared<DummyEntity>(901, 5.0f, 5.6f, 1000, 1);
+    auto second = std::make_shared<DummyEntity>(902, 5.2f, 5.7f, 1000, 1);
+    spawn(board, first);
+    spawn(board, second);
+    CardRegistry::getInstance().getCard(0)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto knight = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    REQUIRE(knight->loadTicks == 5);
+    advancePastDeploy(knight, board);
+
+    REQUIRE(updatesUntilHit(knight, first, board) == 6);   // 5 wind-up ticks, hit on the 6th
+    REQUIRE(second->hp == 1000);
+    // The first target dies 0.9 s into the 1.2 s cycle, to something else.
+    for (int i = 0; i < 9; ++i) knight->update(board);
+    first->hp = 0;
+    // The next hit is due 3 ticks later and lands then, on the second target:
+    // no new 5-tick wind-up (that would be the 6th update).
+    REQUIRE(updatesUntilHit(knight, second, board) == 3);
+
+    // With nothing left in range the engagement is over, and the next one
+    // winds up from the start however long the Knight has been ready.
+    second->hp = 0;
+    for (int i = 0; i < 30; ++i) knight->update(board);
+    auto third = std::make_shared<DummyEntity>(903, knight->position.x, knight->position.y + 0.6f, 1000, 1);
+    spawn(board, third);
+    REQUIRE(updatesUntilHit(knight, third, board) == 6);
 }
 
 TEST_CASE("An Evolution winds up like its base card, and every load-time row names a registered card",

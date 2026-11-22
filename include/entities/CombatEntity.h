@@ -106,12 +106,18 @@ public:
     // and a new unit has not been stunned. The implicit copy carries it, so
     // snapshots keep the exact remaining deploy time.
     int deployTicksRemaining = 0;
-    // Attack load time (LoadTimes.h): after coming into range of a new
-    // target, wind up this many ticks before the first hit. 0 = hit at once.
+    // First-hit wind-up (LoadTimes.h: hit speed minus the published load
+    // time): after a target comes into range, wind up this many ticks before
+    // the first hit. 0 = hit at once.
     int loadTicks = 0;
-    // The target the current wind-up is for, -1 for none. A stun, leaving
-    // range, losing the target or switching target cancels it, so the next
-    // engagement winds up from the start, as in the real game.
+    // The target of the current engagement, -1 for none. An engagement starts
+    // when a target comes into range of a unit that had none in range, and
+    // only then does the wind-up start. A stun, leaving range or having no
+    // target ends it, so the next one winds up again. Going straight from one
+    // target in range to another (the first died, or something came closer)
+    // does NOT: the unit keeps its hit-speed rhythm, as a Princess Tower keeps
+    // shooting every 0.8 s through a Goblin Barrel's three Goblins (live
+    // recording runs/live/20261120-185026, patch 0034).
     int windupTargetId = -1;
     float windupRemaining = 0.0f;
 
@@ -852,16 +858,18 @@ public:
             float effectiveAttackRange = effectiveRangeTo(target);
 
             if (dist <= effectiveAttackRange) {
-                // Load time: a new engagement winds up for loadTicks first,
+                // First hit: a new engagement winds up for loadTicks first,
                 // so the first hit lands loadTicks after coming into range
                 // and later hits follow every attackCooldown. A slow slows
-                // the wind-up as it slows the cooldown.
+                // the wind-up as it slows the cooldown. Only a NEW engagement
+                // winds up; a switch between targets in range keeps the rhythm
+                // (windupTargetId above).
                 bool loading = false;
                 if (!stunned && loadTicks > 0) {
-                    if (target->id != windupTargetId) {
-                        windupTargetId = target->id;
+                    if (windupTargetId == -1) {
                         windupRemaining = static_cast<float>(loadTicks);
                     }
+                    windupTargetId = target->id;
                     if (windupRemaining > 0.0f) {
                         windupRemaining -= wasFrozen ? slowThisTick : 1.0f;
                         if (windupRemaining < 0.0f) windupRemaining = 0.0f;

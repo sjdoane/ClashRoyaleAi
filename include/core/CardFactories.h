@@ -30,7 +30,11 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     // its own). Set here because every troop and building passes through;
     // spells and deploy effects do not, since a spell has its own delay.
     entity->deployTicksRemaining = stats.deployTicks;
-    entity->loadTicks = stats.loadTicksOverride >= 0 ? stats.loadTicksOverride : LoadTimes::forName(stats.name);
+    // First-hit wind-up: hit speed minus the published load time (LoadTimes.h),
+    // or a first-hit time given outright (CardStats::withLoadTicks).
+    entity->loadTicks = stats.loadTicksOverride >= 0
+        ? stats.loadTicksOverride
+        : LoadTimes::firstHitTicks(stats.name, stats.attackCooldown);
     entity->isFlying = stats.isFlying;
     entity->targetsAir = stats.targetsAir;
     entity->deathEffect = stats.deathEffect;
@@ -166,10 +170,22 @@ inline void spawnDeployEffect(const CardStats& stats, float x, float y, int team
     }
 }
 
+// A squad's formation is written in its owner's frame: +x to the right as the
+// board is stored, +y toward the enemy. Team 1 faces -y, so its formation is
+// mirrored in y (patch 0037). Before this the offsets were added unmirrored and
+// the two sides fielded front-to-back mirror images of each other: a Goblin
+// Barrel's third goblin landed behind a team-1 tower but on the river side of a
+// team-0 tower, where the other Princess Tower could reach it.
+inline Vector2D formationSlot(float x, float y, const Vector2D& offset, int team) {
+    const float forward = (team == 0) ? 1.0f : -1.0f;
+    return Vector2D{ x + offset.x, y + forward * offset.y };
+}
+
 inline void spawnMeleeSquad(const CardStats& stats, float x, float y, int team, Board& board) {
     for (const auto& offset : stats.spawnOffsets) {
+        const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<MeleeTroop>(
-            board.allocateId(), x + offset.x, y + offset.y, stats.hp, team,
+            board.allocateId(), slot.x, slot.y, stats.hp, team,
             stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);
@@ -180,8 +196,9 @@ inline void spawnMeleeSquad(const CardStats& stats, float x, float y, int team, 
 
 inline void spawnRangedSquad(const CardStats& stats, float x, float y, int team, Board& board) {
     for (const auto& offset : stats.spawnOffsets) {
+        const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<RangedTroop>(
-            board.allocateId(), x + offset.x, y + offset.y, stats.hp, team,
+            board.allocateId(), slot.x, slot.y, stats.hp, team,
             stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         troop->boomerang = stats.boomerang;
@@ -195,8 +212,9 @@ inline void spawnRangedSquad(const CardStats& stats, float x, float y, int team,
 inline void spawnMeleeBuildingTargeter(const CardStats& stats, float x, float y, int team, Board& board) {
     // Loops over spawnOffsets for multi-unit children such as Golemites.
     for (const auto& offset : stats.spawnOffsets) {
+        const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<BuildingTargeter>(
-            board.allocateId(), x + offset.x, y + offset.y, stats.hp, team,
+            board.allocateId(), slot.x, slot.y, stats.hp, team,
             stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);
@@ -207,8 +225,9 @@ inline void spawnMeleeBuildingTargeter(const CardStats& stats, float x, float y,
 
 inline void spawnRangedBuildingTargeter(const CardStats& stats, float x, float y, int team, Board& board) {
     for (const auto& offset : stats.spawnOffsets) {
+        const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<RangedBuildingTargeter>(
-            board.allocateId(), x + offset.x, y + offset.y, stats.hp, team,
+            board.allocateId(), slot.x, slot.y, stats.hp, team,
             stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);

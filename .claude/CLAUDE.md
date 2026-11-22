@@ -518,6 +518,180 @@ the cast window has a start as well as an end (see the sweep in the patch-0030
 report); against troops already walking in the lane nothing changes.
 Checkpoints still load.
 
+## 2026-11-21: first hit = hit speed - load time (patch 0034)
+
+Patch 0006 gave every unit a wind-up before its first hit, but made it as long
+as the published load time. The load time is the part of the attack cycle a
+unit does in ADVANCE (it walks loaded); what is left once a target is in range
+is `hit speed - load time`. So the wind-ups were the complement of the real
+ones: Hog Rider 1.0 s (real 0.6), Princess 2.7 s (0.3), Mortar 3.7 s (1.0),
+Ice Golem 1.5 s (1.0), Knight 0.7 s (0.5), and too SHORT for Musketeer 0.3 s
+(0.7), Cannon 0.1 s (0.9), Minions 0.7 (0.5 - the same by luck for a few).
+
+- Rule and sources in `core/LoadTimes.h`: `firstHitTicks(name, cooldown)`,
+  used by `CardFactories::applyCardMetadata`. The table still holds the
+  published LOAD times; `CombatEntity::loadTicks` is the wind-up derived from
+  them. A row may carry the published hit speed where the engine's cooldown is
+  not it (the spirits, Executioner, Battle Ram, Goblin Drill). A load time not
+  shorter than the hit speed (Inferno Tower / Dragon, Mighty Miner) stays the
+  whole wind-up, as before. `CardStats::withLoadTicks(n)` is a first-hit time
+  given outright (the Tower Troops) and is untouched.
+- Evidence: RoyaleAPI's "first hit" is this difference; the 2023 and current
+  game files agree on it where a hit speed changed (Cannon 0.9 s / 0 then
+  1.0 s / 0.1 s; Mortar 5.0 / 4.0 then 4.7 / 3.7); live recording
+  `runs/live/20261120-185026` has the Hog's first hit 0.58-0.75 s after it
+  reaches the tower, then every 1.6 s.
+- Second half of the same rule: the wind-up belongs to the ENGAGEMENT, not the
+  target. Going straight from one target in range to another no longer
+  restarts it (`CombatEntity::windupTargetId`); only a unit that had nothing
+  in range, left range or was stunned winds up again. In the recording a
+  Princess Tower's arrows stay 0.8 s apart through the three Goblins of a
+  barrel. This only bites where the wind-up is not shorter than what is left
+  of the cooldown (the Tower Troops' 0.8 s, a target killed by someone else).
+- NOT modelled: Sparky deploys unloaded in the real game (here she fires 1 s
+  after her first target, as when charged); a stun still only restarts the
+  wind-up, it does not unload.
+- Exposed as `get_card_stats(id)["base"]["first_hit_windup_ticks"]`;
+  `load_ticks` is still the published load time.
+- Tests: `tests/core/test_card_registry.cpp` (`[load_time]`).
+
+**GAMEPLAY-AFFECTING, and Hog Rider, Musketeer, Cannon and Ice Golem are in
+`DEFAULT_DECK`.** A lone Hog at the bridge gets its first hit 0.4 s sooner,
+a Princess shoots 2.4 s sooner, a Cannon and a Musketeer answer 0.8 s / 0.4 s
+later. Every win rate earned before this date describes different first hits.
+Checkpoints still load.
+
+## 2026-11-21: crown towers have a first hit (patch 0035)
+
+The plain Princess Tower (`TowerTroopType::None`, the default everywhere) and
+the King Tower loosed their first shot the tick after a target came into
+range. Only the selectable Tower Troops had the published 0.8 s first hit
+(patch 0019). Now:
+
+- Princess Tower: `CrownTower::PRINCESS_FIRST_HIT_TICKS = 8` (game file: hit
+  speed 0.8 s, load time 0, so first hit 0.8 s; the wiki lists the same).
+  `None` and `TowerPrincess` are now the same tower.
+- King Tower: `CrownTower::KING_FIRST_HIT_TICKS = 5` (hit speed 1.0 s, load
+  time 0.5 s), set in `GameManager::addTower`. Its wake-up is still instant;
+  whether the real King needs time to wake was not measured.
+- With patch 0034's rule the tower winds up only when it had NOTHING in range:
+  between the Goblins of one barrel its arrows stay 0.8 s apart.
+- Evidence: live recording `runs/live/20261120-185026`, second Goblin Barrel:
+  the first arrow lands about 1.0 s after the barrel does and the next ones
+  follow every 0.8 s, and the three Goblins get 3 + 2 + 1 + 1 stabs in. With
+  the instant first shot they got one.
+- Tests: `tests/core/test_cards_0019.cpp` (`[patch0035]`),
+  `tests/core/test_tower_troops.cpp`.
+
+**GAMEPLAY-AFFECTING for every match.** Anything that reaches a tower gets
+0.8 s more before the first arrow. A Cannon two seconds late in the Hog's
+lane no longer saves the tower (two swings); prompt and central still does
+(`tests/core/test_default_deck_qa.cpp`). Every win rate earned before this
+date describes faster towers. Checkpoints still load.
+
+## 2026-11-21: a Princess Tower's arrow flies 12.5 tiles/s (patch 0036)
+
+Every tower shot flew 2 tiles a tick (20 tiles/s). The published projectile
+speeds are 600 for the Princess Tower's arrow and 1000 for the King's
+cannonball, the Cannoneer and the Dagger Duchess. At the 48 per tile per
+second measured for thrown spells (patch 0030) that is 12.5 and 20.8 tiles/s,
+so only the Princess Tower was wrong.
+
+- `CrownTower::PRINCESS_ARROW_TILES_PER_TICK = 1.25`, carried by
+  `CardStats::towerProjectileTilesPerTick` (set for `None` and
+  `TowerPrincess`), applied to `Tower::projectileTilesPerTick` in
+  `GameManager::addTower`. Every other tower keeps 2.0.
+- Not measured on a recording: over the 2-3 tiles of a tower fight the
+  difference is one 11 fps frame. It rests on the published 600 : 1000 ratio
+  and the thrown-spell divisor.
+- `RangedTroop` still throws everything at 1.5 tiles/tick (Musketeer's
+  published 1000 would be 2.08, Princess's 600 would be 1.25). Not changed.
+- Tests: `tests/core/test_cards_0019.cpp` (`[patch0036]`).
+
+**GAMEPLAY-AFFECTING for every match**, slightly: each arrow lands 1-3 ticks
+later, so each kill by a Princess Tower comes that much later. Checkpoints
+still load.
+
+## 2026-11-21: formations face the enemy; the Goblin Barrel's triangle (patch 0037)
+
+The squad spawners added a card's formation offsets to the placement point
+unmirrored, so team 1 fielded every front-to-back asymmetric formation back to
+front relative to team 0. For the Goblin Barrel (two beside, one 0.4 tiles
+toward +y) that put the third Goblin BEHIND a team-1 tower but on the RIVER
+side of a team-0 tower, where it was pushed out to (4.9, 6.0) and the other
+Princess Tower, 9.1 tiles away with a 9.4 reach, shot it too.
+
+- `CardFactories::formationSlot(x, y, offset, team)`: offsets are in the
+  owner's frame, +y toward the enemy, mirrored in y for team 1. Used by the
+  four squad spawners, so every child spawn (death spawns, periodic spawns,
+  spell spawns) follows it.
+- Goblin Barrel (109): one Goblin half a tile beyond the target, two half a
+  tile short and half a tile to each side (published spawn offsets x 0 / 500 /
+  -500, y 500 apart; which way round is from the 2026-11-20 recording: one
+  behind the tower, two on its river-side corners). Pushed out by the tower
+  they stand at about (0, -1.9) and (+-1.35, +1.35) from its centre; the corner
+  Goblins are 9.7 tiles from the other Princess Tower, out of its reach.
+- Goblinstein's Doctor offset is now (0, -3): "3 tiles behind" was written +3,
+  which is in front in the owner's frame.
+- NOT re-authored: every other formation keeps its numbers, so team 1's now
+  mirror team 0's instead of copying them. Goblin Gang, Barbarians, Bats and
+  the Evolved Goblin Barrel (six Goblins, own offsets) have front/back
+  asymmetries nobody has checked against footage.
+- Tests: `tests/core/test_card_registry.cpp` (`[patch0037]`, and the Goblins
+  squad for both teams), `tests/core/test_champion_abilities.cpp`,
+  `python_ai/tests/test_goblin_barrel_on_a_tower.py` (seven stabs, only the
+  target tower, the same for both sides), `python_ai/tests/test_log_rolls_past.py`.
+
+**GAMEPLAY-AFFECTING.** An unanswered Goblin Barrel now costs a Princess Tower
+seven stabs (840; the recording shows 3 + 2 + 1 + 1 = 7), up from five after
+patches 0034-0036 and one before them. A Log cast from the tile below the tower
+(3, 4) saves it when cast 18 to 28 ticks after the throw; cast 8 to 16 ticks
+after, it has left the Goblin behind the tower before the barrel lands and one
+stab gets through. Checkpoints still load.
+
+## 2026-11-21: the Goblin stabs for 125, first 0.4 s after deploying (patch 0038)
+
+Two numbers of the one Goblin character, both read off the 2026-11-20 recording
+(`runs/live/20261120-185026`, Goblin Barrels on a level-11 tower).
+
+- Damage 125 at level 11 everywhere. The Goblins card (4) already had it; the
+  Goblin Barrel's, Goblin Drill's, Goblin Gang's and Hero Goblins' Goblins
+  still stabbed for 120. The recording's tower loses 375 to three stabs.
+- Load time 0.7 s (`LoadTimes.h` rows Goblins, Goblin Gang, Hero Goblins; the
+  barrel's and drill's are named "Goblins"), so the first stab comes 0.4 s
+  after the deploy second. The current published file says 500 ms (first stab
+  0.6 s), the older one 700 ms. The barrel's Goblins first stab 1.43-1.53 s
+  after landing in the recording; the engine now gives 1.5 s, it gave 1.7 s.
+  `LoadTimes::Source::RECORDING` marks rows decided this way.
+- Tests: `tests/core/test_card_registry.cpp` (`[load_time]` table),
+  `python_ai/tests/test_thrown_spell_flight.py` (first stab 15 ticks after the
+  landing), `python_ai/tests/test_goblin_barrel_on_a_tower.py` (7 x 125).
+
+**GAMEPLAY-AFFECTING.** With patches 0034-0037 an unanswered Goblin Barrel on a
+Princess Tower now plays out as recorded: stabs 3 / 2 / 1 / 1 at 1.5, 2.6, 3.7
+and 4.8 s after landing (recorded 1.47, 2.57, 3.67, 4.77), arrows landing 1.1
+to 5.1 s after it 0.8 s apart (recorded 1.0 to 5.0), 875 HP (recorded 875 and
+about 1,000). Gen-2 before patch 0034: one stab, 120. A Log from the tile below
+the tower (3, 4) now saves it when cast 18 to 26 ticks after the throw; from
+(3, 2), 12 to 20 ticks. Checkpoints still load.
+
+**Replay parity got WORSE with patches 0034-0038**, measured with the outer
+repo's `training/parity.py` (1,000 recorded Hog 2.6 matches, both players
+replayed open-loop, default convention; the `--timing bc` numbers move the same
+way): winner agreement 52.9% -> 51.1%, the 2.6 side's simulated win rate 33.2%
+-> 24.6% (real 51.0%), the opponent's crowns 1.16 -> 1.69 (real 0.69),
+simulated matches over early 66.7% -> 74.6%. Agreement in the matches that do
+not end early is unchanged (62.5% -> 62.2%).
+
+- Most of it is patch 0034's first-hit rule, not the towers. With patches
+  0034-0038 but the old wind-up lengths (the load time itself) the 2.6 side
+  wins 33.8% and the crowns are 0.70 / 1.38: slower towers add damage on both
+  sides and leave the winner alone. The rule then takes the 2.6 side from
+  33.8% to 24.6%; putting only the Cannon and the Musketeer back gives 27.0%.
+- The replay over-damaged the 2.6 side's towers before these patches (1.16
+  crowns against a real 0.69). Why it does is NOT explained; these patches add
+  to it, they did not start it.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

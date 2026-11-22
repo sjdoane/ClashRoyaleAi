@@ -17,6 +17,14 @@ public:
         return (symbol == 'R') ? 2.0f : 1.5f;
     }
 
+    // How far this tower's shot flies per tick. The default is the King's
+    // cannonball (published speed 1000: 1000 / 48 / 10 = 2.08, see
+    // CrownTower::PRINCESS_ARROW_TILES_PER_TICK for the conversion), which the
+    // Cannoneer and Dagger Duchess share. GameManager::addTower sets a tower
+    // troop's own from CardStats::towerProjectileTilesPerTick.
+    static constexpr float DEFAULT_PROJECTILE_TILES_PER_TICK = 2.0f;
+    float projectileTilesPerTick = DEFAULT_PROJECTILE_TILES_PER_TICK;
+
     // Target-selection footprint, larger than the collision radius and fitted
     // to real play: a Hog with a Cannon 7-8 tiles off-lane keeps walking at the
     // Princess Tower and diverts only at 6. Against a Cannon's 1.0 that needs
@@ -74,7 +82,7 @@ protected:
     void performAttack(Board& board, std::shared_ptr<Entity> target) override {
         // lineSplash/lineSplashRange forwarded: a Tower Troop can carry them.
         auto arrow = std::make_shared<Projectile>(
-            board.allocateId(), position.x, position.y, team, target, 2.0f, getCurrentDamage(), onHitEffects,
+            board.allocateId(), position.x, position.y, team, target, projectileTilesPerTick, getCurrentDamage(), onHitEffects,
             false, 0, id, cardId, splashRadius, lineSplash, lineSplashRange);
         board.addEntity(arrow);
     }

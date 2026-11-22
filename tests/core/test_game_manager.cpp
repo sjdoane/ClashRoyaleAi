@@ -388,8 +388,8 @@ TEST_CASE("A full scripted mini-match produces sane getStatistics() output", "[g
     auto enemy = std::make_shared<DummyEntity>(board.allocateId(), 9.0f, 10.5f, 1000, 1);
     spawn(board, enemy);
 
-    // 5 ticks of combat after the Knight's 10-tick deploy time and its load time.
-    for (int i = 0; i < 5 + DEPLOY_TIME_TICKS + LoadTimes::forName("Knight"); ++i) game.step();
+    // 5 ticks of combat after the Knight's 10-tick deploy time and its first-hit wind-up.
+    for (int i = 0; i < 5 + DEPLOY_TIME_TICKS + LoadTimes::firstHitTicks("Knight", 12); ++i) game.step();
 
     const auto& stats = game.getStatistics();
     REQUIRE(stats.elixirSpent(0) == Catch::Approx(3.0f));

@@ -2,14 +2,27 @@
 
 #include <string>
 
-// Attack load time ("first hit"): how long a unit winds up after it comes
-// into range of a new target before its first hit lands, in ticks (10 = 1 s).
-// After that it hits every CardStats::attackCooldown. Read by
-// CardFactories::applyCardMetadata, used in CombatEntity::update.
+// Attack load time, in ticks (10 = 1 s), and the first-hit wind-up that
+// follows from it. Read by CardFactories::applyCardMetadata, used in
+// CombatEntity::update.
 //
-// Before this every unit hit the instant it came into range (a Hog 0.1 s after
-// reaching a tower; the real game is 1.0 s), because the cooldown runs down
-// while a unit walks. perception/UPSTREAM_REQUESTS.md item 40.
+// The published "LoadTime" is the part of the attack cycle a unit can do in
+// advance, with no target: a unit walks around already loaded. What is left
+// once it has a target in range is
+//
+//     first hit = hit speed - load time            (firstHitTicks below)
+//
+// and later hits follow every hit speed. A Hog Rider (hit speed 1.6 s, load
+// time 1.0 s) lands its first hit 0.6 s after reaching a building; a Princess
+// (3.0 s, 2.7 s) 0.3 s after stopping; a Cannon (1.0 s, 0.1 s) 0.9 s after
+// seeing something. Sources: RoyaleAPI lists "First Hit" as exactly this
+// difference; a live recording (runs/live/20261120-185026, patch 0034) has the
+// Hog's first hit 0.58-0.75 s after it reaches the tower.
+//
+// History: before patch 0006 every unit hit the tick it came into range.
+// Patch 0006 added the wind-up but used the load time itself as its length
+// (Hog 1.0 s, Princess 2.7 s, Cannon 0.1 s), which is the complement of the
+// real number. Patch 0034 corrected it to the difference.
 //
 // Keyed by the registry NAME, not the id, because Evolutions reuse the base
 // card's name verbatim and their load time is the base card's. A name not in
@@ -21,15 +34,30 @@
 //           "LoadTime" in ms. Preferred: it is the current release.
 //   CRAPI - RoyaleAPI cr-api-data cards_stats.json "load_time" in ms, where
 //           FLZ has no row. Older game files.
+//   RECORDING - the two published values disagree and a recording decides.
 // Rounded to the nearest tick.
+//
+// The Goblin (Goblins, Goblin Gang, Hero Goblins, and the Goblin Barrel's and
+// Goblin Drill's, which are named "Goblins"): FLZ says 500 ms, the older
+// CRAPI file 700 ms. With hit speed 1.1 s that is a first stab 0.6 or 0.4 s
+// after deploying. A Goblin Barrel's Goblins in the recording of 2026-11-20
+// first stab 1.43-1.53 s after landing and their fourth stab
+// comes 0.23 s before the arrow that kills the last one; 700 ms gives 1.5 s
+// and that margin here, 500 ms gives 1.7 s and a fourth stab on the same tick
+// as the arrow. 700 ms it is (patch 0038).
 namespace LoadTimes {
 
-enum class Source { FLZ, CRAPI };
+enum class Source { FLZ, CRAPI, RECORDING };
 
 struct Row {
     const char* name;
     int ticks;
     Source source;
+    // The published hit speed in ticks, for the few cards whose engine
+    // attackCooldown is not it (a spirit's cooldown is never used again; the
+    // Executioner's covers his axe's flight out and back). 0 = the card's
+    // attackCooldown is the published hit speed.
+    int hitSpeedTicks = 0;
 };
 
 inline const Row* table(int& count) {
@@ -42,7 +70,7 @@ inline const Row* table(int& count) {
         { "Barbarians", 10, Source::FLZ }, // Barbarians 1000 ms
         { "Bats", 6, Source::FLZ }, // Bats 600 ms
         { "Battle Healer", 16, Source::FLZ }, // BattleHealer 1600 ms
-        { "Battle Ram", 4, Source::FLZ }, // BattleRam 350 ms
+        { "Battle Ram", 4, Source::FLZ, 4 }, // BattleRam 350 ms, hit speed 400 ms
         { "Bomb Tower", 13, Source::FLZ }, // BombTower 1300 ms
         { "Bomber", 16, Source::FLZ }, // Bomber 1600 ms
         { "Bowler", 20, Source::FLZ }, // Bowler 2000 ms
@@ -52,27 +80,27 @@ inline const Row* table(int& count) {
         { "Dart Goblin", 4, Source::CRAPI }, // BlowdartGoblin 350 ms
         { "Electro Dragon", 14, Source::FLZ }, // ElectroDragon 1400 ms
         { "Electro Giant", 8, Source::FLZ }, // ElectroGiant 800 ms
-        { "Electro Spirit", 1, Source::FLZ }, // ElectroSpirit 100 ms
+        { "Electro Spirit", 1, Source::FLZ, 3 }, // ElectroSpirit 100 ms, hit speed 300 ms
         { "Electro Wizard", 12, Source::FLZ }, // ElectroWizard 1200 ms
         { "Elite Barbarians", 9, Source::CRAPI }, // AngryBarbarian 900 ms
         { "Elixir Golem", 3, Source::FLZ }, // ElixirGolem 300 ms
-        { "Executioner", 4, Source::CRAPI }, // AxeMan 400 ms
-        { "Fire Spirit", 1, Source::CRAPI }, // FireSpirits 100 ms
+        { "Executioner", 4, Source::CRAPI, 9 }, // AxeMan 400 ms, hit speed 900 ms
+        { "Fire Spirit", 1, Source::CRAPI, 3 }, // FireSpirits 100 ms, hit speed 300 ms
         { "Firecracker", 24, Source::FLZ }, // Firecracker 2350 ms
         { "Fisherman", 12, Source::FLZ }, // Fisherman 1200 ms
         { "Flying Machine", 6, Source::CRAPI }, // DartBarrell 600 ms
         { "Giant", 10, Source::FLZ }, // Giant 1000 ms
         { "Giant Skeleton", 10, Source::FLZ }, // GiantSkeleton 1000 ms
-        { "Goblin Drill", 2, Source::FLZ }, // GoblinDrill 200 ms
-        { "Goblin Gang", 5, Source::FLZ }, // GoblinGang 500 ms
+        { "Goblin Drill", 2, Source::FLZ, 11 }, // GoblinDrill 200 ms, hit speed 1100 ms
+        { "Goblin Gang", 7, Source::RECORDING }, // Goblin: FLZ 500 ms, CRAPI 700 ms; see below
         { "Goblin Giant", 7, Source::FLZ }, // GoblinGiant 700 ms
-        { "Goblins", 5, Source::FLZ }, // Goblins 500 ms
+        { "Goblins", 7, Source::RECORDING }, // Goblin: FLZ 500 ms, CRAPI 700 ms; see below
         { "Golden Knight", 7, Source::FLZ }, // GoldenKnight 700 ms
         { "Golem", 15, Source::FLZ }, // Golem 1500 ms
         { "Guards", 6, Source::CRAPI }, // SkeletonWarrior 600 ms
-        { "Heal Spirit", 1, Source::CRAPI }, // HealSpirit 100 ms
+        { "Heal Spirit", 1, Source::CRAPI, 3 }, // HealSpirit 100 ms, hit speed 300 ms
         { "Hero Giant", 10, Source::FLZ }, // Giant 1000 ms
-        { "Hero Goblins", 5, Source::FLZ }, // Goblins 500 ms
+        { "Hero Goblins", 7, Source::RECORDING }, // Goblin: FLZ 500 ms, CRAPI 700 ms; see below
         { "Hero Ice Golem", 15, Source::CRAPI }, // IceGolemite 1500 ms
         { "Hero Knight", 7, Source::FLZ }, // Knight 700 ms
         { "Hero Magic Archer", 6, Source::CRAPI }, // EliteArcher 600 ms
@@ -83,7 +111,7 @@ inline const Row* table(int& count) {
         { "Hog Rider", 10, Source::FLZ }, // HogRider 1000 ms
         { "Hunter", 15, Source::FLZ }, // Hunter 1500 ms
         { "Ice Golem", 15, Source::CRAPI }, // IceGolemite 1500 ms
-        { "Ice Spirit", 1, Source::FLZ }, // IceSpirits 100 ms
+        { "Ice Spirit", 1, Source::FLZ, 3 }, // IceSpirits 100 ms, hit speed 300 ms
         { "Ice Wizard", 12, Source::FLZ }, // IceWizard 1200 ms
         { "Inferno Dragon", 12, Source::FLZ }, // InfernoDragon 1200 ms
         { "Inferno Tower", 12, Source::FLZ }, // InfernoTower 1200 ms
@@ -129,13 +157,38 @@ inline const Row* table(int& count) {
     return rows;
 }
 
-inline int forName(const std::string& name) {
+inline const Row* find(const std::string& name) {
     int n = 0;
     const Row* rows = table(n);
     for (int i = 0; i < n; ++i) {
-        if (name == rows[i].name) return rows[i].ticks;
+        if (name == rows[i].name) return &rows[i];
     }
-    return 0;
+    return nullptr;
+}
+
+// The published load time of a card, 0 if it has no row.
+inline int forName(const std::string& name) {
+    const Row* row = find(name);
+    return row ? row->ticks : 0;
+}
+
+// The first-hit wind-up for a load time and a hit speed, both in ticks: how
+// long a unit that already walks loaded still needs once a target is in range.
+// No load time: no wind-up, the unit hits at once. A load time no shorter than
+// the hit speed (the Inferno beams: 1.2 s against 0.4 s) cannot be done in
+// advance within the cycle, so it stays the whole wind-up.
+inline int firstHitTicksFor(int loadTicks, int hitSpeedTicks) {
+    if (loadTicks <= 0) return 0;
+    if (loadTicks >= hitSpeedTicks) return loadTicks;
+    return hitSpeedTicks - loadTicks;
+}
+
+// The first-hit wind-up of a card whose attackCooldown is `attackCooldownTicks`
+// (taken as its hit speed unless the row carries the published one).
+inline int firstHitTicks(const std::string& name, int attackCooldownTicks) {
+    const Row* row = find(name);
+    if (!row) return 0;
+    return firstHitTicksFor(row->ticks, row->hitSpeedTicks > 0 ? row->hitSpeedTicks : attackCooldownTicks);
 }
 
 } // namespace LoadTimes

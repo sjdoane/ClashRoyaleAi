@@ -112,13 +112,14 @@ def test_a_goblin_barrel_is_pending_until_it_lands_and_then_the_goblins_appear()
     _wait(env)
     assert env.get_pending_spells() == []
 
-    # The Goblins deploy for a second and stab after their load time: the
-    # tower is first hurt 1.6 s after the landing (1.43-1.53 s measured).
+    # The Goblins deploy for a second and stab after their first-hit wind-up
+    # (hit speed 1.1 s - load time 0.7 s, LoadTimes.h): the tower is first
+    # hurt 1.5 s after the landing (1.43-1.53 s measured).
     for after_landing in range(1, 30):
         _wait(env)
         if env.get_tower_hp(0, 1) < hp:
             break
-    assert after_landing == 16
+    assert after_landing == 15
 
 
 def test_a_fireball_hits_only_when_its_flight_is_over():

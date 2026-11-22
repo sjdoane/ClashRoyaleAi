@@ -400,11 +400,13 @@ def test_the_teacher_actually_executes_a_planned_pair_end_to_end():
     """
     env = _env()
     _stage_hand(env, 0, [ICE_GOLEM, HOG, CANNON, SKELETONS], 10.0)
-    # 100 ticks, the top rung's horizon. The follow-up is re-scored when it
-    # falls due, and since the Hog winds up 1.0 s before its first hit
-    # (LoadTimes.h, UPSTREAM item 40) a 50-tick rollout no longer reaches
-    # the tower damage that makes it the best play here.
-    t = _teacher(horizon=100)
+    # 70 ticks. The pair has to win twice: when it is planned, and again when
+    # the follow-up is re-scored as it falls due. Which horizons do both
+    # depends on how many Hog hits fit in the rollout: with the Hog's first
+    # hit 0.6 s after reaching the tower (LoadTimes.h, patch 0034) a lone Hog
+    # out-scores the pair at 100 ticks and the follow-up loses at 50; at 70
+    # the pair holds, as it did with the 1.0 s wind-up before.
+    t = _teacher(horizon=70)
     spent0 = env.get_elixir_spent(0)
 
     slot, x, y = t.act(env, _obs(env))

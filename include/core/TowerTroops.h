@@ -12,14 +12,31 @@ namespace CrownTower {
     constexpr int PRINCESS_HP = 3052;
     constexpr int PRINCESS_DAMAGE = 109;
     constexpr int PRINCESS_COOLDOWN_TICKS = 8;   // 0.8 s
+    // First hit: how long a tower with nothing in range takes to loose its
+    // first shot once something is (CombatEntity::loadTicks). A tower does
+    // nothing in advance, so it is the whole attack: the game file has the
+    // Princess Tower at hit speed 0.8 s / load time 0 (first hit 0.8 s, as the
+    // wiki lists it) and the King Tower at 1.0 s / 0.5 s (first hit 0.5 s).
+    // Live recording runs/live/20261120-185026: the first arrow lands about
+    // 1.0 s after a Goblin Barrel does (0.8 s + the arrow's flight), not 0.2 s.
+    constexpr int PRINCESS_FIRST_HIT_TICKS = 8;
     constexpr int KING_HP = 4824;
     constexpr int KING_DAMAGE = 109;
     constexpr int KING_COOLDOWN_TICKS = 10;      // 1.0 s
+    constexpr int KING_FIRST_HIT_TICKS = 5;
+    // The Princess Tower's arrow. Published projectile speed 600
+    // (TowerPrincessProjectile), against 1000 for the King's cannonball, the
+    // Cannoneer's and the Dagger Duchess's. A published projectile speed is
+    // 48 per tile per second (measured on thrown spells, patch 0030:
+    // CardFactories.h, THROWN_SPEED_PER_TILE_PER_SECOND), so 600 is 12.5
+    // tiles/s. Every tower shot flew 20 tiles/s before patch 0036.
+    constexpr float PRINCESS_ARROW_TILES_PER_TICK = 600.0f / 48.0f / 10.0f;   // 1.25
 }
 
 // The four selectable Tower Troops; one replaces both Princess Towers for the
 // match (GameManager::addTower, reset). None is the default: the plain
-// Princess Tower (CrownTower, 7.5 range), kept byte-for-byte as it was.
+// Princess Tower (CrownTower, 7.5 range). Since patch 0035 it has the Tower
+// Princess's 0.8 s first hit too, so the two are the same tower.
 enum class TowerTroopType {
     None,
     TowerPrincess,
@@ -43,8 +60,9 @@ namespace RoyalChef {
 //
 // Level-11 stats from the Clash Royale wiki pages (current as of the 4 Aug and
 // 1 Sep 2025 balance changes; the 2026 notes did not touch Tower Troops).
-// "First hit" is the sourced first-attack time, as a load time (LoadTimes.h)
-// the name-keyed table cannot give a tower.
+// "First hit" is the sourced first-attack time, given outright as the
+// wind-up (CardStats::withLoadTicks) because the name-keyed LoadTimes table
+// cannot reach a tower.
 inline CardStats towerTroopStats(TowerTroopType type) {
     CardStats stats;
     stats.spawnOffsets = { {0.0f, 0.0f} };
@@ -60,7 +78,8 @@ inline CardStats towerTroopStats(TowerTroopType type) {
             // Princess Tower's numbers plus its first-hit time.
             stats.hp = CrownTower::PRINCESS_HP; stats.attackRange = 7.5f;
             stats.damage = CrownTower::PRINCESS_DAMAGE; stats.attackCooldown = CrownTower::PRINCESS_COOLDOWN_TICKS;
-            stats.withLoadTicks(8);
+            stats.withLoadTicks(CrownTower::PRINCESS_FIRST_HIT_TICKS);
+            stats.towerProjectileTilesPerTick = CrownTower::PRINCESS_ARROW_TILES_PER_TICK;
             break;
         case TowerTroopType::Cannoneer:
             // 2616 hp / 320 dmg, 2.2 s (1 Sep 2025), first hit 0.8 s, no splash.
@@ -84,6 +103,8 @@ inline CardStats towerTroopStats(TowerTroopType type) {
         default:
             stats.hp = CrownTower::PRINCESS_HP; stats.attackRange = 7.5f;
             stats.damage = CrownTower::PRINCESS_DAMAGE; stats.attackCooldown = CrownTower::PRINCESS_COOLDOWN_TICKS;
+            stats.withLoadTicks(CrownTower::PRINCESS_FIRST_HIT_TICKS);
+            stats.towerProjectileTilesPerTick = CrownTower::PRINCESS_ARROW_TILES_PER_TICK;
             break;
     }
     return stats;

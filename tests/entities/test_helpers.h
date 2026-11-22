@@ -23,7 +23,7 @@ inline void advancePastDeploy(const std::shared_ptr<Entity>& entity, Board& boar
 }
 
 // Steps a deployed unit that already has its target in range through its
-// attack load time (LoadTimes.h), so its next update() lands the first hit. For
+// first-hit wind-up (LoadTimes.h), so its next update() lands the first hit. For
 // tests about what a hit does, not when.
 inline void windUp(const std::shared_ptr<Entity>& entity, Board& board) {
     auto ce = std::dynamic_pointer_cast<CombatEntity>(entity);

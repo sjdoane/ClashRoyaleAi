@@ -123,6 +123,7 @@ private:
         // overload below.
         if (symbol == 'R') {
             tower->sightRange = 7.0f;
+            tower->loadTicks = CrownTower::KING_FIRST_HIT_TICKS;
             // The King starts dormant (Tower::isAwake); this is the only path
             // that builds one.
             tower->sleep();
@@ -140,6 +141,7 @@ private:
         CardFactories::applyCardMetadata(tower, stats);
         tower->name = towerName;
         tower->cardId = TOWER_PRINCESS_ID;
+        if (stats.towerProjectileTilesPerTick > 0.0f) tower->projectileTilesPerTick = stats.towerProjectileTilesPerTick;
         board.addEntity(tower);
     }
 

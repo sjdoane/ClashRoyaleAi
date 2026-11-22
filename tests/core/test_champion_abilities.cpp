@@ -101,6 +101,21 @@ TEST_CASE("Goblinstein (121) spawns both the Monster (champion) and the Doctor",
     REQUIRE(monster->hp == 2385);
     REQUIRE(doctor->hp == 721);
     REQUIRE(doctor->targetsAir);
+    // Patch 0037: the Doctor stands 3 tiles behind the Monster for either side
+    // (team 0 advances toward +y, team 1 toward -y).
+    REQUIRE(doctor->position.y == Catch::Approx(monster->position.y - 3.0f));
+
+    Board theirs;
+    CardRegistry::getInstance().getCard(121)->spawnEntity(5.0f, 25.0f, 1, theirs);
+    theirs.commitPendingEntities();
+    REQUIRE(theirs.getEntities().size() == 2);
+    float monsterY = 0.0f, doctorY = 0.0f;
+    for (const auto& e : theirs.getEntities()) {
+        auto ce = std::dynamic_pointer_cast<CombatEntity>(e);
+        REQUIRE(ce != nullptr);
+        (ce->isChampion ? monsterY : doctorY) = ce->position.y;
+    }
+    REQUIRE(doctorY == Catch::Approx(monsterY + 3.0f));
 }
 
 TEST_CASE("Boss Bandit (122) is registered with charge and a limited-use ability", "[card_registry][champion]") {

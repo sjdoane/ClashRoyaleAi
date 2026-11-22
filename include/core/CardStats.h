@@ -94,6 +94,9 @@ struct CardStats {
     // spellDelayTicks (CardFactories::thrownSpellFlightTicks). 0 = not thrown:
     // the effect starts spellDelayTicks after the cast wherever it is cast.
     int spellProjectileSpeed = 0;
+    // A Tower Troop's shot speed in tiles per tick (TowerTroops.h); 0 = the
+    // Tower's default. Read by GameManager::addTower only.
+    float towerProjectileTilesPerTick = 0.0f;
     bool spellGroundOnly = false;
     // Multi-hit spells (Poison, Arrows); see AreaSpell::remainingHits.
     int spellRemainingHits = 1;
@@ -359,8 +362,9 @@ struct CardStats {
     // CombatEntity's magazine (Dagger Duchess); 0 = none.
     int magazineSize = 0;
     int magazineReloadTicks = 0;
-    // A load time for bodies the name-keyed LoadTimes table cannot reach (the
-    // Tower Troops, which are all named "Princess Tower"); -1 = use the table.
+    // A first-hit wind-up in ticks, given outright, for bodies the name-keyed
+    // LoadTimes table cannot reach (the Tower Troops, which are all named
+    // "Princess Tower"); -1 = hit speed minus the table's load time.
     int loadTicksOverride = -1;
     float burstDamageMultiplier = 1.0f;
 

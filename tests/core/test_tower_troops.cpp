@@ -16,6 +16,9 @@ TEST_CASE("towerTroopStats(None) is the plain level-11 Princess Tower",
     REQUIRE(stats.attackRange == Catch::Approx(7.5f));
     REQUIRE(stats.damage == CrownTower::PRINCESS_DAMAGE);
     REQUIRE(stats.attackCooldown == 8);
+    // Patch 0035: the plain tower has the 0.8 s first hit as well.
+    REQUIRE(stats.loadTicksOverride == CrownTower::PRINCESS_FIRST_HIT_TICKS);
+    REQUIRE(CrownTower::PRINCESS_FIRST_HIT_TICKS == 8);
 }
 
 // Patch 0019: the wiki's level-11 values (TowerTroops.h). The old ones were

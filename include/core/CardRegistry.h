@@ -225,7 +225,7 @@ private:
             .withDeployTime(5);
     }
     static CardStats goblinDrillGoblinStats() {
-        return troop(-18, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g');
+        return troop(-18, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g');
     }
     // Phoenix's one-time revive: a second Phoenix with no death effect of its
     // own. The real card leaves a vulnerable egg for ~4 s; this revives
@@ -235,9 +235,17 @@ private:
             .withFlying().withTargetsAir();
     }
     // Spell-spawn children (Goblin Barrel, Royal Delivery, Graveyard).
+    // The Goblin Barrel's triangle (patch 0037): one Goblin half a tile beyond
+    // the target point and two half a tile short of it, half a tile to either
+    // side (published spawn offsets x 0 / 500 / -500, y 500 apart). On a
+    // Princess Tower that is one behind the tower and one on each river-side
+    // corner, as every barrel in the 2026-11-20 recording lands; the tower
+    // pushes them out to its edge, and the corner pair then stand out of the
+    // other Princess Tower's reach. It was two beside and one on the river
+    // side (0.4 tiles), unmirrored, so the other tower shot at team 1's.
     static CardStats goblinBarrelGoblinStats() {
-        return troop(-20, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g')
-            .withOffsets({ {-0.4f, 0.0f}, {0.4f, 0.0f}, {0.0f, 0.4f} });
+        return troop(-20, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
+            .withOffsets({ {0.0f, 0.5f}, {0.5f, -0.5f}, {-0.5f, -0.5f} });
     }
     static CardStats graveyardSkeletonStats() {
         return troop(-21, "Skeletons", 0.0f, Archetype::MeleeSquad, 81, SPEED_FAST, 0.5f, 81, 11, 'k');
@@ -329,7 +337,7 @@ private:
     // Goblin Drill's death spawn: two Goblins (three before a 2021 balance
     // patch).
     static CardStats goblinDrillDeathGoblinStats() {
-        return troop(-36, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g')
+        return troop(-36, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
             .withOffsets({ {-0.4f, 0.0f}, {0.4f, 0.0f} });
     }
     // Goblin Demolisher's transformed form: a Very Fast, building-only kamikaze
@@ -1116,7 +1124,7 @@ private:
         // === Compound troops ===
         // Goblin Gang and Rascals: both halves spawn via the primary unit plus
         // secondaryUnit.
-        add(troop(112, "Goblin Gang", 3.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g')
+        add(troop(112, "Goblin Gang", 3.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
             .withOffsets({ {-0.5f, -0.5f}, {0.5f, -0.5f}, {0.0f, 0.5f} })
             .withSecondaryUnit(
                 troop(-27, "Spear Goblins", 0.0f, Archetype::RangedSquad, 133, SPEED_VERY_FAST, 5.0f, 81, 16, 'S')
@@ -1180,13 +1188,14 @@ private:
 
         // Goblinstein: the Monster (front, building-only tank, carries the
         // ability) plus the Doctor (secondary, 3 tiles behind at a fixed
-        // offset, a brief stun on hit). "Lightning Link": see
+        // offset, a brief stun on hit). Behind is -y in the owner's frame
+        // (patch 0037; it was +3, which put team 0's Doctor in front). "Lightning Link": see
         // GoblinsteinLightningLinkEffect.
         add(troop(121, "Goblinstein", 5.0f, Archetype::MeleeBuildingTargeter, 2385, 0.5f, 1.2f, 128, 15, 'G')
             .withChampionAbility(2.0f, 170, std::make_shared<GoblinsteinLightningLinkEffect>(2.0f, 107, 5, 40))
             .withSecondaryUnit(
                 troop(-40, "Goblinstein", 0.0f, Archetype::RangedSquad, 721, 0.5f, 5.5f, 92, 18, 'D')
-                    .withOffsets({ {0.0f, 3.0f} })
+                    .withOffsets({ {0.0f, -3.0f} })
                     .withTargetsAir()
                     .withOnHit(std::make_shared<FreezeOnHit>(5, 0.0f))));
 
@@ -1794,10 +1803,10 @@ private:
         // within 7 s of the last goblin dying): a fresh squad at the death
         // position. withPostDeathAbility, since there is no alive-path ability.
         // The new squad uses plain Goblins stats, so it cannot chain.
-        add(troop(172, "Hero Goblins", 2.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g')
+        add(troop(172, "Hero Goblins", 2.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
             .withOffsets({ {-0.5f, -0.5f}, {0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f} })
             .withPostDeathAbility(1.0f, 70, std::make_shared<PeriodicSpawnEffect>(
-                troop(-48, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 120, 11, 'g')
+                troop(-48, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
                     .withOffsets({ {-0.5f, -0.5f}, {0.5f, -0.5f}, {-0.5f, 0.5f}, {0.5f, 0.5f} }))));
 
         // Hero Knight (base: id 0). "Triumphant Taunt" (2 elixir, single use

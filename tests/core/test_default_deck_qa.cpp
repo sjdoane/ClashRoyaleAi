@@ -265,10 +265,16 @@ TEST_CASE("Skeletons are separated by collision while deploying, not moved by ch
 // --- defence ---
 
 TEST_CASE("the Cannon fully answers a lone Hog Rider", "[deck_qa][defence]") {
-    // An unanswered Hog takes 2534 tower hp; with a Cannon down it lands one
-    // swing (317). The deck's whole defensive premise, a 3-elixir building
-    // neutralising a 4-elixir win condition. The assertions are relative, so
-    // they survive engine changes that move the absolute figures.
+    // An unanswered Hog takes most of a tower; with a Cannon down in the
+    // middle a second after the Hog it lands no swing at all. The deck's whole
+    // defensive premise, a 3-elixir building neutralising a 4-elixir win
+    // condition. The assertions are relative, so they survive engine changes
+    // that move the absolute figures.
+    //
+    // The Cannon has to be prompt and central. Since the towers' 0.8 s first
+    // hit (patch 0035) and the Cannon's own 0.9 s (patch 0034), one dropped two
+    // seconds late in the Hog's lane (4, 11) lets it through for two swings;
+    // see the late-Cannon case below.
     int unanswered = 0;
     {
         Match m;
@@ -282,9 +288,9 @@ TEST_CASE("the Cannon fully answers a lone Hog Rider", "[deck_qa][defence]") {
     Match m;
     const int before = m.towerHp(0);
     m.play(HOG_RIDER, 4.0f, 18.0f, 1);
-    m.step(20);
-    m.play(CANNON, 4.0f, 11.0f, 0);
-    m.step(380);
+    m.step(10);
+    m.play(CANNON, 7.0f, 10.0f, 0);
+    m.step(390);
     const int withCannon = before - m.towerHp(0);
 
     INFO("unanswered " << unanswered << " hp lost, with a Cannon " << withCannon);
@@ -292,6 +298,19 @@ TEST_CASE("the Cannon fully answers a lone Hog Rider", "[deck_qa][defence]") {
     // The Cannon absorbs the overwhelming majority of the push: the Hog, Very
     // Fast in the real game, reaches the tower for one hit before it dies.
     REQUIRE(withCannon * 5 < unanswered);
+
+    // Two seconds late and in the lane: the Hog kills the Cannon and reaches
+    // the tower, for less than half of what it takes unanswered.
+    Match late;
+    const int beforeLate = late.towerHp(0);
+    late.play(HOG_RIDER, 4.0f, 18.0f, 1);
+    late.step(20);
+    late.play(CANNON, 4.0f, 11.0f, 0);
+    late.step(380);
+    const int lateCannon = beforeLate - late.towerHp(0);
+    INFO("late Cannon " << lateCannon);
+    REQUIRE(lateCannon >= withCannon);
+    REQUIRE(lateCannon * 2 < unanswered);
 }
 
 TEST_CASE("Skeletons and a Musketeer both blunt a Hog, a Hog does not",

@@ -26,12 +26,15 @@ struct TowerShots {
     std::shared_ptr<StationaryCombatant> foe;
     std::vector<std::pair<int, int>> hits;   // (tick, damage)
 
-    explicit TowerShots(TowerTroopType ours)
+    // `warmUp`: ticks stepped before the target appears. A tower built from
+    // CardStats deploys for the first second of a match like any card.
+    explicit TowerShots(TowerTroopType ours, int warmUp = 0, float tilesInFront = 4.0f)
         : game(deck(), deck(), ours, TowerTroopType::None) {
         game.seed(1);
         game.reset();
+        for (int i = 0; i < warmUp; ++i) game.step();
         foe = std::make_shared<StationaryCombatant>(game.getBoard().allocateId(),
-            ArenaLayout::LEFT_LANE_X, ArenaLayout::princessY(0) + 4.0f, 1000000, 1, 0.5f, 0, 1000);
+            ArenaLayout::LEFT_LANE_X, ArenaLayout::princessY(0) + tilesInFront, 1000000, 1, 0.5f, 0, 1000);
         spawn(game.getBoard(), foe);
     }
     void run(int ticks) {
@@ -48,13 +51,13 @@ struct TowerShots {
     }
 };
 
-// The plain tower's first hit on the same setup: the engine's own engagement
-// and projectile latency, before any load time.
+// The first hit of a tower with no first-hit wind-up and the default 2
+// tiles/tick shot on the same setup: the tower's deploy second at the start
+// of a match, the shot loosed on the next tick, 2 ticks of flight. It used to
+// be measured on the plain tower, which since patches 0035 and 0036 has a
+// wind-up and a slower arrow of its own.
 int plainFirstHit() {
-    TowerShots s(TowerTroopType::None);
-    s.run(40);
-    REQUIRE_FALSE(s.hits.empty());
-    return s.hits[0].first;
+    return DEPLOY_TIME_TICKS + 1 + 2;
 }
 
 std::shared_ptr<Entity> leftPrincess(GameManager& game, int team) {
@@ -80,8 +83,94 @@ TEST_CASE("each side's Tower Troop is its own: hp per team", "[tower_troops][pat
     }
 }
 
+TEST_CASE("The plain Princess Tower: 109 every 0.8 s, the first 0.8 s after engaging", "[tower_troops][patch0035]") {
+    // A target that appears 4 tiles in front of a tower with nothing in range,
+    // two seconds into the match. Tick 1 is the first tick the tower sees it:
+    // 8 wind-up ticks, the arrow loosed on the 9th and landing 4 ticks later
+    // (4 tiles at 1.25 a tick, patch 0036). Before patch 0035 the plain tower
+    // loosed on tick 1.
+    TowerShots s(TowerTroopType::None, 20);
+    s.run(60);
+    REQUIRE(s.hits.size() >= 5);
+    REQUIRE(s.hits[0].first == 8 + 1 + 4);
+    for (const auto& [tick, dmg] : s.hits) REQUIRE(dmg == 109);
+    for (int g : s.gaps()) REQUIRE(g == 8);
+
+    // And it is the Tower Princess exactly.
+    TowerShots p(TowerTroopType::TowerPrincess, 20);
+    p.run(60);
+    REQUIRE(p.hits == s.hits);
+}
+
+TEST_CASE("The King Tower's first shot comes 0.5 s after it has a target, then every 1.0 s", "[tower_troops][patch0035]") {
+    GameManager game(deck(), deck());
+    game.seed(1);
+    game.reset();
+    std::shared_ptr<Tower> king;
+    for (const auto& e : game.getBoard().getEntities())
+        if (e->isTower() && e->symbol == 'R' && e->team == 0) king = std::dynamic_pointer_cast<Tower>(e);
+    REQUIRE(king != nullptr);
+    REQUIRE(king->loadTicks == CrownTower::KING_FIRST_HIT_TICKS);
+    REQUIRE(CrownTower::KING_FIRST_HIT_TICKS == 5);
+    // Nowhere in the King's reach is out of both Princess Towers', so they
+    // are taken off the board; losing one also wakes the King.
+    game.step();
+    REQUIRE_FALSE(king->isAwake());
+    for (const auto& e : game.getBoard().getEntities())
+        if (e->isTower() && e->symbol != 'R' && e->team == 0) e->hp = 0;
+    for (int i = 0; i < 5; ++i) game.step();
+    REQUIRE(king->isAwake());
+    auto foe = std::make_shared<StationaryCombatant>(game.getBoard().allocateId(),
+        ArenaLayout::CENTER_X, ArenaLayout::kingY(0) + 5.0f, 1000000, 1, 0.5f, 0, 1000);
+    spawn(game.getBoard(), foe);
+    std::vector<int> hits;
+    for (int t = 1; t <= 40; ++t) {
+        const int before = foe->hp;
+        game.step();
+        if (foe->hp < before) {
+            REQUIRE(before - foe->hp == CrownTower::KING_DAMAGE);
+            hits.push_back(t);
+        }
+    }
+    REQUIRE(hits.size() >= 3);
+    // 5 wind-up ticks, loosed on the 6th, 2-3 ticks of flight.
+    REQUIRE(hits[0] >= 8);
+    REQUIRE(hits[0] <= 9);
+    for (size_t i = 1; i < hits.size(); ++i) REQUIRE(hits[i] - hits[i - 1] == CrownTower::KING_COOLDOWN_TICKS);
+}
+
+TEST_CASE("A Princess Tower's arrow flies 12.5 tiles a second; the other towers' shots 20", "[tower_troops][patch0036]") {
+    // Published projectile speed 600 against 1000, at 48 per tile per second.
+    REQUIRE(CrownTower::PRINCESS_ARROW_TILES_PER_TICK == Catch::Approx(1.25f));
+    REQUIRE(towerTroopStats(TowerTroopType::None).towerProjectileTilesPerTick == Catch::Approx(1.25f));
+    REQUIRE(towerTroopStats(TowerTroopType::TowerPrincess).towerProjectileTilesPerTick == Catch::Approx(1.25f));
+    for (TowerTroopType fast : { TowerTroopType::Cannoneer, TowerTroopType::DaggerDuchess, TowerTroopType::RoyalChef }) {
+        REQUIRE(towerTroopStats(fast).towerProjectileTilesPerTick == Catch::Approx(0.0f));   // the Tower's default
+    }
+    GameManager game(deck(), deck());
+    for (const auto& e : game.getBoard().getEntities()) {
+        auto tower = std::dynamic_pointer_cast<Tower>(e);
+        if (!tower) continue;
+        REQUIRE(tower->projectileTilesPerTick == Catch::Approx(tower->symbol == 'R' ? 2.0f : 1.25f));
+    }
+
+    // Flight grows with the distance: loosed on tick 9 either way, the arrow
+    // lands 4 ticks later on a target 4 tiles out and 7 ticks later 8 tiles
+    // out (it was 2 and 4).
+    TowerShots near(TowerTroopType::None, 20, 4.0f);
+    near.run(30);
+    TowerShots far(TowerTroopType::None, 20, 8.0f);
+    far.run(30);
+    REQUIRE(near.hits[0].first == 9 + 4);
+    REQUIRE(far.hits[0].first == 9 + 7);
+    // The rhythm at the target is still the hit speed.
+    for (int g : far.gaps()) REQUIRE(g == 8);
+}
+
 TEST_CASE("Tower Princess: 109 every 0.8 s, the first 0.8 s after engaging", "[tower_troops][patch0019]") {
-    const int plain = plainFirstHit();
+    // Its arrow takes 2 ticks longer over these 4 tiles than the 2 tiles/tick
+    // shot plainFirstHit() describes (patch 0036).
+    const int plain = plainFirstHit() + 2;
     TowerShots s(TowerTroopType::TowerPrincess);
     s.run(60);
     REQUIRE(s.hits.size() >= 5);

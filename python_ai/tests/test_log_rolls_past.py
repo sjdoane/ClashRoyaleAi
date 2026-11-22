@@ -4,6 +4,11 @@ A Goblin Barrel thrown at our Princess Tower lands 28 ticks after the cast. A
 Log cast on the tile in front of the tower as the Barrel is thrown has rolled
 by before the Goblins land and does not touch them; one cast two seconds later
 meets them. (Body 1.2 tiles long: published projectile_radius_y 600.)
+
+Patch 0037 put one of the three Goblins behind the tower, where the real barrel
+lands it. The Log starts there, so it leaves that Goblin first: a Log cast
+about a second after the throw now gets the two river-side Goblins and misses
+the one behind.
 """
 import pytest
 
@@ -61,8 +66,14 @@ def test_a_log_cast_as_the_barrel_is_thrown_rolls_past_before_the_goblins_land()
 
 
 def test_a_log_cast_two_seconds_after_the_throw_saves_the_tower():
-    for delay in (16, 20, 24):
+    for delay in (18, 20, 24):
         assert _tower_loss(delay) == 0, delay
+
+
+def test_a_log_cast_a_second_after_the_throw_misses_the_goblin_behind_the_tower():
+    unanswered = _tower_loss(None)
+    for delay in (10, 14):
+        assert 0 < _tower_loss(delay) < unanswered / 3, delay
 
 
 def test_a_log_cast_after_the_first_stab_is_too_late():

@@ -54,7 +54,12 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     d["hp"] = s.hp;
     d["damage"] = s.damage;
     d["attack_cooldown_ticks"] = s.attackCooldown;
-    d["load_ticks"] = LoadTimes::forName(s.name);
+    d["load_ticks"] = LoadTimes::forName(s.name);   // published load time
+    // What a unit of this card winds up before its first hit on a target in
+    // range (CardFactories::applyCardMetadata): hit speed minus load time.
+    d["first_hit_windup_ticks"] = s.loadTicksOverride >= 0
+        ? s.loadTicksOverride
+        : LoadTimes::firstHitTicks(s.name, s.attackCooldown);
     d["hit_speed_s"] = s.attackCooldown / TICKS_PER_SECOND;
     d["first_hit_ticks"] = s.initialCooldownTicks;   // 0 = no seeded first-hit delay
     d["speed_tiles_per_tick"] = s.speed;
