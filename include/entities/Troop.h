@@ -23,6 +23,7 @@ public:
 
 protected:
     void moveTowards(Board& board, const Vector2D& dest) override {
+        if (isRiding()) return; // carried (patch 0046): CombatEntity::update pins it to its carrier
         Vector2D waypoint = riverIgnores ? dest : board.getNextWaypoint(position, dest);
         float dx = waypoint.x - position.x;
         float dy = waypoint.y - position.y;

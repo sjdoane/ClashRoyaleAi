@@ -131,6 +131,23 @@ public:
     // Whether findTarget() may pick a flyer. Only read on `this`, unlike
     // isFlying.
     bool targetsAir = false;
+    // The published `TargetOnlyTroops` (patch 0046): see isValidTarget().
+    bool targetsTroopsOnly = false;
+
+    // An attached rider (patch 0046, CardStats::secondaryAttached): the id of
+    // the unit that carries it, or -1. An id, not a pointer, so a board
+    // snapshot needs no remapping (ids survive Board::snapshot). While it
+    // rides, update() pins it to the carrier at ridingOffset, it never moves
+    // on its own, and nothing can target or damage it.
+    int carrierEntityId = -1;
+    Vector2D ridingOffset{ 0.0f, 0.0f };
+    bool dropsWhenCarrierDies = false;
+    bool isRiding() const { return carrierEntityId >= 0; }
+    void rideOn(const Entity& carrier, bool dropsOff) {
+        carrierEntityId = carrier.id;
+        ridingOffset = Vector2D{ position.x - carrier.position.x, position.y - carrier.position.y };
+        dropsWhenCarrierDies = dropsOff;
+    }
 
     // Fired once by onDeath() (e.g. Golem spawning Golemites).
     std::shared_ptr<IDeathEffect> deathEffect;
@@ -505,11 +522,13 @@ public:
         attackCooldown(attackCooldown), currentCooldown(0.0f) {}
 
     bool isTargetable() const override {
+        if (isRiding()) return false;
         return (!startsInvisible || visibleTicksRemaining > 0) && temporaryInvisibilityTicksRemaining <= 0;
     }
     // An invisible unit cannot be picked as a target but is still hit by
-    // whatever lands on its tile (Entity::takesAreaDamage).
-    bool takesAreaDamage() const override { return true; }
+    // whatever lands on its tile (Entity::takesAreaDamage). A rider is not: it
+    // has no body of its own while it is carried.
+    bool takesAreaDamage() const override { return !isRiding(); }
 
     // Soul collection: any death within radius, ally or enemy.
     void onNearbyDeath(Board&, const Vector2D& deathPosition, int) override {
@@ -580,6 +599,7 @@ public:
     // Parry is checked before shield, so a parried hit costs no shield. The
     // shield absorbs first and only the excess reaches hp.
     void takeDamage(int amount) override {
+        if (isRiding()) return; // carried: the carrier's hit points are the card's
         if (chargeGrantsInvulnerability && chargeThreshold > 0.0f
             && chargeProgress >= chargeThreshold * 0.5f) {
             return; // mid-dash: immune
@@ -689,6 +709,22 @@ public:
         // time-stopped: poison, cooldowns and buffs keep ticking.
         const bool deploying = deployTicksRemaining > 0;
         if (deploying) deployTicksRemaining--;
+
+        // An attached rider goes where its carrier goes (patch 0046). When the
+        // carrier is gone the rider dies with it, or drops off and carries on
+        // as an ordinary unit from where it stood.
+        if (isRiding()) {
+            const Entity* carrier = nullptr;
+            for (const auto& e : board.getEntities()) {
+                if (e->id == carrierEntityId) { if (e->isAlive()) carrier = e.get(); break; }
+            }
+            if (carrier) {
+                position = Vector2D{ carrier->position.x + ridingOffset.x, carrier->position.y + ridingOffset.y };
+            } else {
+                carrierEntityId = -1;
+                if (!dropsWhenCarrierDies) { hp = 0; return; }
+            }
+        }
 
         // Captured before the decrement, so the last tick of a freeze still
         // counts as frozen, at its own strength, for the ramp reset, the
@@ -1045,6 +1081,7 @@ protected:
     bool isValidTarget(const std::shared_ptr<Entity>& entity) const {
         return entity && entity->team != this->team && entity->isAlive() && entity->isTargetable()
             && entity->id != this->id && (!entity->isFlying || targetsAir)
+            && !(targetsTroopsOnly && (entity->isBuilding() || entity->isTower()))
             && (minAttackRange <= 0.0f || position.distanceTo(entity->position) >= minAttackRange);
     }
 

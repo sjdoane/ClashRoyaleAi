@@ -286,6 +286,7 @@ private:
     static CardStats ramRiderCrossbowStats() {
         return troop(-25, "Ram Rider", 0.0f, Archetype::RangedSquad, 1766, 0.5f, 5.0f, 104, 11, '"')
             .withTargetsAir()
+            .withTargetsTroopsOnly() // game data, RamRider: TargetOnlyTroops (patch 0046)
             .withIgnoresRiver();
     }
     static CardStats goblinGiantSpearGoblinsStats() {
@@ -993,11 +994,11 @@ private:
         // Ram Rider jumps the river.
         add(troop(87, "Ram Rider", 5.0f, Archetype::MeleeBuildingTargeter, 1766, SPEED_MEDIUM, 0.8f, 250, 18, '"')
             .withCharge(3.0f, 2.0f).withChargeSpeed(2.0f) // the ram charges at 2x (item 35)
-            .withSecondaryUnit(ramRiderCrossbowStats()) // the rider's independently targeting crossbow (default 5.5 sight)
+            .withAttachedSecondaryUnit(ramRiderCrossbowStats(), false) // the rider: carried, dies with the ram (patch 0046; default 5.5 sight)
             .withSightRange(7.5f) // the ram itself
             .withIgnoresRiver() /* audit 0003: wiki Ram Rider, level 11 */);
         add(troop(88, "Goblin Giant", 6.0f, Archetype::MeleeBuildingTargeter, 3110, SPEED_MEDIUM, 1.2f, 176, 15, '`')
-            .withSecondaryUnit(goblinGiantSpearGoblinsStats()).withSightRange(7.5f)); // carried Spear Goblins, independently targeting
+            .withAttachedSecondaryUnit(goblinGiantSpearGoblinsStats(), true).withSightRange(7.5f)); // carried Spear Goblins, independently targeting
         // Skeleton Barrel releases 2 Skeletons on death.
         add(troop(89, "Skeleton Barrel", 3.0f, Archetype::MeleeBuildingTargeter, 532, SPEED_FAST, 0.35f, 81, 10, ',')
             .withFlying()
@@ -1659,9 +1660,9 @@ private:
         // effect cannot be gated on hp.
         addEvolution(159,
             troop(88, "Goblin Giant", 6.0f, Archetype::MeleeBuildingTargeter, 3110, SPEED_MEDIUM, 1.2f, 176, 15, '`')
-                .withSecondaryUnit(goblinGiantSpearGoblinsStats()).withSightRange(7.5f),
+                .withAttachedSecondaryUnit(goblinGiantSpearGoblinsStats(), true).withSightRange(7.5f),
             troop(88, "Goblin Giant", 6.0f, Archetype::MeleeBuildingTargeter, 3110, SPEED_MEDIUM, 1.2f, 176, 15, '`')
-                .withSecondaryUnit(goblinGiantSpearGoblinsStats()).withSightRange(7.5f)
+                .withAttachedSecondaryUnit(goblinGiantSpearGoblinsStats(), true).withSightRange(7.5f)
                 .withPeriodicEffect(22, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())),
             1 /* audit 0003: wiki Evolution, level 11: 1 cycle */, 1);
 

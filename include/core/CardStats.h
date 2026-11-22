@@ -238,6 +238,18 @@ struct CardStats {
     // Rascals): a second, independently targeting unit spawned at the same
     // point by CardFactories::spawn.
     std::shared_ptr<CardStats> secondaryUnit;
+    // Patch 0046. The game data marks two of those cards `SpawnAttach`: the
+    // Ram carries its rider and the Goblin Giant its two Spear Goblins. An
+    // attached secondary has no body of its own while its carrier lives: it
+    // sits on the carrier, cannot be targeted or damaged, and only its weapon
+    // acts. When the carrier dies it either dies with it (the rider, which has
+    // no death spawn in the data) or drops off as an ordinary unit (the Spear
+    // Goblins, `DeathSpawnCharacter: SpearGoblin`).
+    bool secondaryAttached = false;
+    bool secondaryDropsOnCarrierDeath = false;
+    // The published `TargetOnlyTroops` (the Ram's rider): buildings and Crown
+    // Towers are never targets, not even as the walk-to objective.
+    bool targetsTroopsOnly = false;
 
     // Periodic spawning while alive (Witch, Night Witch, Furnace, Barbarian
     // Hut, Goblin Hut, Tombstone, Goblin Drill). First fires after one full
@@ -591,6 +603,16 @@ struct CardStats {
     }
     CardStats& withSecondaryUnit(CardStats unit) {
         secondaryUnit = std::make_shared<CardStats>(std::move(unit));
+        return *this;
+    }
+    CardStats& withAttachedSecondaryUnit(CardStats unit, bool dropsOnCarrierDeath) {
+        secondaryUnit = std::make_shared<CardStats>(std::move(unit));
+        secondaryAttached = true;
+        secondaryDropsOnCarrierDeath = dropsOnCarrierDeath;
+        return *this;
+    }
+    CardStats& withTargetsTroopsOnly() {
+        targetsTroopsOnly = true;
         return *this;
     }
     CardStats& withSpellClone() {

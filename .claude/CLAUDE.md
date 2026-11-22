@@ -854,6 +854,39 @@ as if it were sourced.
 - Tests: `python_ai/tests/test_published_sight_of_elite_barbarians_electro_giant_bush.py`,
   `tests/core/test_sight_range.cpp` (catalogue rows).
 
+## 2026-11-22: attached riders ride their carrier (patch 0046)
+
+**GAMEPLAY-AFFECTING.** The game data marks two compound cards `SpawnAttach:
+true` (RoyaleAPI cr-api-data cards_stats.json and FirstLight-Zero
+card_specs.json 15.535.13 agree): the Ram carries one `RamRider`
+(`TargetOnlyTroops: true`, no death spawn) and the Goblin Giant two
+`SpearGoblinGiant` (`DeathSpawnCharacter: SpearGoblin`). The engine spawned
+both as ordinary second units on the same tile. A lone Ram Rider was therefore
+two 1766-HP bodies: the rider stopped at crossbow range, shot the Princess
+Tower untargeted while the ram tanked, then walked on to the King Tower: 3884
+tower damage where the ram alone deals 1750. The Goblin Giant's Spear Goblins
+ran ahead of it at Very Fast and were shot first.
+
+- `CardStats::withAttachedSecondaryUnit(unit, dropsOnCarrierDeath)`:
+  `CardFactories::spawn` links every unit of the secondary to the card's first
+  unit (`CombatEntity::rideOn`, by entity id so snapshots need no remapping).
+- While it rides, a unit is pinned to its carrier at its spawn offset
+  (`CombatEntity::update`), never moves on its own (`Troop::moveTowards`),
+  cannot be targeted (`isTargetable`), takes no area damage
+  (`takesAreaDamage`) and no damage at all (`takeDamage`), and is not a
+  collision body. Its weapon still targets and fires independently.
+- When the carrier is gone the rider dies with it (Ram Rider) or drops off as
+  an ordinary unit where it stood (Goblin Giant's Spear Goblins). This happens
+  on the rider's next update, so it can outlive the carrier by one tick.
+- `CardStats::withTargetsTroopsOnly()` (the rider): buildings and Crown Towers
+  fail `isValidTarget`, so they are not even the walk-to objective.
+- NOT done, and why: Goblin Machine's turret is still a second 2150-HP body
+  (the data has no `SpawnAttach` on it; it is one character with two weapons,
+  which needs a different mechanism). The rider's bola snare (`BolaSnare`,
+  speed -70%) is not modelled. A stun or freeze on the carrier does not reach
+  the rider. A Clone of a riding unit keeps the original carrier's id.
+- Tests: `python_ai/tests/test_attached_riders_ride_their_carrier.py`.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

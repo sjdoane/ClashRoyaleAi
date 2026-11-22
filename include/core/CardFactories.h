@@ -38,6 +38,7 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
         : LoadTimes::firstHitTicks(stats.name, stats.attackCooldown);
     entity->isFlying = stats.isFlying;
     entity->targetsAir = stats.targetsAir;
+    entity->targetsTroopsOnly = stats.targetsTroopsOnly;
     entity->deathEffect = stats.deathEffect;
     entity->rampMidTick = stats.rampMidTick;
     entity->rampFullTick = stats.rampFullTick;
@@ -314,6 +315,7 @@ inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board
 }
 
 inline void spawn(const CardStats& stats, float x, float y, int team, Board& board) {
+    const size_t firstPrimary = board.pendingEntityCount();
     switch (stats.archetype) {
         case Archetype::MeleeSquad:             spawnMeleeSquad(stats, x, y, team, board); break;
         case Archetype::RangedSquad:             spawnRangedSquad(stats, x, y, team, board); break;
@@ -327,7 +329,20 @@ inline void spawn(const CardStats& stats, float x, float y, int team, Board& boa
     // Rascals): the second, independently targeting unit spawns at the same
     // point.
     if (stats.secondaryUnit) {
+        const size_t firstSecondary = board.pendingEntityCount();
         spawn(*stats.secondaryUnit, x, y, team, board);
+        // Attached secondaries (patch 0046) ride the card's first unit.
+        if (stats.secondaryAttached) {
+            std::shared_ptr<Entity> carrier;
+            for (size_t i = firstPrimary; i < firstSecondary && !carrier; ++i) {
+                if (std::dynamic_pointer_cast<Troop>(board.getPendingEntity(i))) carrier = board.getPendingEntity(i);
+            }
+            for (size_t i = firstSecondary; carrier && i < board.pendingEntityCount(); ++i) {
+                if (auto rider = std::dynamic_pointer_cast<Troop>(board.getPendingEntity(i))) {
+                    rider->rideOn(*carrier, stats.secondaryDropsOnCarrierDeath);
+                }
+            }
+        }
     }
 }
 
