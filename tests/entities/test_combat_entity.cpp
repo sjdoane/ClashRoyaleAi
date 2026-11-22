@@ -75,15 +75,16 @@ TEST_CASE("findTarget never picks an enemy beyond sightRange, even if it's the o
     REQUIRE(attacker->attackCount == 0); // never acquired, though within attackRange
 }
 
-TEST_CASE("sight is measured CENTRE-TO-CENTRE against the raw sightRange",
-        "[combat_entity][targeting][sight_range][centre_to_centre]") {
-    // Sight is strict centre-to-centre: 5.5 means 5.5. Bounded from both sides:
-    // a uniformly blind engine fails the second REQUIRE, a radius-inflated one
-    // the first.
+TEST_CASE("sight is measured BODY TO BODY, like attack range",
+        "[combat_entity][targeting][sight_range][body_to_body]") {
+    // Patch 0044: 5.5 means 5.5 between the two bodies, so 5.5 + 0.4 + 0.4 =
+    // 6.3 between centres for two troops, the convention attack range always
+    // had. Bounded from both sides: a centre-to-centre engine fails the second
+    // REQUIRE, one that sees further the first.
     Board board;
 
-    SECTION("just OUTSIDE the raw sightRange: not acquired") {
-        auto enemy = std::make_shared<DummyEntity>(1, 0.0f, 6.0f, 1000, 1);
+    SECTION("just OUTSIDE sight plus both radii: not acquired") {
+        auto enemy = std::make_shared<DummyEntity>(1, 0.0f, 6.5f, 1000, 1);
         spawn(board, enemy);
         auto attacker = std::make_shared<StationaryCombatant>(
             2, 0.0f, 0.0f, 100, 0, 20.0f, 50, 10);
@@ -91,8 +92,8 @@ TEST_CASE("sight is measured CENTRE-TO-CENTRE against the raw sightRange",
         REQUIRE(attacker->attackCount == 0);
     }
 
-    SECTION("just INSIDE the raw sightRange: acquired") {
-        auto enemy = std::make_shared<DummyEntity>(1, 0.0f, 5.4f, 1000, 1);
+    SECTION("just INSIDE sight plus both radii: acquired") {
+        auto enemy = std::make_shared<DummyEntity>(1, 0.0f, 6.1f, 1000, 1);
         spawn(board, enemy);
         auto attacker = std::make_shared<StationaryCombatant>(
             2, 0.0f, 0.0f, 100, 0, 20.0f, 50, 10);

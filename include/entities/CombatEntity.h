@@ -1073,34 +1073,30 @@ protected:
         return effectiveSightWith(ownEffectiveRadius(), *target);
     }
 
-    // Sight is strict centre-to-centre: a Hog Rider's 9.5 means 9.5 tiles
-    // centre to centre, as the published ranges do. Radii answer a hitbox
-    // question, not a vision one.
+    // Sight is measured the way attack range is (effectiveRangeTo): body to
+    // body, so the centre distance a unit sees at is its catalogued sight plus
+    // both radii. The published tables only make sense that way: Musketeer
+    // 6000 / 6000, Wizard and Cannon 5500 / 5500 give sight equal to range, and
+    // a unit can hit exactly what it can see. Measured centre to centre (as
+    // here before patch 0044, with a floor at attack reach to stop ranged units
+    // idling) a melee troop saw 0.8 tiles less than the game's: an Ice Golem
+    // or Knight dropped in the middle, 5.5 tiles to the side and a few ahead,
+    // did not pull a lane push the way it does in play.
     //
-    // One floor: attack reach is surface-to-surface (effectiveRangeTo), so a
-    // unit whose reach exceeds its sight could hit what it cannot acquire and
-    // would stand idle. Sight is therefore floored at the unit's own attack
-    // reach. The floor binds only where attackRange is close to sightRange
-    // (towers, Musketeer-likes); for long-sight cards sightRange wins outright.
-    // Without it, two Musketeers would stop out of each other's sight.
+    // A unit whose raw sight is below its raw range (none in the catalogue;
+    // test_combat_entity.cpp builds one) stays blind past its sight.
     //
     // Takes the attacker's radius as a parameter so findTarget computes it
-    // once.
+    // once. Compare with the CENTRE distance.
     float effectiveSightWith(float myRadius, const Entity& target) const {
-        const float attackReach = attackRange + myRadius + effectiveRadiusOf(target);
-        // Only for a card whose raw sightRange covers its raw attackRange,
-        // which the catalogue guarantees. Otherwise the unit stays blind past
-        // its sight, as test_combat_entity.cpp pins.
-        if (sightRange >= attackRange && attackReach > sightRange) return attackReach;
-        return sightRange;
+        return sightRange + myRadius + effectiveRadiusOf(target);
     }
 
-    // The published sight clip (SightClips.h). Measured to the target's
-    // footprint, as findTarget ranks; the unit's own reach is far inside the
-    // box, so there is nothing to floor.
-    bool withinSightClip(const Entity& target) const {
+    // The published sight clip (SightClips.h), body to body like the sight
+    // itself.
+    bool withinSightClip(float myRadius, const Entity& target) const {
         if (sightClip <= 0.0f && sightClipSide <= 0.0f) return true;
-        const float r = target.getTargetingRadius();
+        const float r = myRadius + effectiveRadiusOf(target);
         if (sightClipSide > 0.0f
             && std::fabs(target.position.x - position.x) - r > sightRange - sightClipSide) return false;
         if (sightClip > 0.0f
@@ -1141,9 +1137,9 @@ protected:
             }
             // The tower tracking above serves only the fallback. Ranked by
             // footprint distance (Entity::getTargetingRadius); the sight gate
-            // uses centre distance.
+            // is body to body (effectiveSightWith).
             const float rank = dist - entity->getTargetingRadius();
-            if (rank <= effectiveSightWith(myRadius, *entity) && withinSightClip(*entity)
+            if (dist <= effectiveSightWith(myRadius, *entity) && withinSightClip(myRadius, *entity)
                 && rank < minSightDistance) {
                 minSightDistance = rank;
                 closestInSight = entity;

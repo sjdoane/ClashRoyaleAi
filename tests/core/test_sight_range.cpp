@@ -12,7 +12,9 @@
 #include <set>
 
 // --- sight vs attack reach ---
-// Attack reach is measured surface to surface (effectiveRangeTo: tower vs troop
+// Since patch 0044 sight is measured like attack reach, surface to surface, so
+// this invariant holds by construction and these cases guard it. History:
+// attack reach was surface to surface (effectiveRangeTo: tower vs troop
 // 7.5 + 1.5 + 0.4 = 9.4), sight centre to centre (7.5). Without a floor, a
 // Princess Tower could attack a Musketeer standing at 8.0 but never see her,
 // and she would destroy it without taking damage; in the real game the
@@ -411,10 +413,8 @@ TEST_CASE("an Evolution's evolved form keeps its base form's sight range",
 
 
 // --- target selection: nearest building, strict sight ---
-// 1. Sight is strict centre-to-centre: a Hog Rider's 9.5 means 9.5 against a
-//    Cannon. One floor survives: sight never falls below the unit's own attack
-//    reach, for cards whose raw sight covers their raw range (otherwise the
-//    free-siege case at the top returns).
+// 1. Sight is measured like attack range, body to body (patch 0044): a Battle
+//    Ram's 6.5 reaches a Cannon whose centre is 6.5 + 0.4 + 1.0 = 7.9 away.
 //
 // 2. The nearest building wins, Crown Towers included: a building-targeter
 //    walks at whichever building is closest.
@@ -511,11 +511,11 @@ TEST_CASE("a Crown Tower competes for targets by its body, like any building",
 }
 
 TEST_CASE("sight still bounds acquisition at the raw catalogued range",
-          "[targeting][sight][centre_to_centre]") {
+          "[targeting][sight][body_to_body]") {
     // Rule 1 alone. At y = 20 the tower is 14.0 away, so the Cannon is always
     // the nearest building and only sight can refuse it. The Battle Ram
-    // publishes no sight clip, so its 6.5 is a plain disc. The gate uses
-    // footprint distance, so a Cannon (radius 1.0) is refused past 7.5 centre.
+    // publishes no sight clip, so its 6.5 is a plain disc. Body to body, a
+    // Cannon (radius 1.0) is refused past 6.5 + 0.4 + 1.0 = 7.9 centre.
     REQUIRE(driftAt(81, 20.0f, 8.0f) > -0.05f);   // never towards the Cannon
     REQUIRE(driftAt(81, 20.0f, 7.0f) < -0.3f);
 }
@@ -523,7 +523,7 @@ TEST_CASE("sight still bounds acquisition at the raw catalogued range",
 TEST_CASE("a published sight clip cuts the sideways reach of a building-targeter",
           "[targeting][sight][sight_clip]") {
     // SightClips.h: Hog Rider 9.5 sight, side clip 4.0, so a building pulls it
-    // from at most 5.5 to the side (footprint; 6.5 centre for a Cannon). The
+    // from at most 5.5 to the side (body to body; 6.9 centre for a Cannon). The
     // Giant's 7.5 with a 2.0 clip gives the same 5.5.
     const int card = GENERATE(15, 2);
     INFO("card id " << card);

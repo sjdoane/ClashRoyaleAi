@@ -807,6 +807,34 @@ like every other building.
   `tests/core/test_sight_range.cpp` ("a Crown Tower competes for targets by its
   body").
 
+## 2026-11-22: sight is measured body to body, like attack range (patch 0044)
+
+**GAMEPLAY-AFFECTING.** `CombatEntity::effectiveSightWith` is now
+`sightRange + own radius + target radius`, compared with the centre distance:
+the convention `effectiveRangeTo` always had. The old rule was centre to
+centre with a floor at attack reach.
+
+- Why: the published tables give sight equal to range for the Musketeer
+  (6000 / 6000), Wizard and Cannon (5500 / 5500), so the two are one measure,
+  and range is body to body (the Princess Tower's 7.5 reaching 9.4 was checked
+  against recordings in patch 0033). The floor at attack reach was the engine
+  admitting this for ranged units only. **Inferred from the tables, not stated
+  anywhere as prose.**
+- Effect: a troop sees another troop 0.8 tiles further (0.4 + 0.4 implicit
+  radii), a building 0.4 further, towers unchanged (the floor already gave
+  them their reach). A melee troop with the standard 5.5 now turns for an Ice
+  Golem or Knight dropped in the middle of the arena, 5 tiles to the side of
+  its lane: the kite. In a replay the recorded player's Ice Golem at (9, 15)
+  against Elite Barbarians coming off the bridge at x 2.5 was ignored.
+- The sight clip (patch 0042) is body to body as well, so a clipped
+  building-targeter reaches a Cannon 5.5 + 0.4 + 1.0 = 6.9 to the side: 6 pulls,
+  7 does not (a Balloon, 5.7, does at exactly 7 because this engine's Cannon
+  body is 1.0 against the published 0.6).
+- Still short of the game: troop radii are one implicit 0.4, published ones
+  run 0.5 (Knight, Elite Barbarians) to 0.75 (Giant), 0.7 for the Ice Golem.
+- Tests: `tests/entities/test_combat_entity.cpp` ("sight is measured BODY TO
+  BODY"), `python_ai/tests/test_sight_is_measured_body_to_body.py`.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

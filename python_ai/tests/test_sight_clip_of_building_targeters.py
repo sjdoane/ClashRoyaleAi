@@ -59,7 +59,7 @@ def _first_target(attacker, cannon_x, cannon_y=12.0, ticks=420):
 def test_a_balloon_is_clipped_sideways_only():
     # Balloon: SightClipSide 2000 on 7700 (5.7 to the side), no forward clip.
     assert _first_target(BALLOON, 9, 14.0) == "cannon"
-    assert _first_target(BALLOON, 10, 14.0) == "tower"
+    assert _first_target(BALLOON, 11, 14.0) == "tower"
 
 
 def test_the_clip_values_are_the_published_ones():

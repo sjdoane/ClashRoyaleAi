@@ -28,7 +28,8 @@
 // READING (inferred, not published as prose): the sight disc is cut down to a
 // box. A building is in sight only if it is within SightRange AND no further
 // than SightRange - SightClipSide to the side (x) AND no further than
-// SightRange - SightClip along the arena (y). That makes every clipped troop's
+// SightRange - SightClip along the arena (y), all body to body like sight
+// itself (patch 0044). That makes every clipped troop's
 // sideways reach 5.0-5.7 tiles: the distance from a lane to the middle of the
 // arena. It is the rule players know: a building in the middle pulls a Hog or a
 // Giant from either lane, one placed towards the far lane does not, although

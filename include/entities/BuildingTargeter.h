@@ -44,11 +44,11 @@ protected:
 
             // The nearest building in sight wins, and towers compete on equal
             // terms, as in the real game. Ranked by footprint distance
-            // (Entity::getTargetingRadius); the sight gate uses
-            // effectiveSightWith on centre distance, as in
+            // (Entity::getTargetingRadius); the sight gate is
+            // effectiveSightWith against the centre distance, as in
             // CombatEntity::findTarget.
             const float rank = dist - entity->getTargetingRadius();
-            if (rank <= effectiveSightWith(myRadius, *entity) && withinSightClip(*entity)
+            if (dist <= effectiveSightWith(myRadius, *entity) && withinSightClip(myRadius, *entity)
                 && rank < minSightDistance) {
                 minSightDistance = rank;
                 closestInSight = entity;
