@@ -227,3 +227,24 @@ public:
     int loserTeam() const { return loser; }
     int matchDurationTicks() const { return durationTicks; }
 };
+
+// Every hit on a Crown Tower, in order, for forensics (who took a tower down,
+// and with what). Off by default: a match lands a few hundred tower hits per
+// side and GameManager::snapshot() copies every collector, so nothing is kept
+// unless a caller asks (ClashEnv::setTowerHitLog). Bounded, so a caller that
+// forgets to turn it off cannot grow it without limit.
+class TowerHitLogCollector : public IStatsObserver {
+    bool enabled = false;
+    std::vector<DamageDealtEvent> hits;
+
+public:
+    static constexpr size_t MAX_HITS = 16384;
+
+    void setEnabled(bool value) { enabled = value; }
+    bool isEnabled() const { return enabled; }
+    void onDamageDealt(const DamageDealtEvent& e) override {
+        if (!enabled || !e.targetIsTower || hits.size() >= MAX_HITS) return;
+        hits.push_back(e);
+    }
+    const std::vector<DamageDealtEvent>& all() const { return hits; }
+};

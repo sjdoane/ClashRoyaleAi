@@ -442,6 +442,53 @@ PYBIND11_MODULE(clash_royale_env, m) {
              "marks a projectile from the caster's King Tower, whose flight "
              "depends on the distance (spell_flight_ticks). Read-only; these "
              "spells are in no observation channel.")
+        .def("get_units", [](const ClashEnv& env) {
+                py::list out;
+                for (const auto& u : env.getUnits()) {
+                    py::dict d;
+                    d["id"] = u.id;
+                    d["card_id"] = u.cardId;
+                    d["name"] = u.name;
+                    d["team"] = u.team;
+                    d["x"] = u.x;
+                    d["y"] = u.y;
+                    d["hp"] = u.hp;
+                    d["shield_hp"] = u.shieldHp;
+                    d["flying"] = u.flying;
+                    d["building"] = u.building;
+                    d["tower"] = u.tower;
+                    d["target_id"] = u.targetId;
+                    d["deploy_ticks"] = u.deployTicks;
+                    d["freeze_ticks"] = u.freezeTicks;
+                    d["freeze_factor"] = u.freezeFactor;
+                    d["cooldown"] = u.cooldown;
+                    d["awake"] = u.awake;
+                    d["targetable"] = u.targetable;
+                    out.append(d);
+                }
+                return out;
+             },
+             "Every living unit, building and tower as a dict {id, card_id, name, "
+             "team, x, y, hp, shield_hp, flying, building, tower, target_id, "
+             "deploy_ticks, freeze_ticks, freeze_factor, cooldown, awake, targetable}, in board "
+             "coordinates (team 0's frame). Read-only forensics: it shows both "
+             "sides' exact state, so it is not an observation.")
+        .def("set_tower_hit_log", &ClashEnv::setTowerHitLog, py::arg("enabled"),
+             "Keep every hit on a Crown Tower from now on (off by default; "
+             "survives reset(), which clears the log).")
+        .def("get_tower_hits", [](const ClashEnv& env) {
+                py::list out;
+                for (const auto& e : env.getTowerHits()) {
+                    out.append(py::make_tuple(e.tick, e.attackerTeam, e.attackerCardId, e.attackerId,
+                                              e.targetTeam, e.targetId, e.amount));
+                }
+                return out;
+             },
+             "Hits on Crown Towers since the reset, in order, as tuples (tick, "
+             "attacker_team, attacker_card_id, attacker_id, target_team, "
+             "target_id, amount). attacker_card_id is the card that dealt it (a "
+             "spawned body carries its own unregistered id); target_id matches "
+             "get_units()'s id. Empty unless set_tower_hit_log(True).")
         // The elixir phase (1.0 / 2.0 / 3.0) now.
         .def("get_elixir_multiplier", &ClashEnv::getElixirMultiplier)
         // Card-cycle tracking (item 24). `inject` bypasses playCard, where the

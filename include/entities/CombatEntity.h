@@ -1163,6 +1163,10 @@ public:
     // getDamagePerTick(), collapses it into ramp buckets, so a within-bucket
     // desync would be invisible.
     int getTicksOnTarget() const { return ticksOnTarget; }
+    // The locked target's id (-1 for none) and the ticks left before the next
+    // attack may start, for ClashEnv::getUnits (read-only forensics).
+    int getCurrentTargetId() const { return currentTargetId; }
+    float getCurrentCooldown() const { return currentCooldown; }
 
     // Damage per tick, the comparable quantity, including ramp, charge and buff
     // state.

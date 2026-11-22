@@ -969,6 +969,51 @@ public:
         return out;
     }
 
+    // --- forensics: every body on the board, and the tower-hit log ---
+    // Read-only. One row per living unit, building and tower (projectiles and
+    // spells are not bodies): who it is, where, how healthy, what it is locked
+    // on and whether it can act. Coordinates are board coordinates (team 0's
+    // frame). For replay forensics and scenario tests, not for a policy: it
+    // shows the opponent's exact state.
+    struct UnitView {
+        int id;
+        int cardId;
+        std::string name;
+        int team;
+        float x;
+        float y;
+        int hp;
+        int shieldHp;
+        bool flying;
+        bool building;
+        bool tower;
+        int targetId;          // CombatEntity::getCurrentTargetId, -1 for none
+        int deployTicks;       // ticks of deploy time left
+        int freezeTicks;       // longest freeze or slow in force
+        float freezeFactor;    // 0 = stunned, < 1 = slowed, 1 = free
+        float cooldown;        // ticks until the next attack may start
+        bool awake;            // false only for a dormant King Tower
+        bool targetable;       // false while invisible (Royal Ghost, a cloak)
+    };
+    std::vector<UnitView> getUnits() const {
+        std::vector<UnitView> out;
+        for (const auto& entity : game.getBoard().getEntities()) {
+            if (!entity->isAlive()) continue;
+            const auto* c = dynamic_cast<const CombatEntity*>(entity.get());
+            if (!c) continue;
+            const auto* tower = dynamic_cast<const Tower*>(entity.get());
+            out.push_back({ c->id, c->cardId, c->name, c->team, c->position.x, c->position.y, c->hp,
+                            c->shieldHp, c->isFlying, c->isBuilding(), c->isTower(), c->getCurrentTargetId(),
+                            c->deployTicksRemaining, c->freezeTicks, c->freezeSlow, c->getCurrentCooldown(),
+                            tower ? tower->isAwake() : true, c->isTargetable() });
+        }
+        return out;
+    }
+    // Every hit on a Crown Tower since the reset, in order, once turned on
+    // (off by default: see TowerHitLogCollector). The setting survives reset().
+    void setTowerHitLog(bool enabled) { game.setTowerHitLogEnabled(enabled); }
+    const std::vector<DamageDealtEvent>& getTowerHits() const { return game.getStatistics().towerHitLog(); }
+
     // The elixir phase in force (1.0 / 2.0 / 3.0), so readers need not know the
     // boundary ticks.
     float getElixirMultiplier() const { return game.getElixirMultiplier(); }

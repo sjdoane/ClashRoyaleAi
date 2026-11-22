@@ -323,6 +323,9 @@ public:
     Board& getBoard() { return board; }
     const Board& getBoard() const { return board; }
     const MatchStatistics& getStatistics() const { return stats; }
+    // The tower-hit log is the one piece of MatchStatistics a caller
+    // configures (MatchStatistics::setTowerHitLogEnabled).
+    void setTowerHitLogEnabled(bool value) { stats.setTowerHitLogEnabled(value); }
 
     // A fully independent copy of the match for decision-time search. Every
     // member is a value type and copies correctly (including rng, so two

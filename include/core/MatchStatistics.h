@@ -19,6 +19,9 @@ class MatchStatistics {
     std::shared_ptr<CardPlayStatsCollector> cardPlay;
     std::shared_ptr<ChampionAbilityStatsCollector> championAbility;
     std::shared_ptr<MatchOutcomeCollector> outcome;
+    std::shared_ptr<TowerHitLogCollector> towerHits;
+    // Survives attach(): a caller turns the log on once, for every match after.
+    bool towerHitLogEnabled = false;
 
     static std::string floatStr(float v) {
         std::ostringstream ss;
@@ -44,6 +47,8 @@ public:
         cardPlay = std::make_shared<CardPlayStatsCollector>();
         championAbility = std::make_shared<ChampionAbilityStatsCollector>();
         outcome = std::make_shared<MatchOutcomeCollector>();
+        towerHits = std::make_shared<TowerHitLogCollector>();
+        towerHits->setEnabled(towerHitLogEnabled);
 
         subscribeAll(board);
     }
@@ -69,6 +74,8 @@ public:
         copy.championAbility = championAbility
             ? std::make_shared<ChampionAbilityStatsCollector>(*championAbility) : nullptr;
         copy.outcome = outcome ? std::make_shared<MatchOutcomeCollector>(*outcome) : nullptr;
+        copy.towerHits = towerHits ? std::make_shared<TowerHitLogCollector>(*towerHits) : nullptr;
+        copy.towerHitLogEnabled = towerHitLogEnabled;
         copy.subscribeAll(board);
         return copy;
     }
@@ -103,6 +110,18 @@ public:
 
     float championAbilityElixirSpent(int team) const { return championAbility ? championAbility->elixirSpent(team) : 0.0f; }
     int championAbilityActivations(int team) const { return championAbility ? championAbility->activations(team) : 0; }
+
+    // The tower-hit log (TowerHitLogCollector): off by default, kept from the
+    // moment it is turned on, cleared with every attach().
+    void setTowerHitLogEnabled(bool value) {
+        towerHitLogEnabled = value;
+        if (towerHits) towerHits->setEnabled(value);
+    }
+    bool isTowerHitLogEnabled() const { return towerHitLogEnabled; }
+    const std::vector<DamageDealtEvent>& towerHitLog() const {
+        static const std::vector<DamageDealtEvent> empty;
+        return towerHits ? towerHits->all() : empty;
+    }
 
     int loserTeam() const { return outcome ? outcome->loserTeam() : -1; }
     int matchDurationTicks() const { return outcome ? outcome->matchDurationTicks() : 0; }
@@ -160,6 +179,7 @@ private:
         if (cardPlay) board.statsEvents.subscribe(cardPlay);
         if (championAbility) board.statsEvents.subscribe(championAbility);
         if (outcome) board.statsEvents.subscribe(outcome);
+        if (towerHits) board.statsEvents.subscribe(towerHits);
     }
 
     template <typename MapT>

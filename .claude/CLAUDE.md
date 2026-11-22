@@ -692,6 +692,21 @@ not end early is unchanged (62.5% -> 62.2%).
   crowns against a real 0.69). Why it does is NOT explained; these patches add
   to it, they did not start it.
 
+## 2026-11-22: forensic bindings: get_units, tower-hit log (patch 0039)
+
+Read-only bindings for replay forensics and scenario tests; no behaviour
+change (replay parity on 3000 matches is identical with and without them).
+
+- `ClashRoyaleEnv.get_units()`: every living unit, building and tower as a
+  dict (id, card_id, name, team, x, y, hp, shield_hp, flying, building, tower,
+  target_id, deploy_ticks, freeze_ticks, freeze_factor, cooldown, awake,
+  targetable), board coordinates. It shows both sides' exact state: not an
+  observation.
+- `set_tower_hit_log(True)` / `get_tower_hits()`: every hit on a Crown Tower
+  since the reset as (tick, attacker_team, attacker_card_id, attacker_id,
+  target_team, target_id, amount). Off by default (`TowerHitLogCollector`).
+- Test: `python_ai/tests/test_forensic_bindings.py`.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
