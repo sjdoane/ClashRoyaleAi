@@ -769,8 +769,11 @@ private:
             .withChargeSpeed(2.0f)  // and runs at 2x (item 35)
             .withIgnoresRiver().withSplash(1.1f) /* audit 0003: wiki Dark Prince, level 11 */);
         // Royal Ghost jumps the river.
+        // Invisibility returns 1.8 s after the last attack (published
+        // buff_when_not_attacking_time 1800 ms, patch 0040): with a hit every
+        // 1.8 s the Ghost stays visible for as long as it keeps attacking.
         add(troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1210, SPEED_FAST, 1.2f, 261, 18, 'Q')
-            .withInvisibility(5) // brief reveal after attacking
+            .withInvisibility(18)
             .withIgnoresRiver());
         // Mega Knight: the deploy slam is the spawn-effect burst (radius 1.3,
         // 430). The periodic jump closes 3.5-5 tiles instantly with a 2.0x,
@@ -977,7 +980,10 @@ private:
             .withSplash(1.5f)
             .withPeriodicEffect(50, std::make_shared<AreaStunEffect>(2.5f, 5)) /* audit 0003: wiki Electro Giant, level 11 */);
         add(troop(85, "Suspicious Bush", 2.0f, Archetype::MeleeBuildingTargeter, 81, SPEED_MEDIUM, 0.5f, 256, 14, '}')
-            .withInvisibility(5)
+            // Visible from its first hit for as long as it keeps hitting (one
+            // hit interval, patch 0040): the Bush is revealed once it reaches
+            // a building, so the tower it attacks can shoot it.
+            .withInvisibility(14)
             .withDeathEffect(std::make_shared<SpawnOnDeath>(suspiciousBushGoblinStats())) /* audit 0003: wiki Suspicious Bush, level 11 */);
         add(troop(86, "Rune Giant", 4.0f, Archetype::MeleeBuildingTargeter, 2662, SPEED_MEDIUM, 1.2f, 153, 15, '~')
             .withAllyBuffAura(3.0f, 3, 1.5f, 50, 2) /* audit 0003: wiki Rune Giant, level 11 */);
@@ -1372,13 +1378,12 @@ private:
                 .withPassiveDamageReduction(0.65f),
             2, 1);
 
-        // Royal Ghost: a longer reveal window (1.8 s vs 0.5 s), and every
-        // landed hit spawns 2 Souldiers. The real "only while invisible"
-        // condition is not checked; she is cloaked for nearly all her attacks
-        // anyway.
+        // Royal Ghost: every landed hit spawns 2 Souldiers. The real "only
+        // while invisible" condition is not checked. Both forms re-cloak 1.8 s
+        // after the last attack (patch 0040).
         addEvolution(136,
             troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1210, SPEED_FAST, 1.2f, 261, 18, 'Q')
-                .withInvisibility(5).withIgnoresRiver(),
+                .withInvisibility(18).withIgnoresRiver(),
             troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1210, SPEED_FAST, 1.2f, 261, 18, 'Q')
                 .withInvisibility(18)
                 .withOnHitSpawn(std::make_shared<PeriodicSpawnEffect>(royalGhostSouldierStats()

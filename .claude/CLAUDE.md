@@ -707,6 +707,31 @@ change (replay parity on 3000 matches is identical with and without them).
   target_team, target_id, amount). Off by default (`TowerHitLogCollector`).
 - Test: `python_ai/tests/test_forensic_bindings.py`.
 
+## 2026-11-22: an invisible unit stays revealed while it keeps attacking (patch 0040)
+
+The Royal Ghost's reveal window after a hit was 0.5 s of its 1.8 s hit
+interval (base form; the evolved form already had 1.8 s). The game's unit table
+(`Ghost`) says `buff_when_not_attacking: Invisibility`,
+`buff_when_not_attacking_time: 1800`: the cloak returns 1.8 s after the LAST
+attack, so a Ghost that keeps hitting is visible the whole time. With 0.5 s the
+Princess Tower (first hit, patch 0035) never got a shot off; in replays of
+recorded matches a lone Ghost stood at a tower at full health for 13 s and
+more, and the card was the largest per-match source of tower damage the real
+match did not have (62 first-excess events per 100 matches it was held in).
+
+- Royal Ghost (47) and both forms of its Evolution (136): `withInvisibility(18)`.
+- Suspicious Bush (85): 14 ticks, one hit interval, the same rule. Its figure
+  is not in the unit table; published descriptions say it becomes visible on
+  reaching a tower. NOT SOURCED beyond that.
+- Still revealed at the first HIT, not at the start of the swing (0.6 s later
+  than the real Ghost if the real one is revealed by starting to attack; not
+  verified).
+- Test: `python_ai/tests/test_invisible_units_stay_revealed_while_attacking.py`.
+
+**GAMEPLAY-AFFECTING.** A lone Royal Ghost on a Princess Tower: 6 hits (1566)
+and dead 10 s after its first hit; before, it was never shot. A lone Bush: one
+hit, then dead (two Bush Goblins).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
