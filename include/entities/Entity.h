@@ -83,8 +83,8 @@ public:
     virtual float getCollisionRadius() const { return 0.0f; }
 
     // Footprint for target-selection distance only, never collision or attack
-    // range. A Crown Tower's is larger than its body, since units close on its
-    // edge (see Tower::getTargetingRadius).
+    // range. Nothing overrides it since patch 0043: every building, Crown
+    // Towers included, competes by its body.
     virtual float getTargetingRadius() const { return getCollisionRadius(); }
 
     // Re-applies board bounds and river constraints. Only Troop overrides it;

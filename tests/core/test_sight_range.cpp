@@ -495,8 +495,19 @@ TEST_CASE("the nearest-building rule holds for every catalogued sight range",
     INFO("card id " << card << ", catalogued sight " << sight);
 
     REQUIRE(driftAt(card, LANE_Y, 7.0f) == Catch::Approx(0.0f).margin(0.05f));
-    // 3.0 centre => rank 2.0 against the tower's 6.0 - 3.3 = 2.7.
+    // 3.0 centre => rank 2.0 against the tower's 6.0 - 1.5 = 4.5.
     REQUIRE(driftAt(card, LANE_Y, 3.0f) < -0.3f);
+}
+
+TEST_CASE("a Crown Tower competes for targets by its body, like any building",
+          "[targeting][nearest_building][tower_footprint]") {
+    // Patch 0043. At y = 11 the Princess Tower at (14, 6) is 5.0 away: 3.5 to
+    // its 1.5 body. A Cannon 4.0 to the side is 3.0 to its body, so it is the
+    // nearer building and pulls; at 5.0 (4.0 to its body) the tower is nearer.
+    // With the old 3.3 tower footprint the tower "was" 1.7 away and a Hog
+    // walked past a Cannon standing right beside its path.
+    REQUIRE(driftAt(15, 11.0f, 4.0f) < -0.3f);
+    REQUIRE(driftAt(15, 11.0f, 5.0f) > -0.05f);
 }
 
 TEST_CASE("sight still bounds acquisition at the raw catalogued range",

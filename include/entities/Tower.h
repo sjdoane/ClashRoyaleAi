@@ -25,14 +25,14 @@ public:
     static constexpr float DEFAULT_PROJECTILE_TILES_PER_TICK = 2.0f;
     float projectileTilesPerTick = DEFAULT_PROJECTILE_TILES_PER_TICK;
 
-    // Target-selection footprint, larger than the collision radius and fitted
-    // to real play: a Hog with a Cannon 7-8 tiles off-lane keeps walking at the
-    // Princess Tower and diverts only at 6. Against a Cannon's 1.0 that needs
-    // 2.92 < r < 3.65; 3.3 is mid-band. The King's is scaled by the same 2.0 /
-    // 1.5 ratio as its collision radius.
-    float getTargetingRadius() const override {
-        return (symbol == 'R') ? 4.4f : 3.3f;
-    }
+    // Target selection uses the collision radius above, like every other
+    // building (Entity::getTargetingRadius): the nearest footprint wins. Until
+    // patch 0043 a Crown Tower competed with an inflated footprint (3.3 / 4.4),
+    // fitted so that a Cannon 7-8 tiles off-lane would not pull a Hog Rider.
+    // That fact is the published sight clip (SightClips.h, patch 0042); the
+    // inflated footprint also made every troop prefer a tower over a unit up
+    // to 1.8 tiles nearer, so Skeletons, an Ice Golem or a Cannon played in
+    // front of the tower did not distract.
 
     bool isTower() const override { return true; }
 

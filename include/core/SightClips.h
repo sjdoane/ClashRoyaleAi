@@ -42,7 +42,7 @@
 // Before this table the engine had the disc only, and got the "a Cannon 7-8
 // tiles off-lane does not pull a Hog" observation by inflating the Crown
 // Towers' targeting footprint instead (Tower::getTargetingRadius, removed in
-// the next patch).
+// patch 0043).
 //
 // Sources: FLZ = FirstLight-Zero card_specs.json (release 15.535.13), CRAPI =
 // RoyaleAPI cr-api-data cards_stats.json (older files; the two agree wherever

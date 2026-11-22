@@ -785,6 +785,28 @@ RoyaleAPI cards_stats.json, which agree. New table `include/core/SightClips.h`
   `tests/core/test_sight_range.cpp` ("a published sight clip cuts the sideways
   reach"; the raw-range case now uses the unclipped Battle Ram).
 
+## 2026-11-22: Crown Towers compete for targets by their body (patch 0043)
+
+**GAMEPLAY-AFFECTING.** `Tower::getTargetingRadius` (3.3 Princess / 4.4 King)
+is gone; a tower is ranked in `findTarget` by its collision radius (1.5 / 2.0)
+like every other building.
+
+- Why it existed: fitted upstream to one observation, "a Cannon 7-8 tiles
+  off-lane does not pull a Hog, one at 6 does". That is the published sight
+  clip (patch 0042, `SightClips.h`), which now carries it.
+- What it broke: every troop, not only building-targeters, saw a tower as 1.8
+  tiles nearer than it is. Skeletons, an Ice Golem or a Cannon played in front
+  of the tower once the attacker was within about 5 tiles did not distract it:
+  a Knight walked past an Ice Golem two tiles in front of the tower (750 tower
+  damage, now 0); a Hog ignored a Cannon played 1.5 s late beside the tower
+  (634, now 0). In replays "the attacker walks past a defender unit that is
+  nearer than the tower" was flagged in 19% of first-excess-damage events.
+- Published tower collision radii are 1.0 / 1.4; the engine's 1.5 / 2.0 bodies
+  are unchanged here (they also set tower reach and where units stop).
+- Tests: `python_ai/tests/test_towers_compete_for_targets_by_their_body.py`,
+  `tests/core/test_sight_range.cpp` ("a Crown Tower competes for targets by its
+  body").
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
