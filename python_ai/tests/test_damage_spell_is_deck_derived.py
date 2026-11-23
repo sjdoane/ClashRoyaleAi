@@ -234,10 +234,10 @@ def test_the_26_deck_resolves_to_exactly_the_constants_it_used_to_hardcode():
     """
     cid, damage, cost = card_probes.damage_spell(HOG_26)
     assert cid == W.FIREBALL_CARD_ID
-    # The probe measures the TOWER: 172 Crown Tower damage since patch 0047
-    # (published -75%: 689 x 25%; a hand-entered 159 before). The troop figure
-    # is unchanged.
-    assert damage == 172.0
+    # The probe measures the TOWER: 159 Crown Tower damage (official 8 Sep 2026
+    # notes, 172 -> 159; patch 0047 had it at the 172 of the older release and
+    # patch 0048 put it back). The troop figure is unchanged.
+    assert damage == 159.0
     assert W.FIREBALL_DAMAGE == 689.0
     assert cost == W.FIREBALL_COST == 4.0   # the retired SPELL_SOLVENCY_RESERVE
 

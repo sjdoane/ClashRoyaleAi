@@ -64,9 +64,10 @@ def test_a_lone_ram_rider_is_one_body_and_only_the_ram_hits_the_tower():
     assert not _attackers(env)
     after = {i: u["hp"] for i, u in _towers(env).items()}
     lost = sorted(before[i] - after.get(i, 0) for i in before)
-    # one Princess Tower, hit by the ram alone: a 500 charge and then 250s
+    # one Princess Tower, hit by the ram alone: a 542 charge and then 271s
+    # (damage 250 -> 271, official 6 Oct 2026 notes; patch 0048)
     assert lost[0] == 0 and lost[1] == 0
-    assert 1000 <= lost[2] <= 2250 and (lost[2] - 500) % 250 == 0
+    assert 1000 <= lost[2] <= 2500 and (lost[2] - 542) % 271 == 0
 
 
 def test_the_rider_shoots_a_troop_beside_the_road_and_leaves_a_building_alone():

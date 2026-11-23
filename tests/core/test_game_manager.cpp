@@ -146,6 +146,34 @@ TEST_CASE("Miner can be played deep in the opponent's half via GameManager::play
     REQUIRE(game.playCard(0, 52, 9.0f, 25.0f)); // deep in the opponent's half: succeeds for Miner
 }
 
+TEST_CASE("Elixir Collector pays 1 elixir every 15 s for 110 s and 1 more when it goes", "[game_manager][elixir][patch0048]") {
+    // Official 6 Oct 2026 notes (lifetime 93 -> 110 s, production 13 -> 15 s)
+    // and the published ManaOnDeath 1 of release 15.535.13: seven while it
+    // stands (15 s ... 105 s) and one when its lifetime runs out. It paid one
+    // every 8 s before (thirteen over the same life) and nothing at the end.
+    GameManager game({ 99, 0, 1, 2, 3, 4, 5, 6 }, { 0,1,2,3,4,5,6,7 });
+    game.playerAI.hand[0] = 99;
+    game.playerAI.elixir = 10.0f;
+    REQUIRE(game.playCard(0, 99, 9.0f, 10.0f));
+
+    float extra = 0.0f, extraWhileAlive = 0.0f;
+    bool sawCollector = false;
+    for (int i = 0; i < 1100 + DEPLOY_TIME_TICKS + 20; ++i) {
+        game.playerAI.elixir = 0.0f; // far from the cap, so nothing is discarded
+        game.step();
+        const float gained = game.getElixirAI() - GameManager::ELIXIR_REGEN_RATE;
+        extra += gained;
+        bool alive = false;
+        for (const auto& e : game.getBoard().getEntities())
+            if (e->team == 0 && e->name == "Elixir Collector") alive = true;
+        sawCollector = sawCollector || alive;
+        if (alive) extraWhileAlive += gained;
+    }
+    REQUIRE(sawCollector);
+    REQUIRE(extraWhileAlive == Catch::Approx(7.0f).margin(0.05f));
+    REQUIRE(extra == Catch::Approx(8.0f).margin(0.05f));
+}
+
 TEST_CASE("Elixir Collector passively grants its owner extra elixir beyond normal regen", "[game_manager][elixir]") {
     GameManager game({ 99, 0, 1, 2, 3, 4, 5, 6 }, { 0,1,2,3,4,5,6,7 }); // Elixir Collector (99) first in the AI's deck
     // Elixir Collector can never be in the opening hand, so it is forced in:
@@ -155,10 +183,11 @@ TEST_CASE("Elixir Collector passively grants its owner extra elixir beyond norma
     REQUIRE(game.playCard(0, 99, 9.0f, 10.0f));
 
     game.playerAI.elixir = 0.0f; // reset low so the cap doesn't mask the effect
-    // 80 ticks of interval plus the 10-tick deploy time before its first cycle.
-    for (int i = 0; i < 80 + DEPLOY_TIME_TICKS; ++i) game.step();
+    // 150 ticks of interval (15 s, official 6 Oct 2026 notes; patch 0048) plus
+    // the 10-tick deploy time before its first cycle.
+    for (int i = 0; i < 150 + DEPLOY_TIME_TICKS; ++i) game.step();
 
-    float pureRegenOnly = GameManager::ELIXIR_REGEN_RATE * (80 + DEPLOY_TIME_TICKS); // regen alone, same window
+    float pureRegenOnly = GameManager::ELIXIR_REGEN_RATE * (150 + DEPLOY_TIME_TICKS); // regen alone, same window
     REQUIRE(game.getElixirAI() > pureRegenOnly + 0.5f); // meaningfully more than regen alone
 }
 

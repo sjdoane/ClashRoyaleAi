@@ -51,12 +51,17 @@ struct Row {
     Kind kind;
     int percent;        // published CrownTowerDamagePercent
     int onlyUnitId;     // 0 = every unit of that name; else that CardStats id
+    // An amount an official balance note gives outright, where the rounded
+    // percentage would be one off or the percentage is not published. 0 = none.
+    int amount = 0;
 };
 
 inline const Row* table(int& count) {
     static const Row rows[] = {
         { "Miner",          Kind::Hit,         -80,   0 },
-        { "Fireball",       Kind::Spell,       -75,   0 },
+        // Fireball: -75% (172) in release 15.535.13; "Crown Tower Damage 172 ->
+        // 159 (-8%)" in the official 8 Sep 2026 notes, i.e. -77% of 689.
+        { "Fireball",       Kind::Spell,       -77,   0, 159 },
         { "Arrows",         Kind::Spell,       -80,   0 },
         { "Rocket",         Kind::Spell,       -77,   0 },
         { "Lightning",      Kind::Spell,       -75,   0 },
@@ -68,6 +73,9 @@ inline const Row* table(int& count) {
         // deploy zap (one ElectroWizardZap area effect in the release).
         { "Hero Electro Wizard", Kind::SpawnEffect, -100, 0 },
         { "Goblin Machine", Kind::Hit,         -50, -24 },
+        // Goblin Drill surfacing: "Crown Tower Spawn Damage 0 -> 20" (official
+        // 6 Oct 2026 notes; removed on 4 Aug) against 84 on everything else.
+        { "Goblin Drill",   Kind::SpawnEffect, -76,   0, 20 },
     };
     count = static_cast<int>(sizeof(rows) / sizeof(rows[0]));
     return rows;
@@ -91,11 +99,11 @@ inline void apply(CardStats& stats) {
                 if (!isSpell) stats.crownTowerHitMultiplier = (100 + row.percent) / 100.0f;
                 break;
             case Kind::Spell:
-                if (isSpell) stats.spellCrownTowerDamage = scaled(stats.damage, row.percent);
+                if (isSpell) stats.spellCrownTowerDamage = row.amount > 0 ? row.amount : scaled(stats.damage, row.percent);
                 break;
             case Kind::SpawnEffect:
                 if (stats.spawnEffectDamage > 0) {
-                    stats.spawnEffectCrownTowerDamage = scaled(stats.spawnEffectDamage, row.percent);
+                    stats.spawnEffectCrownTowerDamage = row.amount > 0 ? row.amount : scaled(stats.spawnEffectDamage, row.percent);
                 }
                 break;
         }

@@ -97,8 +97,9 @@ TEST_CASE("a spell's crown-tower damage follows its team's level", "[card_levels
         return hp0 - game.getTowerHp(1, 1);
     };
     const int at11 = fireballOnTower(11);
-    // Published CrownTowerDamagePercent -75 (CrownTowerDamage.h, patch 0047):
-    // 689 x 25% = 172. It was a hand-entered 159 (23%) before.
-    REQUIRE(at11 == 172);
-    REQUIRE(fireballOnTower(15) == CardLevels::scale(172, 15));
+    // 159: the official 8 Sep 2026 notes ("Crown Tower Damage 172 -> 159").
+    // Patch 0047 had moved it to the 172 of release 15.535.13 (-75%), which
+    // predates that note; patch 0048 puts it back (CrownTowerDamage.h).
+    REQUIRE(at11 == 159);
+    REQUIRE(fireballOnTower(15) == CardLevels::scale(159, 15));
 }

@@ -11,6 +11,12 @@ Fireball took 159 (172), Arrows 31 a wave (25), Rocket 371 (342), Lightning 286
 (264), the Zap and Giant Snowball Evolutions 58 and 54 (48 and 45, the base
 card's row; the release does not resolve a separate Evolution record), and the
 Goblin Machine's rocket its full 304 (152).
+
+Patch 0048 correction: release 15.535.13 is the game of 4 Aug 2026. The official
+8 Sep 2026 notes then lowered the Fireball's Crown Tower damage "172 -> 159",
+so 159 (the value before 0047) is the current one and the row now carries that
+amount outright (-77% of 689 rounds to 158). An amount a later official note
+gives outright wins over the percentage of the release.
 """
 import python_ai  # noqa: F401
 import clash_royale_env as E
@@ -22,7 +28,6 @@ OURS = [129, 168, 125, 15, 40, 72, 33, 7]
 # card id -> (published percent, level-11 damage per application, Crown Tower damage)
 SPELLS = {
     3: (-80, 123, 25),      # Arrows, per wave
-    7: (-75, 689, 172),     # Fireball
     29: (-75, 192, 48),     # Zap
     30: (-77, 1485, 342),   # Rocket
     31: (-75, 1057, 264),   # Lightning, per strike
@@ -38,6 +43,17 @@ def test_a_spell_row_is_the_published_share_of_the_registry_damage(card):
     assert base["damage"] == damage
     assert tower == round(damage * (100 + percent) / 100.0)
     assert base["spell_crown_tower_damage"] == tower
+
+
+def test_an_amount_from_a_later_official_note_wins_over_the_percentage():
+    """Fireball: 172 in the release, 159 since 8 Sep 2026. Goblin Drill: its
+    surfacing burst takes 20 from a Crown Tower since 6 Oct 2026."""
+    fireball = E.get_card_stats(7)["base"]
+    assert fireball["damage"] == 689
+    assert fireball["spell_crown_tower_damage"] == 159
+    drill = E.get_card_stats(98)["base"]
+    assert drill["spawn_effect_damage"] == 84
+    assert drill["spawn_effect_crown_tower_damage"] == 20
 
 
 def test_an_evolution_inherits_its_base_cards_row():
@@ -83,7 +99,7 @@ def _tower_hits(env, ticks):
 
 
 @pytest.mark.parametrize("card,expected", [
-    (7, [172]), (30, [342]), (3, [25, 25, 25]), (29, [48]), (100, [45]),
+    (7, [159]), (30, [342]), (3, [25, 25, 25]), (29, [48]), (100, [45]),
 ])
 def test_a_spell_cast_on_a_princess_tower_takes_the_published_amount(card, expected):
     env = _env(card)
@@ -124,4 +140,4 @@ def test_the_goblin_machines_rocket_takes_half_from_a_crown_tower():
     hits = _tower_hits(env, 400)
     assert 152 in hits            # the rocket: 304 x 50%
     assert 304 not in hits
-    assert 212 in hits            # the body's own hits are not reduced
+    assert 232 in hits            # the body's own hits are not reduced (212 -> 232, 4 Aug 2026)

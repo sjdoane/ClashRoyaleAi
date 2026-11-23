@@ -225,11 +225,11 @@ TEST_CASE("A Furnace's Fire Spirit hits once, for 215 area damage, and dies",
 
 // ---------------- 32c: Giant Skeleton's bomb ----------------
 
-TEST_CASE("Giant Skeleton's bomb explodes 3.0 s after he dies, 886 in a 3-tile radius, and throws",
+TEST_CASE("Giant Skeleton's bomb explodes 3.0 s after he dies, 688 in a 3-tile radius, and throws",
           "[item32][giant_skeleton][regression]") {
     Match m;
     auto gs = m.spawnCard(GIANT_SKELETON, 8.5f, 10.0f, 0).front();
-    REQUIRE(gs->hp == 3126); // 3361 x 0.93 (May 2026)
+    REQUIRE(gs->hp == 3361); // floor(1313 x 2.56): release 15.535.13 already holds the May 2026 rework (patch 0048)
     m.step(10);
     // Surface test: radius 3 plus the 0.4 troop radius.
     auto near = m.dummy(8.5f + 2.0f, 10.0f, 1, 5000);
@@ -243,13 +243,13 @@ TEST_CASE("Giant Skeleton's bomb explodes 3.0 s after he dies, 886 in a 3-tile r
     REQUIRE(edge->hp == 5000);
 
     m.step(); // 3.0 s after the death
-    REQUIRE(near->hp == 5000 - 886);
-    REQUIRE(edge->hp == 5000 - 886);
+    REQUIRE(near->hp == 5000 - 688);
+    REQUIRE(edge->hp == 5000 - 688);
     REQUIRE(away->hp == 5000);
     REQUIRE(near->position.x > nearBefore.x + 0.5f); // knocked away from the bomb
 }
 
-TEST_CASE("A Giant Skeleton dying at a Princess Tower bombs it for the full 886",
+TEST_CASE("A Giant Skeleton dying at a Princess Tower bombs it for the full 688",
           "[item32][giant_skeleton][regression]") {
     // It used to deal the tower 0: an instant 2.0-radius centre test could not
     // reach a tower centre 2.7 tiles away.
@@ -261,7 +261,7 @@ TEST_CASE("A Giant Skeleton dying at a Princess Tower bombs it for the full 886"
     gs->hp = 0;
     const int before = tower->hp;
     m.step(31);
-    REQUIRE(before - tower->hp == 886);
+    REQUIRE(before - tower->hp == 688);
 }
 
 // ---------------- 32d: Berserker ----------------
@@ -341,8 +341,11 @@ TEST_CASE("Evolved Furnace spawns every 2.4 s only while attacking, to alternati
         auto f = m.spawnCard(EVO_FURNACE, 8.5f, 6.0f, 0, true).front();
         m.dummy(8.5f, 10.5f, 1, 100000000); // in its 5.5 range from the start
         auto log = spiritSpawns(m, f, 110);
-        // First attack on tick 11; hot from tick 12, which pulls the timer in.
-        REQUIRE(log.ticks == std::vector<int>{ 35, 59, 83, 107 });
+        // First attack on tick 16 (the published 1.2 s load of its 1.8 s hit
+        // speed is spent on landing, so 0.6 s after the deploy: LoadTimes.h,
+        // patch 0048; it was tick 11 with no row); hot from the tick after,
+        // which pulls the timer in.
+        REQUIRE(log.ticks == std::vector<int>{ 40, 64, 88 });
         REQUIRE(log.dx[0] == Catch::Approx(-1.0f).margin(0.05f)); // team 0: left is -x
         REQUIRE(log.dx[1] == Catch::Approx(1.0f).margin(0.05f));
         REQUIRE(log.dx[2] == Catch::Approx(-1.0f).margin(0.05f));

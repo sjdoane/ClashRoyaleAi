@@ -98,7 +98,7 @@ TEST_CASE("Goblinstein (121) spawns both the Monster (champion) and the Doctor",
     }
     REQUIRE(monster != nullptr);
     REQUIRE(doctor != nullptr);
-    REQUIRE(monster->hp == 2385);
+    REQUIRE(monster->hp == 2240); // 2385 -> 2240 (official 4 Aug 2026 notes; patch 0048)
     REQUIRE(doctor->hp == 721);
     REQUIRE(doctor->targetsAir);
     // Patch 0037: the Doctor stands 3 tiles behind the Monster for either side

@@ -53,7 +53,7 @@ def test_a_royal_ghost_hitting_a_tower_stays_visible_and_dies_to_it():
     assert died is not None, "the tower never killed a lone Royal Ghost"
     # twelve arrows 0.8 s apart after the tower's first hit: 9 to 11 s
     assert 85 <= died <= 115
-    assert lost in (5 * 261, 6 * 261, 7 * 261)
+    assert lost in (5 * 263, 6 * 263, 7 * 263)  # damage 261 -> 263, hp 1210 -> 1152 (6 Oct 2026 notes; patch 0048)
 
 
 def test_a_royal_ghost_is_invisible_until_its_first_hit():

@@ -35,6 +35,9 @@
 //   CRAPI - RoyaleAPI cr-api-data cards_stats.json "load_time" in ms, where
 //           FLZ has no row. Older game files.
 //   RECORDING - the two published values disagree and a recording decides.
+//   NOTES - an official balance note dated after release 15.535.13 (4 Aug
+//           2026) gives the first-hit time outright; the row is hit speed
+//           minus that.
 // Rounded to the nearest tick.
 //
 // The Goblin (Goblins, Goblin Gang, Hero Goblins, and the Goblin Barrel's and
@@ -47,7 +50,7 @@
 // as the arrow. 700 ms it is (patch 0038).
 namespace LoadTimes {
 
-enum class Source { FLZ, CRAPI, RECORDING };
+enum class Source { FLZ, CRAPI, RECORDING, NOTES };
 
 struct Row {
     const char* name;
@@ -70,7 +73,7 @@ inline const Row* table(int& count) {
         { "Barbarians", 10, Source::FLZ }, // Barbarians 1000 ms
         { "Bats", 6, Source::FLZ }, // Bats 600 ms
         { "Battle Healer", 16, Source::FLZ }, // BattleHealer 1600 ms
-        { "Battle Ram", 4, Source::FLZ, 4 }, // BattleRam 350 ms, hit speed 400 ms
+        { "Battle Ram", 3, Source::FLZ, 4 }, // BattleRam 350 ms of a 400 ms hit speed: first hit 50 ms, one tick here (4 would read as "not shorter than the hit speed")
         { "Bomb Tower", 13, Source::FLZ }, // BombTower 1300 ms
         { "Bomber", 16, Source::FLZ }, // Bomber 1600 ms
         { "Bowler", 20, Source::FLZ }, // Bowler 2000 ms
@@ -78,7 +81,7 @@ inline const Row* table(int& count) {
         { "Cannon Cart", 4, Source::CRAPI }, // BrokenCannon 400 ms
         { "Dark Prince", 10, Source::FLZ }, // DarkPrince 1000 ms
         { "Dart Goblin", 4, Source::CRAPI }, // BlowdartGoblin 350 ms
-        { "Electro Dragon", 14, Source::FLZ }, // ElectroDragon 1400 ms
+        { "Electro Dragon", 16, Source::NOTES }, // first hit 0.7 -> 0.5 s (19 Oct 2026 notes) of a 2.1 s hit speed; FLZ ElectroDragon 1400 ms
         { "Electro Giant", 8, Source::FLZ }, // ElectroGiant 800 ms
         { "Electro Spirit", 1, Source::FLZ, 3 }, // ElectroSpirit 100 ms, hit speed 300 ms
         { "Electro Wizard", 12, Source::FLZ }, // ElectroWizard 1200 ms
@@ -97,17 +100,17 @@ inline const Row* table(int& count) {
         { "Goblins", 7, Source::RECORDING }, // Goblin: FLZ 500 ms, CRAPI 700 ms; see below
         { "Golden Knight", 7, Source::FLZ }, // GoldenKnight 700 ms
         { "Golem", 15, Source::FLZ }, // Golem 1500 ms
-        { "Guards", 6, Source::CRAPI }, // SkeletonWarrior 600 ms
+        { "Guards", 5, Source::FLZ }, // SkeletonWarriors 500 ms (CRAPI 600)
         { "Heal Spirit", 1, Source::CRAPI, 3 }, // HealSpirit 100 ms, hit speed 300 ms
         { "Hero Giant", 10, Source::FLZ }, // Giant 1000 ms
         { "Hero Goblins", 7, Source::RECORDING }, // Goblin: FLZ 500 ms, CRAPI 700 ms; see below
         { "Hero Ice Golem", 15, Source::CRAPI }, // IceGolemite 1500 ms
         { "Hero Knight", 7, Source::FLZ }, // Knight 700 ms
-        { "Hero Magic Archer", 6, Source::CRAPI }, // EliteArcher 600 ms
+        { "Hero Magic Archer", 4, Source::FLZ }, // EliteArcher 400 ms (CRAPI 600)
         { "Hero Mega Minion", 11, Source::FLZ }, // MegaMinion 1100 ms
         { "Hero Mini P.E.K.K.A.", 11, Source::FLZ }, // MiniPekka 1100 ms
         { "Hero Musketeer", 3, Source::FLZ }, // Musketeer 300 ms
-        { "Hero Wizard", 10, Source::FLZ }, // Wizard 1000 ms
+        { "Hero Wizard", 9, Source::NOTES }, // as Wizard
         { "Hog Rider", 10, Source::FLZ }, // HogRider 1000 ms
         { "Hunter", 15, Source::FLZ }, // Hunter 1500 ms
         { "Ice Golem", 15, Source::CRAPI }, // IceGolemite 1500 ms
@@ -118,7 +121,7 @@ inline const Row* table(int& count) {
         { "Knight", 7, Source::FLZ }, // Knight 700 ms
         { "Lava Hound", 3, Source::FLZ }, // LavaHound 300 ms
         { "Lumberjack", 4, Source::CRAPI }, // RageBarbarian 400 ms
-        { "Magic Archer", 6, Source::CRAPI }, // EliteArcher 600 ms
+        { "Magic Archer", 4, Source::FLZ }, // EliteArcher 400 ms (CRAPI 600)
         { "Mega Knight", 12, Source::FLZ }, // MegaKnight 1200 ms
         { "Mega Minion", 11, Source::FLZ }, // MegaMinion 1100 ms
         { "Mighty Miner", 7, Source::FLZ }, // MightyMiner 700 ms
@@ -151,7 +154,20 @@ inline const Row* table(int& count) {
         { "Valkyrie", 14, Source::FLZ }, // Valkyrie 1400 ms
         { "Wall Breakers", 10, Source::FLZ }, // Wallbreakers 1000 ms
         { "Witch", 4, Source::FLZ }, // Witch 400 ms
-        { "Wizard", 10, Source::FLZ }, // Wizard 1000 ms
+        { "Wizard", 9, Source::NOTES }, // first attack 0.4 -> 0.5 s (8 Sep 2026 notes) of a 1.4 s hit speed; FLZ Wizard 1000 ms
+        // Added by the 15.535.13 audit (patch 0048): cards that had no row.
+        { "Berserker", 4, Source::FLZ }, // Berserker 400 ms
+        { "Boss Bandit", 7, Source::FLZ }, // BossBandit 700 ms
+        { "Furnace", 12, Source::FLZ }, // FirespiritHut (the walking Furnace) 1200 ms
+        { "Goblin Demolisher", 6, Source::FLZ }, // GoblinDemolisher 600 ms
+        { "Goblin Machine", 7, Source::FLZ }, // GoblinMachine 700 ms (the body; the rocket turret overrides)
+        { "Goblinstein", 7, Source::FLZ }, // goblinstein 700 ms (the Monster; the Doctor overrides: 1300 of 1800 ms)
+        { "Little Prince", 8, Source::FLZ }, // LittlePrince 800 ms
+        { "Ronin", 10, Source::FLZ }, // Ronin 1000 ms
+        { "Royal Recruits", 8, Source::FLZ }, // RoyalRecruit 800 ms
+        { "Rune Giant", 10, Source::FLZ }, // GiantBuffer 1000 ms
+        { "Skeleton Barrel", 2, Source::FLZ, 3 }, // SkeletonBalloon 200 ms, hit speed 300 ms
+        { "Zappies", 14, Source::FLZ }, // MiniSparkys 1400 ms
     };
     count = static_cast<int>(sizeof(rows) / sizeof(rows[0]));
     return rows;
@@ -163,6 +179,10 @@ inline const Row* find(const std::string& name) {
     for (int i = 0; i < n; ++i) {
         if (name == rows[i].name) return &rows[i];
     }
+    // A Hero is its base card's character with an ability: "Hero X" with no
+    // row of its own loads like X.
+    static const std::string heroPrefix = "Hero ";
+    if (name.compare(0, heroPrefix.size(), heroPrefix) == 0) return find(name.substr(heroPrefix.size()));
     return nullptr;
 }
 

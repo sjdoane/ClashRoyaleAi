@@ -406,7 +406,7 @@ TEST_CASE("Golem also deals death-explosion damage alongside spawning Golemites 
 }
 
 TEST_CASE("Giant Skeleton, Ice Golem and Balloon deal death-explosion damage", "[card_registry][death]") {
-    SECTION("Giant Skeleton: a bomb dropped where he dies, 886 after a 3.0 s fuse") {
+    SECTION("Giant Skeleton: a bomb dropped where he dies, 688 after a 3.0 s fuse") {
         // UPSTREAM_REQUESTS.md item 32c; it was an instant, unsourced 300.
         Board board;
         auto enemy = std::make_shared<DummyEntity>(1, 5.0f, 6.0f, 100000, 1);
@@ -427,7 +427,7 @@ TEST_CASE("Giant Skeleton, Ice Golem and Balloon deal death-explosion damage", "
         for (int i = 0; i < 29; ++i) bomb->update(board);
         REQUIRE(enemy->hp == 100000);
         bomb->update(board); // its 30th tick: 3.0 s after the death
-        REQUIRE(enemy->hp == 100000 - 886);
+        REQUIRE(enemy->hp == 100000 - 688); // release 15.535.13 (patch 0048; 886 applied the +29% twice)
     }
 
     SECTION("Ice Golem") {
@@ -439,7 +439,7 @@ TEST_CASE("Giant Skeleton, Ice Golem and Balloon deal death-explosion damage", "
         auto entity = board.getEntities().back();
         entity->takeDamage(entity->hp);
         board.cleanDeadEntities();
-        REQUIRE(enemy->hp == 100000 - 92); // audit 0003: 92 death damage
+        REQUIRE(enemy->hp == 100000 - 84); // release 15.535.13: 84 death damage (patch 0048; the wiki row said 92)
     }
 
     SECTION("Balloon") {
@@ -782,7 +782,7 @@ TEST_CASE("Electro Wizard stuns on hit via the on-hit decorator (freeze with slo
     windUp(electroWizardEntity, board); // the 1.2 s first-attack load (patch 0006)
     electroWizardEntity->update(board);
 
-    REQUIRE(enemy->hp == 885); // 1000 - 115 (audit 0003)
+    REQUIRE(enemy->hp == 883); // 1000 - 117 (release 15.535.13, patch 0048)
     REQUIRE(enemy->freezeTicks == 5);
     REQUIRE(enemy->freezeSlow == Catch::Approx(0.0f));
 }
@@ -809,8 +809,8 @@ TEST_CASE("Electro Wizard splits its attack across the 2 closest enemies at half
     windUp(electroWizardEntity, board); // the 1.2 s first-attack load (patch 0006)
     electroWizardEntity->update(board);
 
-    REQUIRE(near->hp == 943);  // 1000 - 115/2 (audit 0003)
-    REQUIRE(far->hp == 943);
+    REQUIRE(near->hp == 942);  // 1000 - 117/2 (release 15.535.13, patch 0048)
+    REQUIRE(far->hp == 942);
     REQUIRE(near->freezeTicks == 5); // both stunned
     REQUIRE(far->freezeTicks == 5);
 }
@@ -867,7 +867,7 @@ TEST_CASE("Freeze deals no direct damage but fully stuns everyone in radius via 
     while (spell->isAlive()) spell->update(board);
 
     REQUIRE(enemy->hp == 1000); // no damage component
-    REQUIRE(enemy->freezeTicks == 40); // 4s full stun
+    REQUIRE(enemy->freezeTicks == 35); // 3.5 s full stun (official 8 Sep 2026 notes: 4 -> 3.5 s; patch 0048)
     REQUIRE(enemy->freezeSlow == Catch::Approx(0.0f));
 }
 
@@ -1327,7 +1327,7 @@ TEST_CASE("Royal Delivery deals landing damage and drops a single shielded defen
     while (spell->isAlive()) spell->update(board);
     board.commitPendingEntities();
 
-    REQUIRE(enemy->hp == 562); // 1000 - 438 landing damage
+    REQUIRE(enemy->hp == 616); // 1000 - 384 landing damage (437 -> 384, official 4 Aug 2026 notes; patch 0048)
 
     std::shared_ptr<Entity> defender;
     for (const auto& e : board.getEntities()) {
@@ -1671,7 +1671,12 @@ TEST_CASE("X-Bow can't fire until its slow initial deploy delay elapses", "[card
     for (int i = 0; i < 35; ++i) xbow->update(board); // 3.5s: still deploying
     REQUIRE(enemy->hp == 100000);
 
-    xbow->update(board); // the first update after deploy: fires
+    // Patch 0048: the published X-Bow has no load time, so its first bolt
+    // takes a whole 0.4 s hit speed once deployed (as the Princess Tower's
+    // first arrow takes its 0.8 s, patch 0035); it used to fire at once.
+    for (int i = 0; i < 4; ++i) xbow->update(board);
+    REQUIRE(enemy->hp == 100000);
+    xbow->update(board);
     REQUIRE(enemy->hp < 100000);
 }
 
@@ -1943,6 +1948,38 @@ TEST_CASE("The first-hit wind-up is hit speed minus load time", "[card_registry]
     REQUIRE(LoadTimes::firstHitTicksFor(12, 4) == 12);
     REQUIRE(LoadTimes::firstHitTicksFor(10, 10) == 10);
     REQUIRE(LoadTimes::firstHitTicksFor(9, 10) == 1);
+}
+
+TEST_CASE("Load times of release 15.535.13 and the notes after it", "[card_registry][load_time][patch0048]") {
+    // name, hit speed (ticks), first hit (ticks). FLZ = the release's LoadTime;
+    // the dated rows are official notes that give the first hit outright.
+    struct Row { const char* name; int hitSpeed; int firstHit; };
+    const Row rows[] = {
+        { "Magic Archer", 11, 7 },     // FLZ 400 ms (the older extract said 600)
+        { "Guards", 11, 6 },           // FLZ 500 ms
+        { "Battle Ram", 4, 1 },        // FLZ 350 of 400 ms
+        { "Wizard", 14, 5 },           // 8 Sep 2026: first attack 0.4 -> 0.5 s
+        { "Electro Dragon", 21, 5 },   // 19 Oct 2026: first hit 0.7 -> 0.5 s
+        { "Ronin", 13, 3 },            // FLZ 1000 ms; hit speed 1.3 s since 8 Sep 2026
+        { "Zappies", 23, 9 },          // FLZ 1400 ms; hit speed 2.3 s since 8 Sep 2026
+        { "Lava Hound", 15, 12 },      // FLZ 300 ms; hit speed 1.5 s since 6 Oct 2026
+        { "Royal Recruits", 13, 5 },   // FLZ 800 ms: had no row
+        { "Berserker", 6, 2 },         // FLZ 400 ms: had no row
+    };
+    for (const Row& r : rows) {
+        INFO(r.name);
+        REQUIRE(LoadTimes::firstHitTicks(r.name, r.hitSpeed) == r.firstHit);
+    }
+    // A Hero is its base card's character: with no row of its own it loads
+    // like the base card (seven Heroes had no wind-up at all).
+    for (const char* base : { "Balloon", "Valkyrie", "Ice Wizard", "Dark Prince", "Bowler", "Electro Wizard", "Berserker" }) {
+        INFO(base);
+        REQUIRE(LoadTimes::forName(std::string("Hero ") + base) == LoadTimes::forName(base));
+        REQUIRE(LoadTimes::forName(base) > 0);
+    }
+    REQUIRE(LoadTimes::forName("Hero No Such Card") == 0);
+    // A Hero's own row still wins over the fallback.
+    REQUIRE(LoadTimes::forName("Hero Ice Golem") == 15);
 }
 
 TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]") {

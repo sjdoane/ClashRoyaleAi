@@ -938,6 +938,103 @@ has, keyed by registry NAME (Evolutions inherit), applied in
   `python_ai/tests/test_teacher_still_mines.py`, a Miner case in
   `tests/core/test_card_registry.cpp`.
 
+## 2026-11-22: the card table against release 15.535.13 and the notes after it (patch 0048)
+
+**GAMEPLAY-AFFECTING.** A field-by-field audit of every card against the
+newest published game data (FirstLight-Zero card_specs.json / projectiles.json,
+release `nr_15.535.13`): 1777 fields of 184 cards (hit points, shield, damage,
+hit speed, first hit, speed, range, sight, deploy time, lifetime, count, spell
+radius and projectile speed, death damage, charge multiplier, splash). 147
+differed by more than 1 % and more than one unit before this patch; 85 differ
+now, every one a dated official note or a reasoned exception, and
+`python_ai/tests/test_published_stats_table.py` pins all of it against the
+generated `python_ai/tests/data/published_stats_15_535_13.json`.
+
+**DATING: the release is the game of 4 Aug 2026, not the current game.** It
+holds every change of the 4 Aug balance update (spirits 215 hp, X-Bow 0.4 s,
+Magic Archer 135, Goblin Machine 232 / 2265, Rune Giant 2816, Spear Goblins
+1.6 s) and none of the later ones, and the "old" numbers of the later official
+notes are its level-11 values exactly (floor(level-1 x 2.56)). So the current
+game is **the release plus the official notes dated after it** (26 Aug, 8 Sep,
+16 Sep, 6 Oct, 19 Oct 2026; the October post announces no changes for the
+November season). Where a wiki-sourced registry row disagreed with the release,
+the release wins; where an official note is later than the release, the note
+wins. The test's `NOTES` dict lists the 29 such fields.
+
+**This reverses one row of patch 0047.** Fireball's Crown Tower damage went
+159 -> 172 there on the release's -75 %. The 8 Sep 2026 notes say "Crown Tower
+Damage 172 -> 159": 159 was right. `CrownTowerDamage.h` rows can now carry an
+`amount` a note gives outright (Fireball 159; Goblin Drill's surfacing burst 20
+on a Crown Tower since 6 Oct, 84 on everything else).
+
+The 20 largest corrections (level 11, before -> now):
+
+| card | field | before | now | source |
+|---|---|---|---|---|
+| Rascals (the two Girls) | hp / damage / hit speed / speed | 133 / 81 / 1.7 s / Slow | 261 / 125 / 1.0 s / Medium | release `RascalGirl` (they reused Spear Goblins) |
+| Elixir Collector | production | 1 per 8 s, 13 per life | 1 per 15 s, 7 per life + 1 when it goes | 6 Oct 2026 notes; release `ManaOnDeath` |
+| Mega Knight | deploy slam radius | 1.3 | 2.2 | release |
+| Goblinstein Doctor | damage / speed | 92 / Slow | 135 / Medium | release (4 Aug notes) |
+| Goblin Machine rocket | hit speed | 3.5 s | 5.0 s | release (4 Aug notes) |
+| Hero Ice Golem | reach | 1.2 | 0.75 | release |
+| Bowler, Hero Bowler | sight | 4.0 | 5.5 | release |
+| Goblinstein, Rune Giant | sight | 5.5 | 7.5 | release |
+| Lava Hound | damage / hit speed | 53 / 1.3 s | 71 / 1.5 s | 6 Oct 2026 notes |
+| Goblinstein Monster | speed | Slow | Medium | release |
+| Giant Skeleton | death bomb | 886 | 688 | release (the May rework was applied twice) |
+| Evolved Bomber | hp | 380 | 304 | release |
+| Evolved Mortar | hit speed | 4.0 s | 4.7 s | 4 Aug 2026 notes |
+| Cannon Evolution | barrage | 304 (tower 89) | 261 (tower 76) | 6 Oct 2026 notes; tower share kept |
+| Freeze | duration | 4.0 s | 3.5 s | 8 Sep 2026 notes |
+| Royal Delivery | damage | 438 | 384 | 4 Aug 2026 notes |
+| Wizard (all forms) | hp / damage | 832 / 281 | 755 / 304 | release; 8 Sep 2026 notes |
+| Ice Golem (and Hero) | hp / damage / death damage | 1315 / 92 / 92 | 1228 / 84 / 84 | 8 Sep 2026 notes; release |
+| Fireball | Crown Tower damage | 172 | 159 | 8 Sep 2026 notes (reverses 0047) |
+| Giant Skeleton | hp | 3126 | 3361 | release |
+
+Also corrected (all in the test's fixture or `EXTRA`): Electro Dragon hit speed
+2.1 s and first hit 0.5 s; Bats 1.2 s; Minion Horde 1.2 s; Goblin Demolisher
+1.1 s; Ram Rider 271 / 1.7 s; Zappies 2.3 s; Three Musketeers 906 hp / 204;
+Magic Archer 135; Dart Goblin 143 and sight 7.0; Royal Ghost 1152 / 263; Rune
+Giant 2816; Goblin Machine 2265 / 232; Goblinstein 2240; Golden Knight 168;
+Cannon Cart 202; Flying Machine 179; Fire Spirit 215; Archer Queen 232; Goblin
+Brawler 1121; Dark Prince shield 240; Evolved Wizard shield 176; Electro Wizard
+117; Royal Hogs reach 0.75; Firecracker sight 8.0; Golem 7.5; Furnace and Boss
+Bandit 6.0; Bowler's line 11.0; Mega Knight splash 1.3; X-Bow first bolt a full
+0.4 s after deploying.
+
+`LoadTimes.h`: twelve cards that had no row and so no first-hit wind-up
+(Berserker, Boss Bandit, Furnace, Goblin Demolisher, Goblin Machine,
+Goblinstein, Little Prince, Ronin, Royal Recruits, Rune Giant, Skeleton Barrel,
+Zappies); Magic Archer 400 ms, Guards 500 ms, Battle Ram 350 ms; Wizard and
+Electro Dragon from the notes (`Source::NOTES`); and one general rule: **a
+"Hero X" with no row of its own loads like X** (seven Heroes had no wind-up).
+
+Kept on purpose (the test's `EXCEPTIONS`, each with its reason): ramping beams
+store their final stage (Inferno Tower, Inferno Dragon, Mighty Miner); spawner
+buildings' "hit speed" is a spawn period; the Executioner's axe flight is
+folded into his hit speed; Goblins' load time is the recording's (patch 0038;
+the 6 Oct notes put the Barrel's Goblins' first hit at 0.3 s, the recording
+gave 0.33-0.43 s after the deploy second, the engine has 0.4); Goblin Barrel's
+radius is its spawn offsets; Hunter, Princess and Mega Knight splash.
+
+NOT modelled, so not corrected: Freeze's damage (148, 37 on a Crown Tower);
+Skeleton Barrel's death damage (163); the Electro Giant's reflect (a periodic
+area stun stands in for it); the spirits "no longer connect to Crown Towers on
+their own" (4 Aug); Skeletons' wider spawn spread (19 Oct); the Executioner's
+projectile range 7; Spirit Empress and Minion Giant have no record in the
+release (Minion Giant follows the notes: 153, 1.7 s). Per-unit projectile
+speeds and collision radii are in the fixture (`unit_proj_speed`, `collision`)
+and not applied here: every ranged troop still throws at one speed.
+
+- The Hog 2.6 cards touched: Ice Golem (-87 hp, 84 damage), Fireball (159 on a
+  tower), the Cannon Evolution's barrage (261). The reward's Fireball lethal
+  window reads 159 again (`card_probes.damage_spell`).
+- Tests: `python_ai/tests/test_published_stats_table.py` (+ fixture),
+  `tests/core/test_game_manager.cpp` (`[patch0048]`: the Elixir Collector pays
+  7 + 1), `tests/core/test_card_registry.cpp` (`[load_time][patch0048]`), and
+  the existing expectations that moved, each with its source in a comment.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

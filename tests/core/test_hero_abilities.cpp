@@ -240,7 +240,7 @@ TEST_CASE("Hero Wizard (167) is registered with base Wizard's stats and the Fier
 
     auto hero = std::dynamic_pointer_cast<CombatEntity>(board.getEntities()[0]);
     REQUIRE(hero != nullptr);
-    REQUIRE(hero->hp == 832); // base Wizard hp (id 11; audit 0003)
+    REQUIRE(hero->hp == 755); // base Wizard hp (id 11; release 15.535.13, patch 0048)
     REQUIRE(hero->splashRadius == Catch::Approx(1.5f));
     REQUIRE(hero->abilityElixirCost == Catch::Approx(1.0f));
     REQUIRE(hero->abilityCooldownTicks == 0); // single use (4 Aug 2026 notes)
@@ -483,7 +483,7 @@ TEST_CASE("Hero Ice Golem (175) is registered with base Ice Golem's stats and th
 
     auto hero = std::dynamic_pointer_cast<CombatEntity>(board.getEntities()[0]);
     REQUIRE(hero != nullptr);
-    REQUIRE(hero->hp == 1315); // base Ice Golem hp (id 40)
+    REQUIRE(hero->hp == 1228); // base Ice Golem hp (id 40; 8 Sep 2026 notes, patch 0048)
     REQUIRE(hero->abilityElixirCost == Catch::Approx(2.0f));
     REQUIRE(hero->abilityCooldownTicks == 0); // single use (audit 0003; was 17 s)
     REQUIRE(hero->abilityUsesRemaining == 1);
