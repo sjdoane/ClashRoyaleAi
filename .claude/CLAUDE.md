@@ -1484,6 +1484,93 @@ Existing expectations that moved, and what each had encoded:
   two tiles to the side; the published 1.1 s freeze and 110 damage are pinned
   as before, now for any alignment of the freeze with the arrows.
 
+## 2026-11-22: two touching troops give way by their published masses (patch 0058)
+
+**GAMEPLAY-AFFECTING for every match.** `Board::resolveCollisions` split the
+overlap of two touching troops in half, a Skeleton against a Golem included.
+The game's unit table gives every troop a `Mass` (FirstLight-Zero
+card_specs.json, release 15.535.13; the fourth column of
+`include/core/BodySizes.h`, copied to the new `Entity::bodyMass` by
+`CardFactories::applyCardMetadata`). Each of the two now moves by the OTHER's
+mass over the sum.
+
+| published Mass | bodies |
+|---|---|
+| 1 | Skeletons, Skeleton Army, the four spirits, Bats, Spear Goblins, Guards |
+| 2 | Goblins, Goblin Gang, Minions, Minion Horde, Royal Hogs, Phoenix, Berserker, Suspicious Bush and its Goblins, Rascal Girls |
+| 3 | Archers, Princess, Dart Goblin, Bandit, Royal Ghost, Magic Archer, Cannon Cart, Flying Machine |
+| 4 | Hog Rider, Barbarians, Elite Barbarians, Mini P.E.K.K.A., Wall Breakers, Bomber, Lumberjack, Night Witch, Executioner, Ram Rider, Zappies, Little Prince, Boss Bandit, Skeleton Dragons, Goblinstein's Doctor |
+| 5 | Musketeer, Three Musketeers, Wizard, Ice Wizard, Electro Wizard, Valkyrie, Baby Dragon, Inferno Dragon, Hunter, Royal Recruits, Lava Hound, Spirit Empress |
+| 6 | Knight, Ice Golem, Miner, Balloon, Prince, Dark Prince, Battle Ram, Mega Minion, Firecracker, Mighty Miner, Battle Healer, Archer Queen, Monk, Mother Witch, Goblin Demolisher, Ronin, Furnace |
+| 7 / 8 | Electro Dragon, Skeleton Barrel / Witch |
+| 10 | Fisherman, Golden Knight, Skeleton King, Rascal Boy |
+| 15 | Elixir Golem |
+| 18 | Giant, Royal Giant, Goblin Giant, Electro Giant, Rune Giant, P.E.K.K.A., Mega Knight, Giant Skeleton, Bowler, Sparky, Goblin Machine, Goblinstein's Monster |
+| 20 | Golem |
+
+Buildings have no Mass (0 in the table) and are never moved; a troop is pushed
+out of a building by the whole overlap, as before. A body with no record (the
+same list as for the radii: Golemite, Lava Pups, Elixir Golemite and Blob,
+Goblin Brawler, Cursed Hog, Minion Giant, what the Hero abilities summon) takes
+`BodySizes::DEFAULT_MASS` 5, the median of the published troops; a troop built
+by hand takes the same (`Entity::IMPLICIT_TROOP_MASS`), so two of them still
+halve their overlap.
+
+**The table publishes the masses, NOT the rule.** No published text or field
+says how two masses share a push; "the other's mass over the sum" is the
+ordinary two-body split and is an inference. A Hog Rider (4) against an Ice
+Golem (6) takes 0.6 of the overlap and the Golem 0.4; against a Golem (20) the
+Hog takes 5/6. Flying and ground bodies still do not collide; allies and
+enemies still do, both sides alike; a body that is deploying is still pushed
+(see below).
+
+**The one recorded pair, and what it does and does not decide**
+(`runs/live/20261120-185026`, Ice Golem tapped on tile (15, 15), Hog Rider on
+(16, 15) 1.06 s later; positions from the detection boxes):
+
+- Recorded: the Hog does not run ahead; it comes in behind the Golem, and from
+  2.7 s to 5.4 s after the Hog's tap both cover about 4.3 rows (1.6 rows/s;
+  the Golem alone walks 0.93-1.0, the Hog alone 2.15-2.3). The Golem is carried
+  forward and to the left (x 14.5 to about 13), the Hog passes it on the right
+  at about 5.4 s, and its first hit is 0.45-0.67 s later than a lone Hog's.
+  The Golem's share of the closing speed comes out near 0.44.
+- A mass split predicts 0.40 and an equal split 0.50. **The recording cannot
+  tell them apart**: this patch rests on the published masses, not on the
+  recording. In the engine the two splits differ by 0.2 s on the Hog's first
+  hit (0.6 s late equal, 0.8 s late by mass) and 0.2 rows on the Golem.
+- **The recorded tiles are NOT reproduced.** From (16, 15) the engine's Hog
+  walks a straight line to the tower, stays a tile to the right of the Golem
+  and never touches it (7 hits, 15 arrows, the same before and after this
+  patch). The recorded Hog is in the Golem's lane by the time it has jumped
+  the river: in 11 recorded crossings from that tile it is at x 14.3-14.4 at
+  engine row 18 where the engine has it at 15.5, and stops at 13.7-14.0
+  against 14.5. The jump covers about (-1.5, +2.0) tiles in 0.55-0.7 s. Not
+  changed: one start tile is recorded, and "lands in the lane" cannot be told
+  from "walks a diagonal grid path" with it. **This corrects the patch-0056
+  table row "river jump: straight diagonal ... agrees": it does not agree.**
+- With the Hog started in the lane behind the Golem (Golem (15, 15), Hog
+  (15, 14) 11 ticks later) the engine now does what the recording shows: the
+  Golem is carried 4.0 rows in 2.7 s and to the left, takes the tower's first
+  arrows, the Hog passes on the right at 5.5-5.8 s, lands its first hit 0.8 s
+  later than a lone Hog from that tile and gets 11 hits in against 7.
+- **Every other pair is untested by any recording.**
+
+Also seen and not changed: in the recording the two overlapped by about 0.3
+while both were still deploying and neither shifted (0.05 column at most over a
+second; the engine's push would move each 0.12-0.18). The engine separates
+deploying bodies at once. One pair, weak.
+
+`get_card_stats(id)["base"]` reports `published_mass` (0 = no record or a
+building) and `body_mass`; `get_units()` reports each unit's `body_mass` (0
+for a building or tower).
+
+Tests: `python_ai/tests/test_mass_push.py` (published values through the
+bindings and on what is spawned, two-body cards, the no-record default, a Hog
+carries an Ice Golem and moves a Golem much less, the lane pair on a tower),
+`tests/core/test_card_registry.cpp` `[patch0058]` (table, 0.6 / 0.4 and
+20/24 / 4/24 of an overlap, hand-built troops halve it). No existing
+expectation moved.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

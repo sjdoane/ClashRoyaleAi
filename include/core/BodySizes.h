@@ -45,54 +45,66 @@
 //
 // A troop or building built by hand with no card (the test fixtures) keeps
 // Entity::IMPLICIT_TROOP_RADIUS / Building::COLLISION_RADIUS.
+//
+// MASS (patch 0058). The same unit records give every troop a Mass, from 1
+// (Skeletons, the spirits, Bats, Spear Goblins, Guards) to 20 (Golem);
+// buildings have none (0 here) and are never moved. Board::resolveCollisions
+// shares the overlap of two touching troops by it: each moves the other's
+// mass over the sum of the two, so the heavier body gives way less. The
+// records publish the masses, NOT the rule; the split is the ordinary
+// two-body one and is checked against one recorded pair (a Hog Rider, mass 4,
+// behind an Ice Golem, mass 6: see the engine notes of patch 0058). A body
+// with no record takes DEFAULT_MASS = 5, the median of the published troops,
+// and so does a troop built by hand (Entity::IMPLICIT_TROOP_MASS).
 namespace BodySizes {
 
 constexpr float DEFAULT_RADIUS = 0.5f;
 constexpr float DEFAULT_BUILDING_RADIUS = 0.6f;
+constexpr float DEFAULT_MASS = 5.0f;
 
-struct Row { const char* name; int id; int radiusThousandths; };
+struct Row { const char* name; int id; int radiusThousandths; int mass; };
 
 // id 0 = every card of that name; otherwise only that registry id.
 inline constexpr Row ROWS[] = {
-    { "Rascals", -28, 500 },           // RascalGirl
-    { "Goblinstein", -40, 500 },       // the Doctor
-    { "Ice Spirit", 0, 400 }, { "Fire Spirit", 0, 400 }, { "Heal Spirit", 0, 400 },
-    { "Electro Spirit", 0, 400 }, { "Wall Breakers", 0, 400 },
-    { "Mini PEKKA", 0, 450 }, { "Hero Mini P.E.K.K.A.", 0, 450 }, { "Berserker", 0, 450 },
-    { "Knight", 0, 500 }, { "Archers", 0, 500 }, { "Goblins", 0, 500 }, { "Minions", 0, 500 },
-    { "Minion Horde", 0, 500 }, { "Balloon", 0, 500 }, { "Witch", 0, 500 }, { "Barbarians", 0, 500 },
-    { "Skeletons", 0, 500 }, { "Skeleton Army", 0, 500 }, { "Valkyrie", 0, 500 }, { "Bomber", 0, 500 },
-    { "Musketeer", 0, 500 }, { "Three Musketeers", 0, 500 }, { "Baby Dragon", 0, 500 },
-    { "Wizard", 0, 500 }, { "Spear Goblins", 0, 500 }, { "Ice Wizard", 0, 500 }, { "Guards", 0, 500 },
-    { "Princess", 0, 500 }, { "Miner", 0, 500 }, { "Lumberjack", 0, 500 }, { "Inferno Dragon", 0, 500 },
-    { "Dart Goblin", 0, 500 }, { "Electro Wizard", 0, 500 }, { "Elite Barbarians", 0, 500 },
-    { "Royal Recruits", 0, 500 }, { "Night Witch", 0, 500 }, { "Bats", 0, 500 }, { "Cannon Cart", 0, 500 },
-    { "Skeleton Barrel", 0, 500 }, { "Flying Machine", 0, 500 }, { "Fisherman", 0, 500 },
-    { "Firecracker", 0, 500 }, { "Mighty Miner", 0, 500 }, { "Battle Healer", 0, 500 },
-    { "Archer Queen", 0, 500 }, { "Monk", 0, 500 }, { "Mother Witch", 0, 500 }, { "Phoenix", 0, 500 },
-    { "Little Prince", 0, 500 }, { "Spirit Empress", 0, 500 }, { "Suspicious Bush", 0, 500 },
-    { "Bush Goblins", 0, 500 }, { "Goblin Gang", 0, 500 },
-    { "Prince", 0, 600 }, { "Hog Rider", 0, 600 }, { "Dark Prince", 0, 600 }, { "Mega Minion", 0, 600 },
-    { "Hunter", 0, 600 }, { "Executioner", 0, 600 }, { "Bandit", 0, 600 }, { "Royal Ghost", 0, 600 },
-    { "Ram Rider", 0, 600 }, { "Zappies", 0, 600 }, { "Royal Hogs", 0, 600 }, { "Magic Archer", 0, 600 },
-    { "Electro Dragon", 0, 600 }, { "Elixir Golem", 0, 600 }, { "Goblin Demolisher", 0, 600 },
-    { "Kamikaze Goblin Demolisher", 0, 600 }, { "Boss Bandit", 0, 600 }, { "Ronin", 0, 600 },
-    { "Furnace", 0, 600 },
-    { "Ice Golem", 0, 700 },
-    { "Giant", 0, 750 }, { "P.E.K.K.A.", 0, 750 }, { "Golem", 0, 750 }, { "Giant Skeleton", 0, 750 },
-    { "Royal Giant", 0, 750 }, { "Lava Hound", 0, 750 }, { "Bowler", 0, 750 }, { "Battle Ram", 0, 750 },
-    { "Rascals", 0, 750 }, { "Mega Knight", 0, 750 }, { "Goblin Giant", 0, 750 },
-    { "Electro Giant", 0, 750 }, { "Goblin Machine", 0, 750 }, { "Goblinstein", 0, 750 },
-    { "Rune Giant", 0, 750 },
-    { "Golden Knight", 0, 800 },
-    { "Skeleton Dragons", 0, 900 },
-    { "Sparky", 0, 1000 }, { "Skeleton King", 0, 1000 },
+    { "Rascals", -28, 500, 2 },           // RascalGirl
+    { "Goblinstein", -40, 500, 4 },       // the Doctor
+    { "Ice Spirit", 0, 400, 1 }, { "Fire Spirit", 0, 400, 1 }, { "Heal Spirit", 0, 400, 1 },
+    { "Electro Spirit", 0, 400, 1 }, { "Wall Breakers", 0, 400, 4 },
+    { "Mini PEKKA", 0, 450, 4 }, { "Hero Mini P.E.K.K.A.", 0, 450, 4 }, { "Berserker", 0, 450, 2 },
+    { "Knight", 0, 500, 6 }, { "Archers", 0, 500, 3 }, { "Goblins", 0, 500, 2 }, { "Minions", 0, 500, 2 },
+    { "Minion Horde", 0, 500, 2 }, { "Balloon", 0, 500, 6 }, { "Witch", 0, 500, 8 }, { "Barbarians", 0, 500, 4 },
+    { "Skeletons", 0, 500, 1 }, { "Skeleton Army", 0, 500, 1 }, { "Valkyrie", 0, 500, 5 }, { "Bomber", 0, 500, 4 },
+    { "Musketeer", 0, 500, 5 }, { "Three Musketeers", 0, 500, 5 }, { "Baby Dragon", 0, 500, 5 },
+    { "Wizard", 0, 500, 5 }, { "Spear Goblins", 0, 500, 1 }, { "Ice Wizard", 0, 500, 5 }, { "Guards", 0, 500, 1 },
+    { "Princess", 0, 500, 3 }, { "Miner", 0, 500, 6 }, { "Lumberjack", 0, 500, 4 }, { "Inferno Dragon", 0, 500, 5 },
+    { "Dart Goblin", 0, 500, 3 }, { "Electro Wizard", 0, 500, 5 }, { "Elite Barbarians", 0, 500, 4 },
+    { "Royal Recruits", 0, 500, 5 }, { "Night Witch", 0, 500, 4 }, { "Bats", 0, 500, 1 }, { "Cannon Cart", 0, 500, 3 },
+    { "Skeleton Barrel", 0, 500, 7 }, { "Flying Machine", 0, 500, 3 }, { "Fisherman", 0, 500, 10 },
+    { "Firecracker", 0, 500, 6 }, { "Mighty Miner", 0, 500, 6 }, { "Battle Healer", 0, 500, 6 },
+    { "Archer Queen", 0, 500, 6 }, { "Monk", 0, 500, 6 }, { "Mother Witch", 0, 500, 6 }, { "Phoenix", 0, 500, 2 },
+    { "Little Prince", 0, 500, 4 }, { "Spirit Empress", 0, 500, 5 }, { "Suspicious Bush", 0, 500, 2 },
+    { "Bush Goblins", 0, 500, 2 }, { "Goblin Gang", 0, 500, 2 },
+    { "Prince", 0, 600, 6 }, { "Hog Rider", 0, 600, 4 }, { "Dark Prince", 0, 600, 6 }, { "Mega Minion", 0, 600, 6 },
+    { "Hunter", 0, 600, 5 }, { "Executioner", 0, 600, 4 }, { "Bandit", 0, 600, 3 }, { "Royal Ghost", 0, 600, 3 },
+    { "Ram Rider", 0, 600, 4 }, { "Zappies", 0, 600, 4 }, { "Royal Hogs", 0, 600, 2 }, { "Magic Archer", 0, 600, 3 },
+    { "Electro Dragon", 0, 600, 7 }, { "Elixir Golem", 0, 600, 15 }, { "Goblin Demolisher", 0, 600, 6 },
+    { "Kamikaze Goblin Demolisher", 0, 600, 6 }, { "Boss Bandit", 0, 600, 4 }, { "Ronin", 0, 600, 6 },
+    { "Furnace", 0, 600, 6 },
+    { "Ice Golem", 0, 700, 6 },
+    { "Giant", 0, 750, 18 }, { "P.E.K.K.A.", 0, 750, 18 }, { "Golem", 0, 750, 20 }, { "Giant Skeleton", 0, 750, 18 },
+    { "Royal Giant", 0, 750, 18 }, { "Lava Hound", 0, 750, 5 }, { "Bowler", 0, 750, 18 }, { "Battle Ram", 0, 750, 6 },
+    { "Rascals", 0, 750, 10 }, { "Mega Knight", 0, 750, 18 }, { "Goblin Giant", 0, 750, 18 },
+    { "Electro Giant", 0, 750, 18 }, { "Goblin Machine", 0, 750, 18 }, { "Goblinstein", 0, 750, 18 },
+    { "Rune Giant", 0, 750, 18 },
+    { "Golden Knight", 0, 800, 10 },
+    { "Skeleton Dragons", 0, 900, 4 },
+    { "Sparky", 0, 1000, 18 }, { "Skeleton King", 0, 1000, 10 },
     // Buildings.
-    { "Tesla", 0, 500 }, { "Goblin Drill", 0, 500 },
-    { "Cannon", 0, 600 }, { "Bomb Tower", 0, 600 }, { "Inferno Tower", 0, 600 }, { "X-Bow", 0, 600 },
-    { "Mortar", 0, 600 },
-    { "Barbarian Hut", 0, 1000 }, { "Goblin Hut", 0, 1000 }, { "Tombstone", 0, 1000 },
-    { "Goblin Cage", 0, 1000 }, { "Elixir Collector", 0, 1000 },
+    { "Tesla", 0, 500, 0 }, { "Goblin Drill", 0, 500, 0 },
+    { "Cannon", 0, 600, 0 }, { "Bomb Tower", 0, 600, 0 }, { "Inferno Tower", 0, 600, 0 }, { "X-Bow", 0, 600, 0 },
+    { "Mortar", 0, 600, 0 },
+    { "Barbarian Hut", 0, 1000, 0 }, { "Goblin Hut", 0, 1000, 0 }, { "Tombstone", 0, 1000, 0 },
+    { "Goblin Cage", 0, 1000, 0 }, { "Elixir Collector", 0, 1000, 0 },
 };
 
 inline const Row* findExact(const std::string& name, int id) {
@@ -124,6 +136,18 @@ inline float radius(const std::string& name, int id, bool building = false) {
     const Row* r = find(name, id);
     if (r) return r->radiusThousandths / 1000.0f;
     return building ? DEFAULT_BUILDING_RADIUS : DEFAULT_RADIUS;
+}
+
+// Published Mass; 0 = no row, or a building (no Mass is published for one).
+inline int publishedMass(const std::string& name, int id) {
+    const Row* r = find(name, id);
+    return r ? r->mass : 0;
+}
+
+// Mass of a card's troop: the published one, or DEFAULT_MASS.
+inline float mass(const std::string& name, int id) {
+    const int m = publishedMass(name, id);
+    return m > 0 ? static_cast<float>(m) : DEFAULT_MASS;
 }
 
 }  // namespace BodySizes

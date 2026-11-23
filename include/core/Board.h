@@ -338,18 +338,23 @@ public:
                     if (dist < minRadius) {
                         if (dist < 0.001f) { dx = 1.0f; dy = 0.0f; dist = 1.0f; }
                         float overlap = minRadius - dist;
-                        float pushX = (dx / dist) * overlap * 0.5f;
-                        float pushY = (dy / dist) * overlap * 0.5f;
+                        // Each gives way by the OTHER's share of the two
+                        // masses (published Mass, BodySizes.h): a Hog Rider
+                        // (4) against an Ice Golem (6) takes 0.6 of the
+                        // overlap and the Golem 0.4. Equal masses halve it.
+                        const float massSum = e1->bodyMass + e2->bodyMass;
+                        const float share1 = massSum > 0.0f ? e2->bodyMass / massSum : 0.5f;
+                        const float share2 = 1.0f - share1;
+                        const float nx = dx / dist;
+                        const float ny = dy / dist;
 
                         // Tiny orthogonal nudge to prevent jitter lock.
-                        float noise = 0.01f;
-                        pushX += (dy / dist) * noise;
-                        pushY -= (dx / dist) * noise;
+                        const float noise = 0.01f;
 
-                        e1->position.x += pushX;
-                        e1->position.y += pushY;
-                        e2->position.x -= pushX;
-                        e2->position.y -= pushY;
+                        e1->position.x += nx * overlap * share1 + ny * noise;
+                        e1->position.y += ny * overlap * share1 - nx * noise;
+                        e2->position.x -= nx * overlap * share2 + ny * noise;
+                        e2->position.y -= ny * overlap * share2 - nx * noise;
                     }
                 }
 

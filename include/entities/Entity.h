@@ -29,6 +29,15 @@ public:
     // has its own.
     float bodyRadius = IMPLICIT_TROOP_RADIUS;
 
+    // The mass of a troop built by hand with no card: the median of the
+    // published troops (BodySizes::DEFAULT_MASS).
+    static constexpr float IMPLICIT_TROOP_MASS = 5.0f;
+
+    // Published Mass of a card's troop (BodySizes.h, patch 0058). Two touching
+    // troops share their overlap by it in Board::resolveCollisions: the
+    // heavier one gives way less. Buildings are never moved and do not read it.
+    float bodyMass = IMPLICIT_TROOP_MASS;
+
     int id;
     Vector2D position;
     int hp;

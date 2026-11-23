@@ -94,6 +94,7 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     // Published body of the card's troop or building (BodySizes.h, patch
     // 0057).
     entity->bodyRadius = BodySizes::radius(stats.name, stats.id, stats.archetype == Archetype::DefensiveBuilding);
+    entity->bodyMass = BodySizes::mass(stats.name, stats.id);
     entity->transformAtHpFraction = stats.transformAtHpFraction;
     entity->transformCheckMaxHp = stats.hp;
     entity->transformLifetimeTicks = stats.transformLifetimeTicks;

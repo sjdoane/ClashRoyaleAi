@@ -85,6 +85,10 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     // a tile, 0 = no row; and the radius the engine gives it, in tiles.
     d["published_collision_radius"] = BodySizes::publishedRadius(s.name, s.id);
     d["body_radius"] = BodySizes::radius(s.name, s.id, s.archetype == Archetype::DefensiveBuilding);
+    // Published Mass of the card's troop (0 = no row, or a building) and the mass the
+    // engine pushes with (patch 0058); a building is never pushed and reports 0.
+    d["published_mass"] = BodySizes::publishedMass(s.name, s.id);
+    d["body_mass"] = s.archetype == Archetype::DefensiveBuilding ? 0.0f : BodySizes::mass(s.name, s.id);
     d["deploy_ticks"] = s.deployTicks;
     d["count"] = static_cast<int>(s.spawnOffsets.size());
     py::list offs;
@@ -480,6 +484,7 @@ PYBIND11_MODULE(clash_royale_env, m) {
                     d["awake"] = u.awake;
                     d["targetable"] = u.targetable;
                     d["body_radius"] = u.bodyRadius;
+                    d["body_mass"] = u.bodyMass;
                     out.append(d);
                 }
                 return out;

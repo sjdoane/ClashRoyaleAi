@@ -2460,3 +2460,81 @@ TEST_CASE("Two troops are pushed apart to the sum of their published bodies",
     const auto& golem = board.getEntities()[1];
     REQUIRE(hog->position.distanceTo(golem->position) == Catch::Approx(1.3f).margin(1e-3));
 }
+
+// Patch 0058: published Mass (BodySizes.h; FirstLight-Zero card_specs.json,
+// release 15.535.13). Two touching troops share their overlap by it.
+TEST_CASE("Two touching troops give way by the other's share of their published masses",
+          "[card_registry][body][patch0058]") {
+    auto& reg = CardRegistry::getInstance();
+
+    // The table.
+    REQUIRE(BodySizes::publishedMass("Skeletons", 24) == 1);
+    REQUIRE(BodySizes::publishedMass("Ice Spirit", 72) == 1);
+    REQUIRE(BodySizes::publishedMass("Goblins", 4) == 2);
+    REQUIRE(BodySizes::publishedMass("Hog Rider", 15) == 4);
+    REQUIRE(BodySizes::publishedMass("Musketeer", 6) == 5);
+    REQUIRE(BodySizes::publishedMass("Knight", 0) == 6);
+    REQUIRE(BodySizes::publishedMass("Ice Golem", 40) == 6);
+    REQUIRE(BodySizes::publishedMass("Elixir Golem", 90) == 15);
+    REQUIRE(BodySizes::publishedMass("Giant", 2) == 18);
+    REQUIRE(BodySizes::publishedMass("Golem", 19) == 20);
+    // The second body of a two-body name has its own.
+    REQUIRE(BodySizes::publishedMass("Rascals", 113) == 10);
+    REQUIRE(BodySizes::publishedMass("Rascals", -28) == 2);
+    REQUIRE(BodySizes::publishedMass("Goblinstein", 121) == 18);
+    REQUIRE(BodySizes::publishedMass("Goblinstein", -40) == 4);
+    // "Hero X" without a row weighs what X does.
+    REQUIRE(BodySizes::publishedMass("Hero Musketeer", 168) == 5);
+    // No Mass is published for a building; a body with no record takes the
+    // median of the published troops.
+    REQUIRE(BodySizes::publishedMass("Cannon", 25) == 0);
+    REQUIRE(BodySizes::publishedMass("Golemite", -1) == 0);
+    REQUIRE(BodySizes::mass("Golemite", -1) == Catch::Approx(BodySizes::DEFAULT_MASS));
+    int troops = 0;
+    for (const auto& row : BodySizes::ROWS) {
+        INFO(row.name);
+        REQUIRE(row.mass >= 0);
+        REQUIRE(row.mass <= 20);
+        if (row.mass > 0) ++troops;
+    }
+    REQUIRE(troops > 90);
+
+    SECTION("a Hog Rider (4) against an Ice Golem (6): 0.6 and 0.4 of the overlap") {
+        Board board;
+        reg.getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);
+        reg.getCard(40)->spawnEntity(5.5f, 5.0f, 0, board);
+        board.commitPendingEntities();
+        REQUIRE(board.getEntities()[0]->bodyMass == Catch::Approx(4.0f));
+        REQUIRE(board.getEntities()[1]->bodyMass == Catch::Approx(6.0f));
+        board.resolveCollisions();
+        // Overlap 1.3 - 0.5 = 0.8.
+        REQUIRE(board.getEntities()[0]->position.x == Catch::Approx(5.0f - 0.48f).margin(1e-3));
+        REQUIRE(board.getEntities()[1]->position.x == Catch::Approx(5.5f + 0.32f).margin(1e-3));
+    }
+
+    SECTION("a Hog Rider (4) hardly moves a Golem (20)") {
+        Board board;
+        reg.getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);
+        reg.getCard(19)->spawnEntity(5.5f, 5.0f, 0, board);
+        board.commitPendingEntities();
+        board.resolveCollisions();
+        // Overlap 0.6 + 0.75 - 0.5 = 0.85: the Golem takes 4/24 of it.
+        REQUIRE(board.getEntities()[1]->position.x == Catch::Approx(5.5f + 0.85f * 4.0f / 24.0f).margin(1e-3));
+        REQUIRE(board.getEntities()[0]->position.x == Catch::Approx(5.0f - 0.85f * 20.0f / 24.0f).margin(1e-3));
+    }
+
+    SECTION("two troops built by hand weigh the same and halve it, as before") {
+        Board board;
+        auto a = std::make_shared<MeleeTroop>(900, 5.0f, 5.0f, 100, 0, 0.1f, 1.0f, 10, 10, 'k');
+        auto b = std::make_shared<MeleeTroop>(901, 5.4f, 5.0f, 100, 0, 0.1f, 1.0f, 10, 10, 'k');
+        REQUIRE(a->bodyMass == Catch::Approx(Entity::IMPLICIT_TROOP_MASS));
+        REQUIRE(Entity::IMPLICIT_TROOP_MASS == Catch::Approx(BodySizes::DEFAULT_MASS));
+        board.addEntity(a);
+        board.addEntity(b);
+        board.commitPendingEntities();
+        board.resolveCollisions();
+        // Overlap 0.8 - 0.4 = 0.4, 0.2 each.
+        REQUIRE(a->position.x == Catch::Approx(4.8f).margin(1e-3));
+        REQUIRE(b->position.x == Catch::Approx(5.6f).margin(1e-3));
+    }
+}

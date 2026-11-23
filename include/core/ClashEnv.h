@@ -995,6 +995,7 @@ public:
         bool awake;            // false only for a dormant King Tower
         bool targetable;       // false while invisible (Royal Ghost, a cloak)
         float bodyRadius;      // the body used for contact, reach and sight (BodySizes.h)
+        float bodyMass;        // published Mass; 0 for a building or tower (never pushed)
     };
     std::vector<UnitView> getUnits() const {
         std::vector<UnitView> out;
@@ -1007,7 +1008,8 @@ public:
                             c->shieldHp, c->isFlying, c->isBuilding(), c->isTower(), c->getCurrentTargetId(),
                             c->deployTicksRemaining, c->freezeTicks, c->freezeSlow, c->getCurrentCooldown(),
                             tower ? tower->isAwake() : true, c->isTargetable(),
-                            c->getCollisionRadius() > 0.0f ? c->getCollisionRadius() : c->bodyRadius });
+                            c->getCollisionRadius() > 0.0f ? c->getCollisionRadius() : c->bodyRadius,
+                            c->getCollisionRadius() > 0.0f ? 0.0f : c->bodyMass });
         }
         return out;
     }
