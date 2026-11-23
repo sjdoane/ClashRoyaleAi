@@ -26,7 +26,10 @@ TEST_CASE("Golden Knight (116) is registered with the right stats and ability", 
     REQUIRE(knight->hp == 1799);
     REQUIRE(knight->isChampion);
     REQUIRE(knight->abilityElixirCost == Catch::Approx(1.0f));
-    REQUIRE(knight->abilityCooldownTicks == 120);
+    // One charge per deployment and no cooldown (patch 0080; published
+    // MaxCharges 1, no Cooldown, release 15.535.13).
+    REQUIRE(knight->abilityCooldownTicks == 0);
+    REQUIRE(knight->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("Skeleton King (117) is registered with soul collection and the right ability", "[card_registry][champion]") {
@@ -55,7 +58,8 @@ TEST_CASE("Archer Queen (118) is registered as air+ground with the right ability
     REQUIRE(queen != nullptr);
     REQUIRE(queen->hp == 1000);
     REQUIRE(queen->targetsAir);
-    REQUIRE(queen->abilityCooldownTicks == 170);
+    REQUIRE(queen->abilityCooldownTicks == 0);
+    REQUIRE(queen->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("Monk (119) is registered with the right stats and ability", "[card_registry][champion]") {
@@ -82,7 +86,8 @@ TEST_CASE("Little Prince (120) is registered with a hit-speed ramp and the Guard
     REQUIRE(prince != nullptr);
     REQUIRE(prince->hp == 698);
     REQUIRE(prince->hitSpeedRampFullTick == 60);
-    REQUIRE(prince->abilityCooldownTicks == 300);
+    REQUIRE(prince->abilityCooldownTicks == 0);
+    REQUIRE(prince->abilityUsesRemaining == 1);
 }
 
 TEST_CASE("Goblinstein (121) spawns both the Monster (champion) and the Doctor", "[card_registry][champion]") {

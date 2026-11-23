@@ -76,13 +76,15 @@ TEST_CASE("step()'s activateAbility param defaults to false and only fires when 
     env.debugGame().playerAI.hand[1] = 115;
 
     env.step(1, 9.0f, 10.0f, 1); // deploy Mighty Miner; activateAbility defaults to false
+    REQUIRE_FALSE(env.isChampionAbilityReady(0)); // still deploying (patch 0080)
+    env.step(-1, 0.0f, 0.0f, 9); // the rest of his 1 s deploy time
     REQUIRE(env.isChampionAbilityReady(0)); // deployed, off cooldown, affordable
 
     env.step(-1, 0.0f, 0.0f, 1); // no card, no ability -- default stays false
     REQUIRE(env.isChampionAbilityReady(0)); // still ready: nothing consumed it
 
     env.step(-1, 0.0f, 0.0f, 1, true); // explicitly activate slot 1's ability now
-    REQUIRE_FALSE(env.isChampionAbilityReady(0)); // now on cooldown
+    REQUIRE_FALSE(env.isChampionAbilityReady(0)); // the one charge is spent
 }
 
 TEST_CASE("sampleRandomDeck always produces a deck that passes validateDeckSlots", "[clash_env][random_deck]") {

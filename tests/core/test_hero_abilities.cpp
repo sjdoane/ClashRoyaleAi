@@ -131,10 +131,12 @@ TEST_CASE("activateChampionAbility fires for a Hero (not just a Champion) deploy
     game.playerAI.elixir = 100.0f;
     game.playCard(0, 168, 9.0f, 10.0f);
     game.step(); // commit, so findChampionInSlot can see it
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // still deploying (patch 0080)
+    for (int i = 0; i < 9; ++i) game.step();           // the 1 s deploy time
 
     REQUIRE(game.isChampionAbilityReady(0, 1));
     REQUIRE(game.activateChampionAbility(0, 1));
-    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // now on cooldown, same as any Champion
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // its charge is spent, same as any Champion
 }
 
 TEST_CASE("A Hero's one-use ability (usesLimit=1) can't be reactivated once spent", "[game_manager][hero]") {
@@ -142,7 +144,7 @@ TEST_CASE("A Hero's one-use ability (usesLimit=1) can't be reactivated once spen
     game.playerAI.hand[1] = 170;
     game.playerAI.elixir = 100.0f;
     game.playCard(0, 170, 9.0f, 10.0f);
-    game.step();
+    for (int i = 0; i < 10; ++i) game.step(); // landed (patch 0080)
 
     REQUIRE(game.activateChampionAbility(0, 1));
     REQUIRE_FALSE(game.activateChampionAbility(0, 1)); // uses exhausted, no cooldown to wait out

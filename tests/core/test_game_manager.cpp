@@ -554,11 +554,17 @@ TEST_CASE("A freshly-cycled-in hand slot is unplayable for CYCLE_IN_COOLDOWN_TIC
 // affordable (4.0) from the starting 5.0, and activateChampionAbility's slot
 // defaults to 1.
 
-TEST_CASE("activateChampionAbility fires, deducts elixir, and starts the cooldown", "[game_manager][champion]") {
+// Patch 0080: an ability belongs to the deployed character, so it is usable
+// only once the body's 1 s deploy time is over.
+static void finishDeploy(GameManager& game) {
+    for (int i = 0; i < 10; ++i) game.step();
+}
+
+TEST_CASE("activateChampionAbility fires, deducts elixir, and spends the charge", "[game_manager][champion]") {
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.hand[1] = 115;
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step(); // commit, so the Champion is visible
+    finishDeploy(game); // commit and land: no ability during the 1 s deploy (patch 0080)
     float elixirBefore = game.getElixirAI();
 
     bool activated = game.activateChampionAbility(0);
@@ -571,7 +577,7 @@ TEST_CASE("activateChampionAbility feeds MatchStatistics' Champion ability track
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.hand[1] = 115;
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step(); // commit, so the Champion is visible
+    finishDeploy(game); // commit and land: no ability during the 1 s deploy (patch 0080)
 
     REQUIRE(game.activateChampionAbility(0));
 
@@ -592,7 +598,7 @@ TEST_CASE("activateChampionAbility fails when unaffordable, without deducting an
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.hand[1] = 115;
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step(); // commit, so the Champion is visible
+    finishDeploy(game); // commit and land: no ability during the 1 s deploy (patch 0080)
     game.playerAI.elixir = 0.5f; // below the 1.0 ability cost
 
     bool activated = game.activateChampionAbility(0);
@@ -601,27 +607,47 @@ TEST_CASE("activateChampionAbility fails when unaffordable, without deducting an
     REQUIRE(game.getElixirAI() == Catch::Approx(0.5f)); // untouched
 }
 
-TEST_CASE("activateChampionAbility fails while still on cooldown", "[game_manager][champion]") {
+TEST_CASE("activateChampionAbility fails while the Champion is still deploying", "[game_manager][champion]") {
+    // Of 33,848 recorded presses the 1st percentile comes 1.2 s after the
+    // card for every Champion and Hero: nobody presses during the deploy.
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.hand[1] = 115;
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step(); // commit, so the Champion is visible
-    game.playerAI.elixir = 10.0f; // plenty for a second attempt, if cooldown didn't block it
+    int ticks = 0;
+    while (ticks < 40) {
+        game.step();
+        ++ticks;
+        game.playerAI.elixir = 10.0f;
+        if (game.isChampionAbilityReady(0)) break;
+        REQUIRE_FALSE(game.activateChampionAbility(0)); // and nothing is charged
+        REQUIRE(game.getElixirAI() == Catch::Approx(10.0f));
+    }
+    REQUIRE(ticks == 10); // the 1 s deploy time, to the tick
+    REQUIRE(game.activateChampionAbility(0));
+}
+
+TEST_CASE("activateChampionAbility fails once the one charge is spent", "[game_manager][champion]") {
+    GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
+    game.playerAI.hand[1] = 115;
+    game.playCard(0, 115, 9.0f, 10.0f);
+    finishDeploy(game); // commit and land: no ability during the 1 s deploy (patch 0080)
+    game.playerAI.elixir = 10.0f; // plenty for a second attempt, if the charge didn't block it
 
     REQUIRE(game.activateChampionAbility(0));
     REQUIRE_FALSE(game.activateChampionAbility(0));
 }
 
-TEST_CASE("activateChampionAbility is ready again once its full cooldown elapses via step()", "[game_manager][champion]") {
+TEST_CASE("A Champion's ability is one charge per deployment: never ready again on that body", "[game_manager][champion]") {
+    // Patch 0080. Published: MaxCharges 1 and no Cooldown for every Champion
+    // but Boss Bandit. Recorded: 0 repeats on one deployment in 60,000 sides
+    // for Mighty Miner (3,778 press-redeploy-press sequences).
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.hand[1] = 115;
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step(); // commit, so the Champion is visible
+    finishDeploy(game); // commit and land: no ability during the 1 s deploy (patch 0080)
     game.playerAI.elixir = 10.0f;
     REQUIRE(game.activateChampionAbility(0));
 
-    // Fast-forward the cooldown directly: 130 real ticks would let the Miner
-    // wander into combat and make the timing depend on it.
     std::shared_ptr<CombatEntity> champion;
     for (const auto& e : game.getBoard().getEntities()) {
         auto candidate = std::dynamic_pointer_cast<CombatEntity>(e);
@@ -629,13 +655,20 @@ TEST_CASE("activateChampionAbility is ready again once its full cooldown elapses
     }
     REQUIRE(champion != nullptr);
 
-    champion->abilityCooldownRemaining = 1;
-    game.playerAI.elixir = 10.0f;
-    REQUIRE_FALSE(game.activateChampionAbility(0)); // still 1 tick left
+    REQUIRE(champion->abilityUsesRemaining == 0);
+    REQUIRE(champion->abilityCooldownRemaining == 0); // not a cooldown: there is nothing to wait out
 
-    game.step(); // decrements the last tick via CombatEntity::update()
-    game.playerAI.elixir = 10.0f;
-    REQUIRE(game.activateChampionAbility(0));
+    // 30 s, longer than any cooldown the engine ever gave a Champion. He is
+    // kept alive and at full health so the answer is about the charge.
+    const int fullHp = champion->hp;
+    for (int i = 0; i < 300; ++i) {
+        game.step();
+        champion->hp = fullHp;
+        game.playerAI.elixir = 10.0f;
+        REQUIRE(champion->isAlive());
+        REQUIRE_FALSE(game.isChampionAbilityReady(0));
+    }
+    REQUIRE_FALSE(game.activateChampionAbility(0));
 }
 
 TEST_CASE("activateChampionAbility fails once the game is over", "[game_manager][champion]") {
@@ -663,13 +696,13 @@ TEST_CASE("Two different Champions in slots 1 and 2 have fully independent abili
     game.playerAI.deckQueue = { 4, 5, 6, 7 };
     game.playCard(0, 115, 9.0f, 10.0f);  // Mighty Miner -> slot 1
     game.playCard(0, 118, 12.0f, 10.0f); // Archer Queen -> slot 2
-    game.step();
+    finishDeploy(game);
 
     REQUIRE(game.isChampionAbilityReady(0, 1));
     REQUIRE(game.isChampionAbilityReady(0, 2));
 
     REQUIRE(game.activateChampionAbility(0, 1));
-    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // now on cooldown
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // its charge is spent
     REQUIRE(game.isChampionAbilityReady(0, 2));        // slot 2 completely unaffected
 
     REQUIRE(game.activateChampionAbility(0, 2));
@@ -693,7 +726,7 @@ TEST_CASE("Redeploying the same Champion tracks the newest instance for ability 
     game.playerAI.hand[1] = 115; // simulate it having cycled back to hand
     game.playerAI.handCooldownTicks[1] = 0; // skip the cycle-in delay
     game.playCard(0, 115, 12.0f, 10.0f); // 2nd deploy, while the first is still alive
-    game.step();
+    finishDeploy(game);
 
     int championCount = 0;
     std::shared_ptr<CombatEntity> secondInstance;
@@ -709,33 +742,42 @@ TEST_CASE("Redeploying the same Champion tracks the newest instance for ability 
 
     game.playerAI.elixir = 100.0f;
     REQUIRE(game.activateChampionAbility(0, 1));
-    REQUIRE(secondInstance->abilityCooldownRemaining > 0); // the newest instance is the one that fired
-    REQUIRE(firstInstance->abilityCooldownRemaining == 0); // the original, no-longer-tracked instance is untouched
+    REQUIRE(secondInstance->abilityUsesRemaining == 0); // the newest instance is the one that fired
+    REQUIRE(firstInstance->abilityUsesRemaining == 1);  // the original, no-longer-tracked instance is untouched
 }
 
-TEST_CASE("A Champion's ability cooldown persists across death and redeploy of the same slot", "[game_manager][champion][multi]") {
+TEST_CASE("A redeployed Champion has a fresh charge as soon as it has landed", "[game_manager][champion][multi]") {
+    // Patch 0080. The engine used to carry a 13 s cooldown over to the next
+    // body, frozen while the Champion was dead. Recorded: 221 Mighty Miner
+    // presses come less than 13 s after the previous one, each on a new
+    // deployment (251 Golden Knight under 12 s, 229 Archer Queen under 17 s).
     GameManager game({ 1, 115, 2, 3, 4, 5, 6, 7 }, { 0,1,2,3,4,5,6,7 });
     game.playerAI.elixir = 100.0f;
     game.playerAI.hand[1] = 115; // force into hand: the opening hand is random
     game.playCard(0, 115, 9.0f, 10.0f);
-    game.step();
+    finishDeploy(game);
 
-    REQUIRE(game.activateChampionAbility(0, 1)); // cooldown set to 130 on the live entity
-    game.step(); // synced into persistedCooldownRemaining (129) while still alive
+    REQUIRE(game.activateChampionAbility(0, 1)); // the first body's charge is spent
+    game.step();
 
     for (const auto& e : game.getBoard().getEntities()) {
         auto ce = std::dynamic_pointer_cast<CombatEntity>(e);
         if (ce && ce->isChampion) { ce->takeDamage(ce->hp); break; }
     }
-    game.step(); // this tick's sync sees it already dead, leaves the persisted value at 129; cleans the corpse up
+    game.step(); // cleans the corpse up
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // nobody on the field
 
     game.playerAI.hand[1] = 115;
     game.playerAI.handCooldownTicks[1] = 0; // skip the cycle-in delay
     game.playerAI.elixir = 100.0f;
-    game.playCard(0, 115, 9.0f, 10.0f); // redeploy -- should seed from the persisted cooldown, not start at 0
+    game.playCard(0, 115, 9.0f, 10.0f); // redeploy, 2 ticks after the press
     game.step();
-
-    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // still cooling down, not freshly ready
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // deploying
+    for (int i = 0; i < 9; ++i) game.step();
+    game.playerAI.elixir = 100.0f;
+    REQUIRE(game.isChampionAbilityReady(0, 1));       // landed: a new charge
+    REQUIRE(game.activateChampionAbility(0, 1));
+    REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // and only one
 }
 
 TEST_CASE("A cloned Champion can never activate the ability, even after the original dies", "[game_manager][champion][multi]") {
@@ -756,7 +798,7 @@ TEST_CASE("A cloned Champion can never activate the ability, even after the orig
     REQUIRE(clone != nullptr);
     REQUIRE(clone->isChampion); // the clone DOES carry isChampion=true -- it's the tracking that must exclude it
     game.getBoard().addEntity(clone);
-    game.step();
+    finishDeploy(game);
 
     REQUIRE(game.isChampionAbilityReady(0, 1)); // still resolves to the original (still alive), not the clone
 

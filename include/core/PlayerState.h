@@ -32,8 +32,8 @@ public:
     // Clone-spell copy never does.
     //
     // persistedCooldownRemaining follows the tracked entity's cooldown while it
-    // lives (GameManager::syncChampionCooldowns) and persists after it dies, so
-    // a redeploy resumes the cooldown.
+    // lives (GameManager::syncChampionCooldowns). A redeploy does not resume it
+    // (patch 0080): every body has its own charges.
     struct ChampionSlotState {
         int trackedEntityId = -1;
         int persistedCooldownRemaining = 0;

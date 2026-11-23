@@ -1172,21 +1172,29 @@ private:
             .withSpellClone());
 
         // === Champions ===
+        // ONE CHARGE PER DEPLOYMENT (patch 0080). The published ability records
+        // of release 15.535.13 give every Champion `MaxCharges: 1` and no
+        // cooldown (only Boss Bandit has one: 2 charges, 3000 ms), exactly as
+        // they do for the Heroes; and in 60,000 recorded sides no Champion is
+        // pressed twice on one deployment (Golden Knight 0 of 7,247 chances,
+        // Mighty Miner 0 of 3,778, ...) while Boss Bandit is, 599 times. The
+        // 12-30 s cooldowns with unlimited uses that stood here were the game
+        // of 2025. A redeployed Champion has a fresh charge.
         // Mighty Miner: MeleeSquad like the Miner, but not deploy-anywhere.
         // Damage ramps 40 -> 204 -> 409 on one target, 2 s per stage
         // (Liquipedia, 2025-01-08 patch), so mid 20 and full 40 ticks; `damage`
-        // is the max. "Explosive Escape" (1 elixir, ~13 s cooldown): a lane
+        // is the max. "Explosive Escape" (1 elixir, one charge per deployment): a lane
         // swap leaving a bomb that detonates after ~1 s for 332 with 1.8-tile
         // knockback. The bomb radius (2.5) is not sourced. See
         // MightyMinerEscapeEffect.
         add(troop(115, "Mighty Miner", 4.0f, Archetype::MeleeSquad, 2250, SPEED_MEDIUM, 1.6f, 409, 4, '\'')
             .withDamageRamp(20, 40, 40.0f / 409.0f, 204.0f / 409.0f)
-            .withChampionAbility(1.0f, 130, std::make_shared<MightyMinerEscapeEffect>(2.5f, 332, 10, 1.8f)));
+            .withChampionAbility(1.0f, 0, std::make_shared<MightyMinerEscapeEffect>(2.5f, 332, 10, 1.8f), 1));
 
         // Golden Knight's "Dashing Dash": up to 10 dashes to the nearest enemy
         // within 5.5 tiles, stopping at a Crown Tower (GoldenKnightDashEffect).
         add(troop(116, "Golden Knight", 4.0f, Archetype::MeleeSquad, 1799, SPEED_MEDIUM, 1.2f, 168, 9, 'k')
-            .withChampionAbility(1.0f, 120, std::make_shared<GoldenKnightDashEffect>(335, 5.5f, 10)));
+            .withChampionAbility(1.0f, 0, std::make_shared<GoldenKnightDashEffect>(335, 5.5f, 10), 1));
 
         // Skeleton King: collects up to 10 souls from any death within
         // soulCollectionRadius (not sourced); "Soul Summoning" spawns 6 + 1 per
@@ -1194,19 +1202,19 @@ private:
         add(troop(117, "Skeleton King", 4.0f, Archetype::MeleeSquad, 2298, SPEED_MEDIUM, 1.2f, 204, 16, 'K')
             .withSplash(1.3f)
             .withSoulCollection(5.0f, 10)
-            .withChampionAbility(2.0f, 200,
-                std::make_shared<SkeletonKingSoulSummonEffect>(skeletonKingSummonedSkeletonStats(), 6, 3.5f)) /* audit 0003: wiki Skeleton King, level 11 */);
+            .withChampionAbility(2.0f, 0,
+                std::make_shared<SkeletonKingSoulSummonEffect>(skeletonKingSummonedSkeletonStats(), 6, 3.5f), 1) /* audit 0003: wiki Skeleton King, level 11 */);
 
         // Archer Queen's "Cloaking Cape": untargetable and ~2.8x attack speed
         // for 3.5 s.
         add(troop(118, "Archer Queen", 5.0f, Archetype::RangedSquad, 1000, SPEED_MEDIUM, 5.0f, 232, 12, 'Q')
             .withTargetsAir()
-            .withChampionAbility(1.0f, 170, std::make_shared<ArcherQueenCloakEffect>(35, 1.0f / 2.8f)));
+            .withChampionAbility(1.0f, 0, std::make_shared<ArcherQueenCloakEffect>(35, 1.0f / 2.8f), 1));
 
         // Monk: his 3-hit combo is flat damage here. "Pensive Protection" (65%
         // damage reduction for 4 s): see MonkDeflectEffect.
         add(troop(119, "Monk", 5.0f, Archetype::MeleeSquad, 2214, SPEED_MEDIUM, 1.2f, 140, 8, 'M')
-            .withChampionAbility(1.0f, 170, std::make_shared<MonkDeflectEffect>(0.35f, 40)) /* audit 0003: wiki Monk, level 11 */);
+            .withChampionAbility(1.0f, 0, std::make_shared<MonkDeflectEffect>(0.35f, 40), 1) /* audit 0003: wiki Monk, level 11 */);
 
         // Little Prince: hit speed ramps 1.2 s -> 0.8 s -> 0.4 s on one target
         // (3 attacks per stage, as tick thresholds). "Royal Rescue" summons the
@@ -1214,7 +1222,7 @@ private:
         add(troop(120, "Little Prince", 3.0f, Archetype::RangedSquad, 698, SPEED_MEDIUM, 5.5f, 104, 12, 'p')
             .withTargetsAir()
             .withHitSpeedRamp(36, 60, 8.0f / 12.0f, 4.0f / 12.0f)
-            .withChampionAbility(3.0f, 300, std::make_shared<SpawnOnAbility>(guardienneStats())) /* audit 0003: wiki Little Prince, level 11 */);
+            .withChampionAbility(3.0f, 0, std::make_shared<SpawnOnAbility>(guardienneStats()), 1) /* audit 0003: wiki Little Prince, level 11 */);
 
         // Goblinstein: the Monster (front, building-only tank, carries the
         // ability) plus the Doctor (secondary, 3 tiles behind at a fixed
@@ -1222,7 +1230,7 @@ private:
         // (patch 0037; it was +3, which put team 0's Doctor in front). "Lightning Link": see
         // GoblinsteinLightningLinkEffect.
         add(troop(121, "Goblinstein", 5.0f, Archetype::MeleeBuildingTargeter, 2240, SPEED_MEDIUM, 1.2f, 128, 15, 'G').withSightRange(7.5f)
-            .withChampionAbility(2.0f, 170, std::make_shared<GoblinsteinLightningLinkEffect>(2.0f, 107, 5, 40))
+            .withChampionAbility(2.0f, 0, std::make_shared<GoblinsteinLightningLinkEffect>(2.0f, 107, 5, 40), 1)
             .withSecondaryUnit(
                 troop(-40, "Goblinstein", 0.0f, Archetype::RangedSquad, 721, SPEED_MEDIUM, 5.5f, 135, 18, 'D').withLoadTicks(5)
                     .withOffsets({ {0.0f, -3.0f} })

@@ -1407,9 +1407,10 @@ TEST_CASE("Mighty Miner (115) is a Champion with the correct stats, ramp, and ab
     REQUIRE(miner->rampMidTick == 20);
     REQUIRE(miner->rampFullTick == 40);
     REQUIRE(miner->abilityElixirCost == Catch::Approx(1.0f));
-    REQUIRE(miner->abilityCooldownTicks == 130);
+    REQUIRE(miner->abilityCooldownTicks == 0);   // one charge, no cooldown (patch 0080)
+    REQUIRE(miner->abilityUsesRemaining == 1);
     REQUIRE(miner->abilityEffect != nullptr);
-    REQUIRE(miner->abilityCooldownRemaining == 0); // ready immediately at deploy
+    REQUIRE(miner->abilityCooldownRemaining == 0); // no lockout of its own once deployed
 }
 
 TEST_CASE("CardDefinition::isChampion is set for all 8 Champions and no ordinary card", "[card_registry][champion]") {

@@ -484,8 +484,10 @@ public:
     // Elixir charged on each activation, on top of the card's deploy cost. 0
     // with a null abilityEffect means no ability.
     float abilityElixirCost = 0.0f;
-    // Cooldown between activations. Starts at 0 (ready at deploy) and resets to
-    // abilityCooldownTicks on each activation.
+    // Cooldown between activations. Starts at 0 (ready once deployed) and
+    // resets to abilityCooldownTicks on each activation. Since patch 0080 only
+    // Boss Bandit has one (two charges, 3 s apart); every other Champion and
+    // Hero has one charge per deployment and no cooldown.
     int abilityCooldownTicks = 0;
     int abilityCooldownRemaining = 0;
     // What the ability does (e.g. MightyMinerEscapeEffect in core/). nullptr
@@ -819,7 +821,10 @@ public:
         if (startsInvisible && visibleTicksRemaining > 0) visibleTicksRemaining--;
         if (buffTicksRemaining > 0) buffTicksRemaining--;
         if (curseTicksRemaining > 0) curseTicksRemaining--;
-        if (abilityCooldownRemaining > 0) abilityCooldownRemaining--;
+        // The ability's own timer starts when the body has landed (patch
+        // 0080): Hero Mega Minion's lockout is counted from there, and no
+        // ability can be used during the deploy anyway.
+        if (abilityCooldownRemaining > 0 && !deploying) abilityCooldownRemaining--;
         if (temporaryInvisibilityTicksRemaining > 0) temporaryInvisibilityTicksRemaining--;
         if (selfHasteTicksRemaining > 0) selfHasteTicksRemaining--;
         if (temporaryFlightTicksRemaining > 0) {

@@ -118,7 +118,7 @@ TEST_CASE("Mirror can duplicate a Champion, and the ability targets whichever in
     REQUIRE(game.playerAI.championSlots[1].trackedEntityId == originalId);
 
     REQUIRE(game.playCard(0, 164, 9.0f, 10.0f)); // Mirror duplicates the Champion
-    game.step();
+    for (int i = 0; i < 10; ++i) game.step();    // the copy lands (patch 0080: no ability while deploying)
 
     int mightyMinerCount = 0;
     for (const auto& e : game.getBoard().getEntities()) {
@@ -137,9 +137,9 @@ TEST_CASE("Mirror can duplicate a Champion, and the ability targets whichever in
         auto ce = std::dynamic_pointer_cast<CombatEntity>(e);
         if (!ce || !ce->isChampion) continue;
         if (ce->id == originalId) {
-            REQUIRE(ce->abilityCooldownRemaining == 0); // original untouched
+            REQUIRE(ce->abilityUsesRemaining == 1); // original untouched
         } else {
-            REQUIRE(ce->abilityCooldownRemaining == 130); // the mirrored copy actually activated
+            REQUIRE(ce->abilityUsesRemaining == 0); // the mirrored copy actually activated (one charge, patch 0080)
         }
     }
 }
@@ -152,12 +152,12 @@ TEST_CASE("Mirror can duplicate a Hero, and the mirrored copy has its own indepe
     game.playerAI.elixir = 100.0f;
 
     REQUIRE(game.playCard(0, 170, 9.0f, 10.0f)); // original Hero Mini P.E.K.K.A.
-    game.step();
+    for (int i = 0; i < 10; ++i) game.step();    // landed
     REQUIRE(game.activateChampionAbility(0, 1)); // consume the original's one use
     REQUIRE_FALSE(game.isChampionAbilityReady(0, 1)); // original is now spent
 
     REQUIRE(game.playCard(0, 164, 9.0f, 10.0f)); // Mirror duplicates the Hero
-    game.step();
+    for (int i = 0; i < 10; ++i) game.step();    // landed
 
     // The mirrored copy carries its own fresh one-use ability.
     REQUIRE(game.isChampionAbilityReady(0, 1));

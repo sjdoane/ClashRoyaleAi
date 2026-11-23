@@ -40,6 +40,11 @@ void deployChampion(GameManager& game, int cardId) {
     game.step();   // commit, so the entity is on the board
 }
 
+// Patch 0080: no ability while the body is deploying (1 s).
+void land(GameManager& game) {
+    for (int i = 0; i < 9; ++i) game.step();
+}
+
 } // namespace
 
 TEST_CASE("snapshot carries championSlots and the copy can still resolve its Champion",
@@ -71,6 +76,7 @@ TEST_CASE("a snapshot's Champion ability is independent of the original's",
           "[snapshot][champion]") {
     GameManager original(CHAMPION_DECK, CHAMPION_DECK);
     deployChampion(original, 115);
+    land(original);
     original.playerAI.elixir = 10.0f;
     REQUIRE(original.isChampionAbilityReady(0, 1));
 
@@ -82,11 +88,11 @@ TEST_CASE("a snapshot's Champion ability is independent of the original's",
     REQUIRE(copy.activateChampionAbility(0, 1));
     REQUIRE_FALSE(copy.isChampionAbilityReady(0, 1));
 
-    // The original is untouched: a rollout must not put the real Champion on
-    // cooldown.
+    // The original is untouched: a rollout must not spend the real Champion's
+    // charge.
     REQUIRE(original.isChampionAbilityReady(0, 1));
 
-    // And spending on the original leaves the copy alone: no shared cooldown
+    // And spending on the original leaves the copy alone: no shared charge
     // counter.
     REQUIRE(original.activateChampionAbility(0, 1));
     REQUIRE_FALSE(copy.isChampionAbilityReady(0, 1));
@@ -94,8 +100,12 @@ TEST_CASE("a snapshot's Champion ability is independent of the original's",
 
 TEST_CASE("persistedCooldownRemaining survives a snapshot rather than resetting",
           "[snapshot][champion]") {
-    GameManager original(CHAMPION_DECK, CHAMPION_DECK);
-    deployChampion(original, 115);
+    // Boss Bandit (122): the one ability that still has a cooldown since
+    // patch 0080 (two charges, 3 s apart).
+    const std::vector<int> banditDeck = { 10, 122, 41, 25, 7, 2, 6, 5 };
+    GameManager original(banditDeck, banditDeck);
+    deployChampion(original, 122);
+    land(original);
     original.playerAI.elixir = 10.0f;
     REQUIRE(original.activateChampionAbility(0, 1));
 

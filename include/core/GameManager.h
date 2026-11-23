@@ -163,8 +163,9 @@ private:
     }
 
     // Once per tick per team: copies the tracked Champion's live cooldown into
-    // persistedCooldownRemaining. After it dies the last value stays, so a
-    // redeploy continues the timer.
+    // persistedCooldownRemaining. Since patch 0080 a redeploy no longer resumes
+    // it (see trackSlotEntities): the value is the slot's record of its live
+    // body, nothing more.
     void syncChampionCooldowns(int team) {
         PlayerState& player = (team == 0) ? playerAI : playerOpponent;
         const std::vector<int>& deckConfig = (team == 0) ? aiDeckConfig : oppDeckConfig;
@@ -695,7 +696,14 @@ public:
                 const int slotCard = (ce->abilitySlotCardId != 0) ? ce->abilitySlotCardId : ce->cardId;
                 if (slotCard != deckConfig[slot]) continue;
                 PlayerState::ChampionSlotState& slotState = player.championSlots[slot];
-                ce->abilityCooldownRemaining = slotState.persistedCooldownRemaining;
+                // A new body brings its own charges and its own lockout after
+                // landing (Hero Mega Minion), and inherits nothing (patch
+                // 0080). This used to assign the slot's cooldown to it, which
+                // (a) carried the previous body's cooldown over, frozen while
+                // that body was dead -- recorded presses come 2 s after a
+                // redeploy, 251 Golden Knight ones inside his old 12 s -- and
+                // (b) wiped Hero Mega Minion's lockout on every deploy.
+                slotState.persistedCooldownRemaining = ce->abilityCooldownRemaining;
                 slotState.trackedEntityId = ce->id;
                 break;
             }
@@ -703,24 +711,26 @@ public:
     }
 
     // Whether `team`'s Champion/Hero in `slot` has a live body, and its
-    // ability cooldown left (the live body's, else the persisted one a redeploy
-    // resumes). For the observation's own-ability section (item 46).
+    // ability cooldown left: the live body's, and 0 with none on the field (a
+    // redeploy starts fresh, patch 0080). For the observation's own-ability
+    // section (item 46).
     bool isChampionDeployed(int team, int slot) const {
         return findChampionInSlot(team, slot) != nullptr;
     }
     int championCooldownRemaining(int team, int slot) const {
         if (auto champion = findChampionInSlot(team, slot)) return champion->abilityCooldownRemaining;
-        const PlayerState& player = (team == 0) ? playerAI : playerOpponent;
-        auto it = player.championSlots.find(slot);
-        return it == player.championSlots.end() ? 0 : it->second.persistedCooldownRemaining;
+        return 0;
     }
 
     // Whether `team`'s Champion in `slot` (1 = Heroic, 2 = Wild Card) could
-    // activate now: deployed, off cooldown, uses left, affordable. The two
-    // slots are independent.
+    // activate now: deployed (its deploy time over, patch 0080: the ability
+    // belongs to the deployed character, and of 33,848 recorded presses 99 %
+    // come 1.2 s or more after the card), off cooldown, uses left, affordable.
+    // The two slots are independent.
     bool isChampionAbilityReady(int team, int slot = 1) const {
         auto champion = findChampionInSlot(team, slot);
         if (champion && champion->abilityEffect) {
+            if (champion->deployTicksRemaining > 0) return false;
             if (champion->abilityCooldownRemaining > 0) return false;
             if (champion->abilityUsesRemaining == 0) return false;
             const PlayerState& player = (team == 0) ? playerAI : playerOpponent;
@@ -739,6 +749,7 @@ public:
 
         auto champion = findChampionInSlot(team, slot);
         if (champion && champion->abilityEffect) {
+            if (champion->deployTicksRemaining > 0) return false;
             if (champion->abilityCooldownRemaining > 0) return false;
             // Without this, a uses-limited ability with a zero cooldown would
             // keep charging elixir for a no-op activation.

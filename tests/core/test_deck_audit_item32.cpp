@@ -127,7 +127,12 @@ TEST_CASE("Hero Barbarian Barrel's Rowdy Reroll can be activated through the rea
     REQUIRE(m.game.playCard(0, HERO_BARBARIAN_BARREL, 8.5f, 6.0f));
     REQUIRE_FALSE(m.game.isChampionAbilityReady(0, 1)); // the barrel is still rolling
 
+    // The Barbarian lands 17 ticks after the play and then has his own 1 s
+    // deploy time (patch 0080): ready 27 ticks after the card. Recorded
+    // presses: 1st percentile 26 ticks after the card, 5th 28.
     m.step(25);
+    REQUIRE_FALSE(m.game.isChampionAbilityReady(0, 1));
+    m.step(2);
     REQUIRE(m.game.isChampionAbilityReady(0, 1));
     const float before = m.game.getElixir(0);
     REQUIRE(m.game.activateChampionAbility(0, 1));
@@ -148,7 +153,7 @@ TEST_CASE("A cloned Hero Barbarian never gets the ability, even after the origin
     REQUIRE(m.game.playCard(0, HERO_BARBARIAN_BARREL, 8.5f, 6.0f));
     auto original = m.stepUntil("Hero Barbarian Barrel", 0, 40);
     REQUIRE(original);
-    m.step();
+    m.step(10); // his own deploy time
     REQUIRE(m.game.isChampionAbilityReady(0, 1));
 
     auto copy = std::dynamic_pointer_cast<CombatEntity>(original->clone(m.board().allocateId()));
