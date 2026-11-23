@@ -1181,6 +1181,59 @@ flagged row in the table), `python_ai/tests/test_published_stun_and_slow_duratio
 Not found in the published data: `ResetHitTimerWhenNoTarget` (Little Prince
 only) is not modelled.
 
+## 2026-11-22: knockback follows the published Pushback and IgnorePushback (patch 0053)
+
+**GAMEPLAY-AFFECTING.** The game data (FirstLight-Zero card_specs.json /
+projectiles.json, release 15.535.13) gives every knockback a distance
+(`Pushback`, thousandths of a tile), marks a few as `PushbackAll`, and marks
+the units an ordinary knockback does not move (`IgnorePushback`). The engine
+pushed every non-building with every knockback, a Golem as far as a Skeleton.
+
+| | published | engine before | now |
+|---|---|---|---|
+| Fireball | 1000 | 1.0 | 1.0 |
+| Rocket | 1800 | 1.0 | **1.8** |
+| Giant Snowball (and its Evolution's base form) | 1800 | 1.0 | **1.8** |
+| The Log | 700, PushbackAll | 0.7, moves everything on the ground | same |
+| Barbarian Barrel | none | none | none |
+
+`include/core/Pushback.h` holds the 20 registry names published with
+`IgnorePushback` (Bowler, Cannon Cart, Dark Prince, Electro Giant, Elixir
+Golem, Giant, Giant Skeleton, Goblin Giant, Goblin Machine, Goblinstein,
+Golem, Lava Hound, Mega Knight, Mighty Miner, P.E.K.K.A., Prince, Royal Giant,
+Rune Giant, Skeleton King, Sparky); Evolutions share the name, "Hero X" falls
+back to X. `CardFactories::applyCardMetadata` sets
+`CombatEntity::pushbackImmune`, `Entity::ignoresPushback()` reports it and
+`pushAway` (the radial knockback of every `AreaSpell`) returns before moving
+such a unit, so it is not interrupted either (`onKnockedBack`: a Prince hit by
+a Fireball keeps his charge; hit by The Log he loses it, as before).
+`pushAlong`, the rolling throw, is the PushbackAll kind and ignores the flag.
+`get_card_stats` reports `ignores_pushback`.
+
+Consequences to know: every radial knockback in the engine is now the ordinary
+kind, including the ones whose distance is not sourced (Giant Skeleton's bomb
+1.0, Evolved Cannon's barrage 1.0, Mighty Miner's bomb 1.8): none of them moves
+a Giant any more. Pulls (Tornado, Evolved Snowball) are unchanged; whether
+IgnorePushback units resist them is not in the table.
+
+NOT modelled, published: the Bowler's boulder (BowlerProjectile 1000), Mega
+Knight's landing (MegaKnightAppear 1000), Goblin Demolisher's death blast
+(2000), Monk's third hit (1800, PushbackAll) and the Hero Musketeer turret's
+knockback shot (1000) push nothing in the engine (no knockback on the troop
+attack path). "Goblinstein" in the table is the Monster; the Doctor shares the
+registry name and with it the flag, which is not published for him. The hero
+forms of Goblins and Tombstone carry an IgnorePushback on a nested unit that
+was not resolved.
+
+Tests: `tests/core/test_card_registry.cpp` `[patch0053]` (Fireball 1.0, Rocket
+1.8, Snowball 1.8 on a Knight, a Giant beside him hit and not moved; The Log
+moves both 0.7; the table's rows are registered cards, Evolved P.E.K.K.A. and
+Hero Giant inherit, Golemite / Lava Pup / Monk / Hog Rider do not),
+`python_ai/tests/test_published_stun_and_slow_durations.py` (the immune set and
+the three spell distances through `get_card_stats`),
+`python_ai/tests/test_knockback_resets_charge.py` (a Fireball no longer costs a
+Prince his charge; a Giant Snowball costs a Battle Ram its charge).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

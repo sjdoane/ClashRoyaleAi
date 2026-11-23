@@ -736,7 +736,7 @@ private:
             .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
             /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */);
         add(spell(30, "Rocket", 6.0f, 2.0f, 1485, 15, 'r')
-            .withKnockback(1.0f) /* audit 0003: wiki Rocket, level 11; Crown Tower damage: CrownTowerDamage.h */
+            .withKnockback(1.8f) /* published RocketSpell Pushback 1800 (was 1.0) */ /* audit 0003: wiki Rocket, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(350));
         add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j')
             .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
@@ -1085,7 +1085,7 @@ private:
         // === Spells (expansion) ===
         add(spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
             .withSpellOnHit(std::make_shared<FreezeOnHit>(30, 0.65f) /* published: IceWizardSlowDown 3000 ms, the Ice Wizard's own slow (was 15 ticks at 0.5) */)
-            .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
+            .withKnockback(1.8f) /* published SnowballSpell Pushback 1800 (was 1.0) */ /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(800));
         // Barbarian Barrel: rolls 4.5 tiles at width 2.6 (published), and its
         // Barbarian spawns where the barrel stops. No knockback: the real
@@ -1674,7 +1674,7 @@ private:
         addEvolution(158,
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(30, 0.65f) /* published: IceWizardSlowDown 3000 ms, the Ice Wizard's own slow (was 15 ticks at 0.5) */)
-                .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
+                .withKnockback(1.8f) /* published SnowballSpell Pushback 1800 (was 1.0) */ /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
                 .withThrownFromKingTower(800),
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(40, 0.7f))

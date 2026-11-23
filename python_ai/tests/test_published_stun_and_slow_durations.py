@@ -63,3 +63,27 @@ def test_only_the_unit_published_with_load_first_hit_lands_unloaded():
     assert sorted(set(unloaded)) == ["Sparky"]
     sparky = E.get_card_stats(60)["base"]
     assert sparky["attack_cooldown_ticks"] == 40 and sparky["load_ticks"] == 30
+
+
+# Patch 0053: the units published with IgnorePushback (release 15.535.13).
+IGNORE_PUSHBACK = {
+    "Bowler", "Cannon Cart", "Dark Prince", "Electro Giant", "Elixir Golem", "Giant", "Giant Skeleton",
+    "Goblin Giant", "Goblin Machine", "Goblinstein", "Golem", "Lava Hound", "Mega Knight", "Mighty Miner",
+    "P.E.K.K.A.", "Prince", "Royal Giant", "Rune Giant", "Skeleton King", "Sparky",
+}
+# Published Pushback of the spells, thousandths of a tile.
+SPELL_PUSHBACK = {"Fireball": 1000, "Rocket": 1800, "Giant Snowball": 1800}
+
+
+def test_knockback_immunity_and_distances_follow_the_published_fields():
+    immune = set()
+    for cid in E.get_all_card_ids():
+        stats = E.get_card_stats(cid)
+        name = stats["name"]
+        if stats["base"].get("ignores_pushback"):
+            immune.add(name[5:] if name.startswith("Hero ") else name)
+        if name in SPELL_PUSHBACK:
+            assert round(stats["base"]["spell_knockback"] * 1000) == SPELL_PUSHBACK[name], name
+    assert immune == IGNORE_PUSHBACK
+    # The Log: LogProjectileRolling 700, PushbackAll.
+    assert round(E.get_card_stats(33)["base"]["roll_knockback"] * 1000) == 700

@@ -136,6 +136,10 @@ public:
         (void)byOldId;
     }
 
+    // Published IgnorePushback (Pushback.h): an ordinary knockback (pushAway)
+    // does not move this. A PushbackAll (pushAlong: The Log) still does.
+    virtual bool ignoresPushback() const { return false; }
+
     // Called by pushAway / pushAlong after they have moved this entity: a
     // knockback is an interruption, not just a displacement (CombatEntity
     // drops a charge that was building).
@@ -177,9 +181,11 @@ inline void mirrorToOppositeLane(Entity& entity, int boardWidth) {
 }
 
 // Moves `entity` exactly `distance` tiles directly away from `point`
-// (knockback).
+// (knockback). The ordinary kind: a unit published with IgnorePushback stays
+// where it is, and is not interrupted either.
 inline void pushAway(Entity& entity, const Vector2D& point, float distance) {
     if (exemptFromForcedMovement(entity)) return;
+    if (entity.ignoresPushback()) return;
     if (distance <= 0.0f) return; // see pullToward
     float dist = entity.position.distanceTo(point);
     if (dist <= 0.01f) return; // coincident: no direction
@@ -189,7 +195,8 @@ inline void pushAway(Entity& entity, const Vector2D& point, float distance) {
 }
 
 // Moves `entity` `distance` tiles along an explicit direction, with the same
-// guards. For the rolling spells' lateral throw: where a unit is caught across
+// guards except the last: the rolling throw is published PushbackAll and moves
+// a unit that ignores ordinary knockbacks. For the rolling spells' lateral throw: where a unit is caught across
 // the corridor decides its direction, which a radial push from the log's centre
 // cannot express. The direction need not be normalised; zero length is a no-op.
 inline void pushAlong(Entity& entity, float dirX, float dirY, float distance) {

@@ -2198,6 +2198,94 @@ TEST_CASE("A unit with the published LoadFirstHit lands unloaded; every other un
     }
 }
 
+namespace {
+// Casts spell `cardId` for team 0 and runs it alone until it is spent.
+void castAndResolve(Board& board, int cardId, float x, float y) {
+    CardRegistry::getInstance().getCard(cardId)->spawnEntity(x, y, 0, board);
+    board.commitPendingEntities();
+    auto spell = board.getEntities().back();
+    for (int i = 0; i < 300 && spell->isAlive(); ++i) {
+        spell->update(board);
+        board.commitPendingEntities();
+    }
+}
+
+// An enemy unit of `cardId` standing at (x, y), and how far a spell moved it.
+std::shared_ptr<CombatEntity> enemyAt(Board& board, int cardId, float x, float y) {
+    CardRegistry::getInstance().getCard(cardId)->spawnEntity(x, y, 1, board);
+    board.commitPendingEntities();
+    auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    unit->position = { x, y };
+    return unit;
+}
+}
+
+TEST_CASE("An ordinary knockback moves a unit its published distance and leaves a unit that ignores pushback",
+          "[card_registry][knockback][patch0053]") {
+    // Published Pushback (thousandths of a tile): Fireball 1000, Rocket 1800,
+    // Giant Snowball 1800. Published IgnorePushback: Giant, Golem, P.E.K.K.A.,
+    // Prince and the rest of Pushback.h.
+    struct Row { int spell; const char* name; float distance; };
+    const Row rows[] = {
+        { 7,   "Fireball",       1.0f },
+        { 30,  "Rocket",         1.8f },   // was 1.0
+        { 100, "Giant Snowball", 1.8f },   // was 1.0
+    };
+    for (const Row& r : rows) {
+        INFO(r.name);
+        Board board;
+        auto knight = enemyAt(board, 0, 5.0f, 20.5f);
+        auto giant = enemyAt(board, 2, 6.0f, 20.5f);
+        REQUIRE_FALSE(knight->ignoresPushback());
+        REQUIRE(giant->ignoresPushback());
+        const int giantHp = giant->hp;
+        castAndResolve(board, r.spell, 5.5f, 20.0f);
+        REQUIRE(giant->hp < giantHp);                                   // hit,
+        REQUIRE(giant->position.x == Catch::Approx(6.0f));              // not moved
+        REQUIRE(giant->position.y == Catch::Approx(20.5f));
+        const float moved = knight->position.distanceTo(Vector2D{ 5.0f, 20.5f });
+        REQUIRE(moved == Catch::Approx(r.distance).margin(0.01));
+    }
+}
+
+TEST_CASE("The Log is a PushbackAll: it moves a Giant too", "[card_registry][knockback][patch0053]") {
+    Board board;
+    auto knight = enemyAt(board, 0, 5.0f, 20.5f);
+    auto giant = enemyAt(board, 2, 6.0f, 20.5f);
+    castAndResolve(board, 33, 5.5f, 18.0f);
+    // 0.7 tiles each, along the roll and out to the side they were caught on.
+    REQUIRE(knight->position.distanceTo(Vector2D{ 5.0f, 20.5f }) == Catch::Approx(0.7f).margin(0.01));
+    REQUIRE(giant->position.distanceTo(Vector2D{ 6.0f, 20.5f }) == Catch::Approx(0.7f).margin(0.01));
+    REQUIRE(knight->position.y > 20.5f);
+    REQUIRE(giant->position.y > 20.5f);
+}
+
+TEST_CASE("Knockback immunity: the published units, their Evolutions and Heroes, and nothing they spawn",
+          "[card_registry][knockback][patch0053]") {
+    auto& reg = CardRegistry::getInstance();
+    int count = 0;
+    const char* const* rows = Pushback::table(count);
+    REQUIRE(count == 20);
+    for (int i = 0; i < count; ++i) {
+        INFO(rows[i]);
+        bool found = false;
+        for (int id = 0; id < 400 && !found; ++id) {
+            const auto* c = reg.getCard(id);
+            found = c && c->name == rows[i];
+        }
+        REQUIRE(found);
+    }
+    REQUIRE(Pushback::ignores("Hero Giant"));
+    REQUIRE(Pushback::ignores("Hero Dark Prince"));
+    REQUIRE(Pushback::ignores(reg.getCard(148)->name));   // Evolved P.E.K.K.A.
+    REQUIRE(Pushback::ignores(reg.getCard(169)->name));   // Hero Giant
+    for (const char* name : { "Knight", "Hog Rider", "Ice Golem", "Balloon", "Golemite", "Elixir Golemite",
+                              "Lava Pup", "Elite Barbarians", "Hero Knight", "Monk" }) {
+        INFO(name);
+        REQUIRE_FALSE(Pushback::ignores(name));
+    }
+}
+
 TEST_CASE("Switching between targets in range keeps the hit-speed rhythm; a new engagement winds up again",
           "[card_registry][load_time]") {
     // Knight: hit speed 1.2 s, first hit 0.5 s. Two targets in reach.

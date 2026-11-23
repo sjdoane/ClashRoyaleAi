@@ -56,6 +56,7 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     d["attack_cooldown_ticks"] = s.attackCooldown;
     d["load_ticks"] = LoadTimes::forName(s.name);   // published load time
     d["lands_unloaded"] = LoadTimes::landsUnloaded(s.name);   // published LoadFirstHit
+    d["ignores_pushback"] = Pushback::ignores(s.name);        // published IgnorePushback
     // What a unit of this card winds up before its first hit on a target in
     // range (CardFactories::applyCardMetadata): hit speed minus load time.
     d["first_hit_windup_ticks"] = s.loadTicksOverride >= 0

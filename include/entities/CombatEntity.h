@@ -412,6 +412,9 @@ public:
     // RangedBuildingTargeter). From the published speed in ProjectileSpeeds.h;
     // 1.5 is the engine's old constant, kept by units without a row.
     float shotTilesPerTick = 1.5f;
+    // Published IgnorePushback (Pushback.h; set by CardFactories).
+    bool pushbackImmune = false;
+    bool ignoresPushback() const override { return pushbackImmune; }
 
     // HP-threshold transform (Cannon Cart: at <= 50% hp it grounds itself and
     // self-destructs after a fixed lifespan). The fraction is of

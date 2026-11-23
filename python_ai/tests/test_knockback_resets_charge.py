@@ -9,7 +9,7 @@ import clash_royale_env as E
 
 ID = {E.get_card_info(c)["name"]: c for c in E.get_all_card_ids()}
 NOOP = 4
-OURS = [15, 6, 25, 40, 24, 72, 33, 7]                  # holds The Log and Fireball
+OURS = [15, 6, 25, 40, 100, 72, 33, 7]                 # holds The Log and Fireball
 THEIRS = [ID["Goblin Barrel"], 4, 12, 112, 61, 20, ID["Prince"], 2]
 LEFT_X = 3.0
 
@@ -59,7 +59,21 @@ def test_a_log_far_from_the_tower_leaves_him_room_to_charge_again():
     assert dealt == 2 * plain
 
 
-def test_a_fireball_knockback_costs_him_the_charge_too():
+def test_a_fireball_does_not_move_a_prince_and_his_charge_survives():
+    """Patch 0053. The Prince is published with IgnorePushback: an ordinary
+    knockback (Fireball 1000) neither moves nor interrupts him. The Log is a
+    PushbackAll and does (the tests above)."""
     plain, _ = _first_tower_hit(start_y=10.5)
     dealt, _ = _first_tower_hit(16.0, ID["Fireball"], (LEFT_X, 10.0), 25)
+    assert dealt == 2 * plain
+
+
+def test_an_ordinary_knockback_costs_a_battle_ram_its_charge():
+    """The Battle Ram has no IgnorePushback: a Giant Snowball (Pushback 1800)
+    throws it back and it has to run its distance again."""
+    plain, _ = _first_tower_hit(start_y=10.5, charger="Battle Ram")
+    charged, _ = _first_tower_hit(start_y=16.0, charger="Battle Ram")
+    assert charged == 2 * plain
+    # Thrown late enough to land when the Ram is inside its last three tiles.
+    dealt, _ = _first_tower_hit(16.0, ID["Giant Snowball"], (LEFT_X, 10.0), 30, charger="Battle Ram")
     assert dealt == plain
