@@ -228,7 +228,17 @@ public:
     // engine are kept: a charge that has stuck (Evolved Battle Ram) stays,
     // and a dash that is past the point of immunity (Bandit) is not stopped
     // by a spell that could not hurt it.
+    //
+    // A knockback also removes the unit's load (patch 0054): its next hit is a
+    // whole hit speed away, as after a hit. RoyaleAPI, "The Secret Stats"
+    // (2020), on a Balloon about to drop its first bomb: a Fireball that
+    // displaces it removes the load, which restarts the countdown to the full
+    // hit time. Applied to every unit an ordinary knockback can move. A unit
+    // published with IgnorePushback keeps its load even when a PushbackAll
+    // (The Log) moves it: the description covers no such case, and The Log is
+    // not known to reset Sparky.
     void onKnockedBack() override {
+        if (!pushbackImmune && attackCooldown > 0) currentCooldown = static_cast<float>(attackCooldown);
         if (chargeThreshold <= 0.0f || chargeHasStuck) return;
         if (chargeGrantsInvulnerability && chargeProgress >= chargeThreshold * 0.5f) return;
         chargeProgress = 0.0f;

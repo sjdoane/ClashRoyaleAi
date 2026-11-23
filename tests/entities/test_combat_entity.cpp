@@ -932,6 +932,10 @@ TEST_CASE("A knockback throws away the charge a troop had built", "[combat_entit
         pushAlong(*attacker, 0.0f, -1.0f, 0.5f); // back to (0, 3.5), still in reach
         REQUIRE(attacker->chargeProgress == 0.0f);
         REQUIRE_FALSE(attacker->isCharging());
+        // Patch 0054: the knockback also removed the load, so the hit comes a
+        // whole hit speed (10 ticks) later.
+        for (int i = 0; i < 9; ++i) attacker->update(board);
+        REQUIRE(target->hp == 10000);
         attacker->update(board);
         REQUIRE(target->hp == 10000 - 100); // a plain hit, not the doubled one
     }
@@ -946,6 +950,8 @@ TEST_CASE("A knockback throws away the charge a troop had built", "[combat_entit
         REQUIRE(attacker->hp == 90);
         REQUIRE(attacker->position.y == Catch::Approx(3.5f));
         REQUIRE(attacker->chargeProgress == 0.0f);
+        for (int i = 0; i < 9; ++i) attacker->update(board);
+        REQUIRE(target->hp == 10000);
         attacker->update(board);
         REQUIRE(target->hp == 10000 - 100);
     }

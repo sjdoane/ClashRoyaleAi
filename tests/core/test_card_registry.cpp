@@ -2286,6 +2286,44 @@ TEST_CASE("Knockback immunity: the published units, their Evolutions and Heroes,
     }
 }
 
+TEST_CASE("A knockback removes the load: the next hit is a whole hit speed away",
+          "[card_registry][knockback][load_time][patch0054]") {
+    // Knight: hit speed 1.2 s, first hit 0.5 s.
+    Board board;
+    auto dummy = std::make_shared<DummyEntity>(901, 5.0f, 5.6f, 100000, 1);
+    spawn(board, dummy);
+    CardRegistry::getInstance().getCard(0)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto knight = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    advancePastDeploy(knight, board);
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 6);
+    for (int i = 0; i < 9; ++i) knight->update(board);   // 0.3 s of the cycle left
+    // A nudge that leaves the target in reach, so only the load is at stake.
+    pushAway(*knight, Vector2D{ 5.0f, 5.6f }, 0.1f);
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 12);  // not 3
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 12);
+}
+
+TEST_CASE("A unit that ignores pushback keeps its load, whatever moves it",
+          "[card_registry][knockback][load_time][patch0054]") {
+    // P.E.K.K.A.: hit speed 1.8 s, published IgnorePushback.
+    Board board;
+    auto dummy = std::make_shared<DummyEntity>(901, 5.0f, 5.6f, 100000, 1);
+    spawn(board, dummy);
+    CardRegistry::getInstance().getCard(13)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto pekka = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    advancePastDeploy(pekka, board);
+    REQUIRE(updatesUntilHit(pekka, dummy, board) > 0);
+    for (int i = 0; i < 15; ++i) pekka->update(board);   // 0.3 s of the cycle left
+    const Vector2D before = pekka->position;
+    pushAway(*pekka, Vector2D{ 5.0f, 5.6f }, 0.1f);       // an ordinary knockback: not moved
+    REQUIRE(pekka->position.distanceTo(before) == Catch::Approx(0.0f).margin(1e-6));
+    pushAlong(*pekka, 0.0f, -1.0f, 0.1f);                 // a PushbackAll: moved
+    REQUIRE(pekka->position.distanceTo(before) == Catch::Approx(0.1f).margin(1e-4));
+    REQUIRE(updatesUntilHit(pekka, dummy, board) == 3);
+}
+
 TEST_CASE("Switching between targets in range keeps the hit-speed rhythm; a new engagement winds up again",
           "[card_registry][load_time]") {
     // Knight: hit speed 1.2 s, first hit 0.5 s. Two targets in reach.

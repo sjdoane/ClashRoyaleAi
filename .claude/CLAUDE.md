@@ -1234,6 +1234,37 @@ the three spell distances through `get_card_stats`),
 `python_ai/tests/test_knockback_resets_charge.py` (a Fireball no longer costs a
 Prince his charge; a Giant Snowball costs a Battle Ram its charge).
 
+## 2026-11-22: a knockback removes the load (patch 0054)
+
+**GAMEPLAY-AFFECTING.** EVIDENCE LEVEL: one description, not a published
+field. RoyaleAPI's "The Secret Stats" (2020) explains load time with the
+Balloon (then 3.0 s hit time, 2.8 s load): a Fireball that displaces a loaded
+Balloon before its first bomb removes the load, which restarts the countdown
+to the full hit time. The article could not be fetched (403); the passage is
+known from two independent search summaries that agree, not from a verbatim
+quote. If that is not enough, drop this patch: nothing after it depends on it.
+
+`CombatEntity::onKnockedBack` (called by `pushAway` and `pushAlong` after they
+have moved a unit) now also sets the cooldown to a whole hit speed. The engine
+keeps one timer for "time since the last hit" and "load", so removing the load
+is the same as starting the hit speed again; it runs down while the unit walks
+back, as the load does in the game.
+
+Scope chosen: every unit an ordinary knockback can move. A unit published with
+IgnorePushback keeps its load even when The Log (PushbackAll) moves it: the
+description covers no such case and The Log is not known to reset Sparky.
+Pulls (Tornado) do not call `onKnockedBack` and are unchanged.
+
+What it changes in play: The Log, Fireball, Rocket and Giant Snowball cost
+every unit they move its next hit's timing (a Hog Rider logged at the tower, a
+Musketeer hit by a Fireball), not only the distance.
+
+Tests: `tests/core/test_card_registry.cpp` `[patch0054]` (a Knight nudged 0.3 s
+before his hit lands it 1.2 s later; a P.E.K.K.A. is not moved by an ordinary
+knockback, is moved by a PushbackAll and hits on time),
+`tests/entities/test_combat_entity.cpp` (the two knockback-charge sections now
+wait the hit speed for the plain hit).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
