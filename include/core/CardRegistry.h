@@ -1768,8 +1768,9 @@ private:
         // nearest enemy ground troop 3-4.5 tiles away, 220 damage (284 -> 220
         // on 26 Aug), recharging every 5 s, and enrages himself and allies
         // within 1.5 tiles (assumed; the path toward the target is not
-        // modelled) for 2.5 s (3.5 -> 2.5 s on 26 Aug). 1 cycle (guides; the
-        // wiki gives none). The 6 Oct sight change (4.5 -> 6) is not separate
+        // modelled) for 2 s (3.5 -> 2.5 s on 26 Aug, 2.5 -> 2 s on 8 Sep 2026,
+        // the note that also set the 3-4.5 band; patch 0055). 1 cycle (guides;
+        // the wiki gives none). The 6 Oct sight change (4.5 -> 6) is not separate
         // here: he walks to his targets and throws once one is in the band.
         addEvolution(178,
             troop(17, "Elite Barbarians", 6.0f, Archetype::MeleeSquad, 1341, SPEED_FAST, 1.2f, 384, 14, 'e')
@@ -1778,7 +1779,7 @@ private:
             troop(17, "Elite Barbarians", 6.0f, Archetype::MeleeSquad, 1341, SPEED_FAST, 1.2f, 384, 14, 'e')
             .withSightRange(6.0f)   /* published AngryBarbarian SightRange 6000 (patch 0045) */
                 .withOffsets({ {-0.5f, 0.0f}, {0.5f, 0.0f} })
-                .withSelfPeriodicEffect(1, 50, std::make_shared<EvoEliteBarbarianSpearEffect>(3.0f, 4.5f, 220, 1.35f, 25, 1.5f)),
+                .withSelfPeriodicEffect(1, 50, std::make_shared<EvoEliteBarbarianSpearEffect>(3.0f, 4.5f, 220, 1.35f, 20, 1.5f)),
             1, 1);
 
         // Electro Giant ("Level Damper", released 5 Oct 2026; wiki Electro

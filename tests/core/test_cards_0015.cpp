@@ -190,6 +190,26 @@ TEST_CASE("Evolved Elite Barbarians throw a 220 spear at a ground troop 3-4.5 ti
     REQUIRE(close->buffTicksRemaining == 0);
 }
 
+// Patch 0055. The official 8 September 2026 note: "Elite Barbarians Evolution:
+// Spear Range 3.5-5 -> 3-4.5 tiles, Rage Duration 2.5s -> 2s". The band was
+// already the new one; the Rage still lasted the August 2.5 s.
+TEST_CASE("the registered Evolved Elite Barbarians are enraged for 2 s by a spear, the 8 Sep 2026 value",
+        "[evolution][evo_elite_barbarians][patch0055]") {
+    Match m;
+    auto barbs = m.spawnCard(EVO_ELITE_BARBARIANS, 9.0f, 8.0f, 0, true);
+    REQUIRE(barbs.size() == 2);
+    // One ground troop in the 3-4.5 band of both, too tough to die, harmless.
+    auto foe = m.dummy(9.0f, 12.0f, 1, 100000);
+    int enragedUpdates = 0, hpAfterThrow = -1;
+    for (int t = 1; t <= 45; ++t) {
+        m.step();
+        if (hpAfterThrow < 0 && foe->hp < 100000) hpAfterThrow = foe->hp;
+        if (barbs[0]->buffTicksRemaining > 0) enragedUpdates++;
+    }
+    REQUIRE(hpAfterThrow == 100000 - 2 * 220);      // one spear each, on the same update; the next is 5 s away
+    REQUIRE(enragedUpdates == 20);
+}
+
 TEST_CASE("an evolved Elite Barbarian recharges the spear every 5 s", "[evolution][evo_elite_barbarians][patch0015]") {
     Match m;
     auto barbs = m.spawnCard(EVO_ELITE_BARBARIANS, 9.0f, 8.0f, 0, true);
