@@ -514,8 +514,10 @@ TEST_CASE("sight still bounds acquisition at the raw catalogued range",
           "[targeting][sight][body_to_body]") {
     // Rule 1 alone. At y = 20 the tower is 14.0 away, so the Cannon is always
     // the nearest building and only sight can refuse it. The Battle Ram
-    // publishes no sight clip, so its 6.5 is a plain disc. Body to body, a
-    // Cannon (radius 1.0) is refused past 6.5 + 0.4 + 1.0 = 7.9 centre.
+    // publishes no sight clip, so its 6.5 is a plain disc. Body to body with
+    // the published bodies (Battle Ram 0.75, Cannon 0.6; patch 0057) a Cannon
+    // is refused past 6.5 + 0.75 + 0.6 = 7.85 centre (7.9 with the old 0.4 and
+    // 1.0).
     REQUIRE(driftAt(81, 20.0f, 8.0f) > -0.05f);   // never towards the Cannon
     REQUIRE(driftAt(81, 20.0f, 7.0f) < -0.3f);
 }
@@ -523,8 +525,9 @@ TEST_CASE("sight still bounds acquisition at the raw catalogued range",
 TEST_CASE("a published sight clip cuts the sideways reach of a building-targeter",
           "[targeting][sight][sight_clip]") {
     // SightClips.h: Hog Rider 9.5 sight, side clip 4.0, so a building pulls it
-    // from at most 5.5 to the side (body to body; 6.9 centre for a Cannon). The
-    // Giant's 7.5 with a 2.0 clip gives the same 5.5.
+    // from at most 5.5 to the side (body to body; with the published bodies of
+    // patch 0057, 0.6 + 0.6, that is 6.7 centre for a Cannon). The Giant's 7.5
+    // with a 2.0 clip gives the same 5.5 (6.85 centre with its 0.75 body).
     const int card = GENERATE(15, 2);
     INFO("card id " << card);
     REQUIRE(driftAt(card, 20.0f, 7.0f) > -0.05f);    // never towards the Cannon

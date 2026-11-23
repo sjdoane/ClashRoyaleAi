@@ -49,6 +49,9 @@ def _first_target(attacker, cannon_x, cannon_y=12.0, ticks=420):
                 first = "tower"
             elif cannon and cannon_max - hp > 150:
                 first = "cannon"
+            elif not cannon and cannon_max is not None and cannon_max > 150:
+                # gone in one hit with far more HP than a tick of decay takes
+                first = "cannon"
             if cannon:
                 cannon_max = hp
         if first is not None:

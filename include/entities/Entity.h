@@ -18,9 +18,16 @@ class Board;
 
 class Entity {
 public:
-    // The radius a troop (getCollisionRadius() <= 0) occupies for attack-range
-    // math and push-apart physics.
+    // The radius of a troop built by hand with no card (test fixtures). A
+    // card's troop carries its published radius in bodyRadius (BodySizes.h,
+    // patch 0057).
     static constexpr float IMPLICIT_TROOP_RADIUS = 0.4f;
+
+    // The radius a troop (getCollisionRadius() <= 0) occupies: body-to-body
+    // contact, attack reach, sight. A plain field for the same reason as
+    // isFlying. A Building returns it from getCollisionRadius(); a Tower
+    // has its own.
+    float bodyRadius = IMPLICIT_TROOP_RADIUS;
 
     int id;
     Vector2D position;
@@ -81,6 +88,10 @@ public:
     virtual void scaleToLevel(int level) { (void)level; }
 
     virtual float getCollisionRadius() const { return 0.0f; }
+
+    // The footprint GameManager::isValidPlacement keeps a new card clear of.
+    // Not the body: a Building's stays 1.0 whatever its published body.
+    virtual float getPlacementRadius() const { return getCollisionRadius(); }
 
     // Footprint for target-selection distance only, never collision or attack
     // range. Nothing overrides it since patch 0043: every building, Crown

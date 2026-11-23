@@ -1366,6 +1366,124 @@ What does not agree, and is NOT changed:
   the play. A policy acting live is that much later than the same policy in
   the simulator.
 
+## 2026-11-22: every troop and building has its published body radius (patch 0057)
+
+**GAMEPLAY-AFFECTING for every match.** Until now every troop was one implicit
+0.4 (`Entity::IMPLICIT_TROOP_RADIUS`) and every building 1.0
+(`Building::COLLISION_RADIUS`). The game's unit table gives each body a
+`CollisionRadius` (FirstLight-Zero card_specs.json, release 15.535.13). New
+`include/core/BodySizes.h` holds all of them, keyed by registry NAME
+(Evolutions inherit, "Hero X" without a row is X, a row may carry an id where
+two bodies share a name: Rascals -28 the Girls, Goblinstein -40 the Doctor).
+`CardFactories::applyCardMetadata` copies it to the new `Entity::bodyRadius`.
+
+| published | tiles | bodies |
+|---|---|---|
+| 400 | 0.4 | Ice / Fire / Heal / Electro Spirit, Wall Breakers |
+| 450 | 0.45 | Mini P.E.K.K.A. (and its Hero), Berserker |
+| 500 | 0.5 | Knight, Archers, Goblins, Skeletons, Barbarians, Elite Barbarians, Musketeer, Wizard, Valkyrie, Witch, Miner, Minions, Bats, Balloon, Baby Dragon, Princess, Royal Recruits, Guards and most others (101 of the pack's 158 forms) |
+| 600 | 0.6 | Hog Rider, Royal Hogs, Prince, Dark Prince, Ram Rider, Bandit, Royal Ghost, Hunter, Executioner, Magic Archer, Zappies, Mega Minion, Electro Dragon, Elixir Golem, Goblin Demolisher, Boss Bandit, Ronin, Furnace |
+| 700 | 0.7 | Ice Golem |
+| 750 | 0.75 | Giant, Royal Giant, Goblin Giant, Electro Giant, Rune Giant, Golem, P.E.K.K.A., Mega Knight, Giant Skeleton, Bowler, Battle Ram, Lava Hound, Rascal Boy, Goblin Machine, Goblinstein's Monster |
+| 800 / 900 | | Golden Knight / Skeleton Dragons |
+| 1000 | 1.0 | Sparky, Skeleton King |
+| buildings 500 | 0.5 | Tesla, Goblin Drill |
+| buildings 600 | 0.6 | Cannon, Bomb Tower, Inferno Tower, X-Bow, Mortar |
+| buildings 1000 | 1.0 | Barbarian Hut, Goblin Hut, Tombstone, Goblin Cage, Elixir Collector |
+
+**No published record, and what they take:** Golemite, Lava Pups, Elixir
+Golemite and Blob, Goblin Brawler, Cursed Hog, the Minion Giant and the bodies
+the Hero abilities summon take `BodySizes::DEFAULT_RADIUS` 0.5, the value of 101
+of the 158 published forms. The two ability buildings (Trusty Turret, Snowman)
+take `DEFAULT_BUILDING_RADIUS` 0.6, the body of every published building that
+shoots except the Tesla. A troop or building built by hand with no card (test
+fixtures) keeps 0.4 / 1.0. **The Crown Towers are not in this pack and keep 1.5
+(Princess) and 2.0 (King)**; the older RoyaleAPI file gives 1.0 / 1.4 (see patch
+0043), not applied.
+
+One radius, used everywhere a body matters:
+
+- **contact**: `Board::resolveCollisions` separates two troops to
+  `bodyRadius + bodyRadius` and a troop from a building to the building's body
+  plus its own; `Board::resolvePositionAgainstBuildings` the same while walking.
+  A Hog Rider and an Ice Golem one tile apart now overlap (1.3) and push each
+  other; with 0.4 + 0.4 they never touched. The push is still half each,
+  whatever the two weigh.
+- **reach and sight**: `CombatEntity::effectiveRadiusOf` returns `bodyRadius`
+  for a troop and a building (`Building::getCollisionRadius` now returns it)
+  and the tower's own radius for a tower. So reach is range + own body + target
+  body and sight the same with the sight range (patch 0044), and the sight clip
+  (patch 0042) and the nearest-footprint ranking of targets use the same
+  bodies. Area effects measured to the body (`AreaSpell`, the Hero Barbarian
+  Barrel) follow.
+- **not the placement footprint**: `Entity::getPlacementRadius()` is what
+  `GameManager::isValidPlacement` keeps a new card clear of; a building's is
+  still `Building::COLLISION_RADIUS` 1.0 and a tower's its 1.5 / 2.0, and a
+  placed troop still needs its 0.4 (`CardFactories::placementRadius`). The real
+  game decides placement by tiles, which this table does not give. The
+  placement mask is unchanged.
+
+Distances that moved (centre to centre):
+
+| | before | now |
+|---|---|---|
+| two ordinary troops in contact | 0.8 | 1.0 |
+| Hog Rider behind an Ice Golem | 0.8 | 1.3 |
+| Knight (range 1.2) hits a Knight from | 2.0 | 2.2 |
+| Knight hits a Cannon from | 2.6 | 2.3 |
+| Musketeer (6.0) shoots a Cannon from | 7.4 | 7.1 |
+| Hog Rider (0.8) hits a Princess Tower from | 2.7 | 2.9 |
+| Giant (1.2) hits a Princess Tower from | 3.1 | 3.45 |
+| Princess Tower (7.5) shoots a Knight / a Giant from | 9.4 / 9.4 | 9.5 / 9.75 |
+| a Cannon pulls a Hog Rider from, sideways (clip 5.5) | 6.9 | 6.7 |
+| Fireball (2.5) catches a Knight / a Giant / a Cannon within | 2.9 / 2.9 / 3.5 | 3.0 / 3.25 / 3.1 |
+
+To know:
+
+- A lone Hog Rider from the bridge corner now lands its first hit 4.1 s after
+  it starts moving (tick 52; 4.2 s before; recordings 4.2-4.5 s), because it
+  stops 0.2 tiles further from the tower. The published tower body (1.0) would
+  put it at about 4.3 s. Not changed here: the tower's reach rests on the same
+  1.5.
+- Units of one card that spawn closer than their bodies allow are pushed apart
+  on their first tick, deploying or not (Elite Barbarians land exactly in
+  contact at 1.0).
+- The Spirit Empress has two published bodies (500 on foot, 600 mounted and
+  flying) under one name and id; both forms take 500.
+- `get_card_stats(id)["base"]` reports `published_collision_radius`
+  (thousandths, 0 = no record) and `body_radius`; `get_units()` reports each
+  unit's `body_radius`.
+
+Tests: `python_ai/tests/test_body_sizes.py` (published values through the
+bindings and on what is spawned; every troop and building card has a row except
+the Minion Giant; contact at 1.3; reach on a tower and on a Cannon; the
+placement footprint), `tests/core/test_card_registry.cpp` `[patch0057]` (table,
+name and id rules, every row names a registered card, hand-built bodies keep
+0.4).
+
+Existing expectations that moved, and what each had encoded:
+
+- `tests/core/test_lane_pathing.cpp` "an Ice Golem walking to the King never
+  stalls": "arrived" was 3.2, the Golem's reach on the King with the 0.4 body
+  (0.75 + 0.4 + 2.0); now computed from its body (3.45). The 0.4.
+- `tests/core/test_card_registry.cpp` "DefensiveBuilding archetype (Cannon)":
+  radius 1.0 -> 0.6. The engine's uniform building body, not a published value.
+- `tests/core/test_sight_range.cpp`: no expectation changed (a Cannon 7.0 to
+  the side does not pull, 6.0 does; a Battle Ram is not pulled from 8.0);
+  comments now give the boundaries with the published bodies (6.7, 6.85, 7.85).
+- `python_ai/tests/test_sight_clip_of_building_targeters.py`: expectation kept
+  (the Balloon goes for the Cannon 6 to the side). Its detector read "the
+  Cannon lost a chunk of HP"; the Balloon now arrives a little later, the
+  decayed Cannon dies to the one bomb and was reported as never hit. A Cannon
+  that vanishes with HP left now counts.
+- `python_ai/tests/test_teacher_combos.py` "both cards get their OWN deploy
+  time": the Hog was placed one tile behind the Ice Golem and expected not to
+  move while deploying; that relied on 0.4 + 0.4 < 1. Placed two tiles behind.
+- `python_ai/tests/test_hog_26_offence_timeline.py` (patch 0056): the Ice
+  Spirit was injected on the Hog's own tile, which now pushes the Hog. Injected
+  two tiles to the side; the published 1.1 s freeze and 110 damage are pinned
+  as before, now for any alignment of the freeze with the arrows.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

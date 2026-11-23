@@ -472,7 +472,10 @@ TEST_CASE("DefensiveBuilding archetype (Cannon)", "[card_registry][archetype]") 
 
     auto building = std::dynamic_pointer_cast<Building>(board.getEntities()[0]);
     REQUIRE(building != nullptr);
-    REQUIRE(building->getCollisionRadius() == Catch::Approx(1.0f));
+    // The Cannon's published body (BodySizes.h, patch 0057); the footprint a
+    // new card must keep clear of is still Building::COLLISION_RADIUS.
+    REQUIRE(building->getCollisionRadius() == Catch::Approx(0.6f));
+    REQUIRE(building->getPlacementRadius() == Catch::Approx(Building::COLLISION_RADIUS));
 }
 
 TEST_CASE("DefensiveBuilding archetype: targetsAir matches real-game data per card", "[card_registry][archetype][flying]") {
@@ -2376,4 +2379,84 @@ TEST_CASE("An Evolution winds up like its base card, and every load-time row nam
         REQUIRE(std::find(names.begin(), names.end(), std::string(rows[i].name)) != names.end());
         REQUIRE(rows[i].ticks > 0);
     }
+}
+
+// Patch 0057: published body radii (BodySizes.h; FirstLight-Zero
+// card_specs.json, release 15.535.13).
+TEST_CASE("A card's troop or building carries its published body radius",
+          "[card_registry][body][patch0057]") {
+    auto& reg = CardRegistry::getInstance();
+
+    // The table: published thousandths of a tile, 0 where the pack has no
+    // record.
+    REQUIRE(BodySizes::publishedRadius("Ice Spirit", 72) == 400);
+    REQUIRE(BodySizes::publishedRadius("Knight", 0) == 500);
+    REQUIRE(BodySizes::publishedRadius("Hog Rider", 15) == 600);
+    REQUIRE(BodySizes::publishedRadius("Ice Golem", 40) == 700);
+    REQUIRE(BodySizes::publishedRadius("Giant", 2) == 750);
+    REQUIRE(BodySizes::publishedRadius("Skeleton King", 117) == 1000);
+    REQUIRE(BodySizes::publishedRadius("Cannon", 25) == 600);
+    REQUIRE(BodySizes::publishedRadius("Tesla", 26) == 500);
+    REQUIRE(BodySizes::publishedRadius("Tombstone", 96) == 1000);
+    // Two bodies under one registry name: the row with the id wins.
+    REQUIRE(BodySizes::publishedRadius("Rascals", 113) == 750);
+    REQUIRE(BodySizes::publishedRadius("Rascals", -28) == 500);
+    REQUIRE(BodySizes::publishedRadius("Goblinstein", 121) == 750);
+    REQUIRE(BodySizes::publishedRadius("Goblinstein", -40) == 500);
+    // "Hero X" without a row is X; one with a row keeps its own.
+    REQUIRE(BodySizes::publishedRadius("Hero Musketeer", 168) == 500);
+    REQUIRE(BodySizes::publishedRadius("Hero Giant", 0) == 750);
+    REQUIRE(BodySizes::publishedRadius("Hero Mini P.E.K.K.A.", 170) == 450);
+    // No record: the common half tile for a troop, 0.6 for a building.
+    REQUIRE(BodySizes::publishedRadius("Golemite", -1) == 0);
+    REQUIRE(BodySizes::radius("Golemite", -1) == Catch::Approx(0.5f));
+    REQUIRE(BodySizes::radius("Snowman", -51, true) == Catch::Approx(0.6f));
+
+    // A typo'd row would silently leave its card on the default. Two rows are
+    // spawned bodies that are not cards.
+    std::vector<std::string> names = { "Bush Goblins", "Kamikaze Goblin Demolisher" };
+    for (int id = 0; id <= 200; ++id) {
+        if (const CardDefinition* c = reg.getCard(id)) names.push_back(c->name);
+    }
+    int rows = 0;
+    for (const auto& row : BodySizes::ROWS) {
+        INFO(row.name);
+        REQUIRE(std::find(names.begin(), names.end(), std::string(row.name)) != names.end());
+        REQUIRE(row.radiusThousandths >= 400);
+        REQUIRE(row.radiusThousandths <= 1000);
+        ++rows;
+    }
+    REQUIRE(rows > 100);
+
+    // What is spawned carries it, and a building answers with it.
+    Board board;
+    reg.getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);   // Hog Rider
+    reg.getCard(40)->spawnEntity(9.0f, 5.0f, 0, board);   // Ice Golem
+    reg.getCard(26)->spawnEntity(13.0f, 5.0f, 0, board);  // Tesla
+    board.commitPendingEntities();
+    REQUIRE(board.getEntities()[0]->bodyRadius == Catch::Approx(0.6f));
+    REQUIRE(board.getEntities()[0]->getCollisionRadius() == 0.0f);      // still "a troop"
+    REQUIRE(board.getEntities()[1]->bodyRadius == Catch::Approx(0.7f));
+    REQUIRE(board.getEntities()[2]->getCollisionRadius() == Catch::Approx(0.5f));
+    REQUIRE(board.getEntities()[2]->getPlacementRadius() == Catch::Approx(Building::COLLISION_RADIUS));
+    REQUIRE(CombatEntity::effectiveRadiusOf(*board.getEntities()[0]) == Catch::Approx(0.6f));
+    REQUIRE(CombatEntity::effectiveRadiusOf(*board.getEntities()[2]) == Catch::Approx(0.5f));
+
+    // A troop and a building built by hand, with no card, keep the old bodies.
+    MeleeTroop bare(900, 1.0f, 1.0f, 100, 0, 0.1f, 1.0f, 10, 10, 'k');
+    REQUIRE(bare.bodyRadius == Catch::Approx(Entity::IMPLICIT_TROOP_RADIUS));
+    REQUIRE(CombatEntity::effectiveRadiusOf(bare) == Catch::Approx(0.4f));
+}
+
+TEST_CASE("Two troops are pushed apart to the sum of their published bodies",
+          "[card_registry][body][patch0057]") {
+    auto& reg = CardRegistry::getInstance();
+    Board board;
+    reg.getCard(15)->spawnEntity(5.0f, 5.0f, 0, board);   // Hog Rider, 0.6
+    reg.getCard(40)->spawnEntity(5.5f, 5.0f, 0, board);   // Ice Golem, 0.7
+    board.commitPendingEntities();
+    board.resolveCollisions();
+    const auto& hog = board.getEntities()[0];
+    const auto& golem = board.getEntities()[1];
+    REQUIRE(hog->position.distanceTo(golem->position) == Catch::Approx(1.3f).margin(1e-3));
 }

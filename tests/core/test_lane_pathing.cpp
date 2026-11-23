@@ -300,7 +300,10 @@ TEST_CASE("an Ice Golem walking to the King never stalls en route",
 
     // Stalls are measured only during the approach: a unit standing still to
     // fight at the King has arrived, not stalled.
-    const float arrived = 3.2f;
+    // "Arrived" is the Golem's own reach on the King, body to body: its 0.75
+    // range, its published 0.7 body (BodySizes.h, patch 0057) and the King's
+    // 2.0. The 3.2 this used to be was the same sum with the old 0.4 body.
+    const float arrived = 0.75f + golem->bodyRadius + king->getCollisionRadius() + 0.05f;
     Vector2D last = golem->position;
     int stillFor = 0, longestStall = 0, ticksToArrive = -1;
 

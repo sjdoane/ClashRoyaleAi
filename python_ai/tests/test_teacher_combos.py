@@ -249,12 +249,15 @@ def test_both_cards_of_a_combo_get_their_OWN_deploy_time():
     _stage_hand(env, 0, [ICE_GOLEM, HOG, CANNON, SKELETONS], 10.0)
     env.step_self_play(0, 14.0, 15.0, -1, 0, 0, 1)     # tank at the bridge
     env.step_self_play(-1, 0, 0, -1, 0, 0, 9)
-    env.step_self_play(1, 14.0, 14.0, -1, 0, 0, 1)     # win condition behind it
+    # Two tiles behind it: the Ice Golem's 0.7 body and the Hog Rider's 0.6
+    # (BodySizes.h, patch 0057) overlap one tile apart and push each other,
+    # which is not what this test is about.
+    env.step_self_play(1, 14.0, 13.0, -1, 0, 0, 1)     # win condition behind it
     at_landing = dict.fromkeys(_occupied_cells(env))
-    assert (14, 14) in at_landing and (15, 14) in at_landing
+    assert (13, 14) in at_landing and (15, 14) in at_landing
 
     env.step_self_play(-1, 0, 0, -1, 0, 0, 9)          # still inside its deploy
-    assert (14, 14) in dict.fromkeys(_occupied_cells(env)), (
+    assert (13, 14) in dict.fromkeys(_occupied_cells(env)), (
         "the second card moved during its own deploy time")
 
     env.step_self_play(-1, 0, 0, -1, 0, 0, 30)

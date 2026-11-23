@@ -542,7 +542,7 @@ public:
             // Nothing may be placed on an existing building: the gap is its
             // radius plus the new card's footprint.
             for (const auto& entity : board.getEntities()) {
-                float r = entity->getCollisionRadius();
+                float r = entity->getPlacementRadius();
                 if (entity->isAlive() && r > 0.0f) {
                     float dx = x - entity->position.x;
                     float dy = y - entity->position.y;

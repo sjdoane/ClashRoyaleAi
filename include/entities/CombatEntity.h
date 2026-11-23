@@ -1102,12 +1102,12 @@ public:
         if (deathEffect) deathEffect->apply(board, position, team);
     }
 
-    // The radius an entity occupies for range math; a troop uses
-    // Entity::IMPLICIT_TROOP_RADIUS. Public and static because AreaSpell's
-    // rolling sweep needs it too.
+    // The radius an entity occupies for range math; a troop uses its
+    // published body (Entity::bodyRadius, BodySizes.h). Public and static
+    // because AreaSpell's rolling sweep needs it too.
     static float effectiveRadiusOf(const Entity& e) {
         const float r = e.getCollisionRadius();
-        return (r > 0.0f) ? r : Entity::IMPLICIT_TROOP_RADIUS;
+        return (r > 0.0f) ? r : e.bodyRadius;
     }
 
 protected:

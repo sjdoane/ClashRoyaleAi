@@ -3,6 +3,7 @@
 #include "LoadTimes.h"
 #include "SightClips.h"
 #include "ProjectileSpeeds.h"
+#include "BodySizes.h"
 #include "Pushback.h"
 #include "Board.h"
 #include "MeleeTroop.h"
@@ -90,6 +91,9 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     // Published speed of the card's shot (ProjectileSpeeds.h, patch 0049).
     entity->shotTilesPerTick = ProjectileSpeeds::tilesPerTick(stats.name);
     entity->pushbackImmune = Pushback::ignores(stats.name);
+    // Published body of the card's troop or building (BodySizes.h, patch
+    // 0057).
+    entity->bodyRadius = BodySizes::radius(stats.name, stats.id, stats.archetype == Archetype::DefensiveBuilding);
     entity->transformAtHpFraction = stats.transformAtHpFraction;
     entity->transformCheckMaxHp = stats.hp;
     entity->transformLifetimeTicks = stats.transformLifetimeTicks;

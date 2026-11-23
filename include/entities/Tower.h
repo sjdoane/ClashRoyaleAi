@@ -16,6 +16,7 @@ public:
     float getCollisionRadius() const override {
         return (symbol == 'R') ? 2.0f : 1.5f;
     }
+    float getPlacementRadius() const override { return getCollisionRadius(); }
 
     // How far this tower's shot flies per tick. The default is the King's
     // cannonball (published speed 1000: 1000 / 48 / 10 = 2.08, see

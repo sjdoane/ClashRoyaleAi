@@ -76,17 +76,21 @@ def test_an_ice_spirit_costs_the_tower_its_published_1_1_s_and_takes_full_damage
     alone, t0 = _match()
     _, plain = _run(alone, {0: [(HOG, 16.0, 15.0)]}, 130)
     env, t0 = _match()
-    _, frozen = _run(env, {0: [(HOG, 16.0, 15.0)], 5: [(ICE_SPIRIT, 16.0, 15.0)]}, 130)
+    # The spirit two tiles to the side: on the Hog's own tile the two bodies
+    # (0.6 and 0.4, patch 0057) overlap and the Hog is pushed off its line.
+    _, frozen = _run(env, {0: [(HOG, 16.0, 15.0)], 5: [(ICE_SPIRIT, 14.0, 15.0)]}, 130)
     spirit = _hits(env, t0, ICE_SPIRIT)
     freeze = E.get_card_stats(ICE_SPIRIT)["base"]["on_hit"]
     assert freeze["type"] == "freeze" and freeze["ticks"] == 11
     assert [amount for _, amount in spirit] == [110]
     landed = spirit[0][0]
-    before = [t for t in plain if t <= landed]
-    assert frozen[:len(before)] == before
-    after_plain = [t for t in plain if t > landed]
-    after_frozen = frozen[len(before):]
-    assert after_frozen[:5] == [t + freeze["ticks"] for t in after_plain[:5]]
+    # Every arrow lands when it would have, or the freeze later; the only
+    # arrow after the spirit that is on time is one already in the air.
+    late = [f - p for f, p in zip(frozen, plain)]
+    assert len(late) >= 8 and set(late) == {0, freeze["ticks"]} and late == sorted(late)
+    first_late = late.index(freeze["ticks"])
+    assert plain[first_late] > landed
+    assert sum(1 for t in plain[:first_late] if t > landed) <= 1
 
 
 def test_fireball_and_log_chip_a_princess_tower_for_159_and_35():

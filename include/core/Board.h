@@ -278,7 +278,8 @@ public:
         return colliderCache;
     }
 
-    Vector2D resolvePositionAgainstBuildings(const Vector2D& pos, int entityId) const {
+    Vector2D resolvePositionAgainstBuildings(const Vector2D& pos, int entityId,
+                                             float bodyRadius = Entity::IMPLICIT_TROOP_RADIUS) const {
         Vector2D resolved = pos;
         // Ascending index order: the pushes compose, so order is part of the
         // answer.
@@ -286,7 +287,7 @@ public:
             const auto& entity = activeEntities[c.index];
             if (entity->id == entityId || !entity->isAlive()) continue;
 
-            resolved = pushAwayFrom(resolved, entity->position, c.radius + Entity::IMPLICIT_TROOP_RADIUS);
+            resolved = pushAwayFrom(resolved, entity->position, c.radius + bodyRadius);
         }
         return resolved;
     }
@@ -331,7 +332,8 @@ public:
                     float dx = e1->position.x - e2->position.x;
                     float dy = e1->position.y - e2->position.y;
                     float dist = std::sqrt(dx * dx + dy * dy);
-                    float minRadius = 2.0f * Entity::IMPLICIT_TROOP_RADIUS;
+                    // Two troops touch at the sum of their published bodies.
+                    float minRadius = e1->bodyRadius + e2->bodyRadius;
 
                     if (dist < minRadius) {
                         if (dist < 0.001f) { dx = 1.0f; dy = 0.0f; dist = 1.0f; }
@@ -352,10 +354,10 @@ public:
                 }
 
                 if (isTroop1 && isBuilding2 && !b1.flying) {
-                    e1->position = pushAwayFrom(e1->position, e2->position, r2 + Entity::IMPLICIT_TROOP_RADIUS);
+                    e1->position = pushAwayFrom(e1->position, e2->position, r2 + e1->bodyRadius);
                 }
                 if (isTroop2 && isBuilding1 && !b2.flying) {
-                    e2->position = pushAwayFrom(e2->position, e1->position, r1 + Entity::IMPLICIT_TROOP_RADIUS);
+                    e2->position = pushAwayFrom(e2->position, e1->position, r1 + e2->bodyRadius);
                 }
             }
         }

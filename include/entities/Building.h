@@ -9,14 +9,15 @@ protected:
     int ticksAlive = 0;
 
 public:
-    // Every Building has the same footprint; GameManager::isValidPlacement uses
-    // this too.
+    // The footprint a new card must keep clear of (getPlacementRadius), and
+    // the body of a Building built by hand with no card. A card's building
+    // carries its published body in bodyRadius (BodySizes.h, patch 0057).
     static constexpr float COLLISION_RADIUS = 1.0f;
 
     Building(int id, float x, float y, int hp, int team, char symbol,
         float attackRange, int damage, int attackCooldown, int lifetime = 300)
         : CombatEntity(id, x, y, hp, team, symbol, attackRange, damage, attackCooldown),
-        maxHp(hp), lifetimeTicks(lifetime) {}
+        maxHp(hp), lifetimeTicks(lifetime) { bodyRadius = COLLISION_RADIUS; }
 
     // Full health as constructed: the ceiling for callers that write hp from
     // outside.
@@ -35,7 +36,8 @@ public:
         return true;
     }
 
-    float getCollisionRadius() const override { return COLLISION_RADIUS; }
+    float getCollisionRadius() const override { return bodyRadius; }
+    float getPlacementRadius() const override { return COLLISION_RADIUS; }
 
     bool isBuilding() const override { return true; }
 

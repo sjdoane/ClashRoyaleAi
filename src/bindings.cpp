@@ -81,6 +81,10 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     // Published speed of the card's shot (ProjectileSpeeds.h); 0 = no row.
     d["projectile_speed"] = ProjectileSpeeds::forName(s.name);
     d["projectile_tiles_per_tick"] = ProjectileSpeeds::tilesPerTick(s.name);
+    // Published body radius of the card's troop or building (BodySizes.h): thousandths of
+    // a tile, 0 = no row; and the radius the engine gives it, in tiles.
+    d["published_collision_radius"] = BodySizes::publishedRadius(s.name, s.id);
+    d["body_radius"] = BodySizes::radius(s.name, s.id, s.archetype == Archetype::DefensiveBuilding);
     d["deploy_ticks"] = s.deployTicks;
     d["count"] = static_cast<int>(s.spawnOffsets.size());
     py::list offs;
@@ -475,6 +479,7 @@ PYBIND11_MODULE(clash_royale_env, m) {
                     d["cooldown"] = u.cooldown;
                     d["awake"] = u.awake;
                     d["targetable"] = u.targetable;
+                    d["body_radius"] = u.bodyRadius;
                     out.append(d);
                 }
                 return out;
