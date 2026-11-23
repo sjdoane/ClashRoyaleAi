@@ -45,6 +45,11 @@ private:
     bool splashAppliesOnHit = false;
 
 public:
+    // Published Crown Tower reduction of the shooter (CrownTowerDamage.h,
+    // patch 0047): the factor its direct hit is scaled by when the target is a
+    // Crown Tower. 1 = full damage. Set by RangedTroop when it fires.
+    float crownTowerFactor = 1.0f;
+
     Projectile(int id, float x, float y, int team, std::weak_ptr<Entity> target, float speed, int damage,
         std::vector<std::shared_ptr<IOnHitEffect>> onHitEffects = {},
         bool returnsToSender = false, int returnDelayTicks = 0,
@@ -118,9 +123,11 @@ public:
 
 private:
     void applyHit(Board& board, const std::shared_ptr<Entity>& t) {
-        t->takeDamage(damage);
+        const int dealt = (t->isTower() && crownTowerFactor != 1.0f)
+            ? static_cast<int>(damage * crownTowerFactor) : damage;
+        t->takeDamage(dealt);
         board.statsEvents.notifyDamageDealt(
-            { attackerId, team, attackerCardId, t->id, t->cardId, t->team, damage, board.currentTick, t->isTower() });
+            { attackerId, team, attackerCardId, t->id, t->cardId, t->team, dealt, board.currentTick, t->isTower() });
         // On-hit effects (e.g. Ice Wizard's freeze) land on arrival, and only
         // against a CombatEntity.
         if (!onHitEffects.empty()) {

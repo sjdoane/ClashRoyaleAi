@@ -1200,6 +1200,35 @@ TEST_CASE("Goblin Barrel drops 3 Goblins directly at the target, dealing no sepa
     REQUIRE(goblinCount == 3);
 }
 
+TEST_CASE("The Miner deals a fifth of his damage to a Crown Tower and all of it to anything else", "[card_registry][patch0047]") {
+    // Published CrownTowerDamagePercent -80 (CrownTowerDamage.h): 194 -> 38 at level 11.
+    auto firstHitOn = [](bool crownTower) {
+        Board board;
+        std::shared_ptr<Entity> victim;
+        if (crownTower) {
+            victim = std::make_shared<Tower>(board.allocateId(), 9.0f, 20.0f, 3052, 1, 0.0f, 0, 8, 'P');
+        } else {
+            victim = std::make_shared<Building>(board.allocateId(), 9.0f, 20.0f, 3052, 1, 'C', 0.0f, 0, 10, 0);
+        }
+        board.addEntity(victim);
+        CardRegistry::getInstance().getCard(52)->spawnEntity(9.0f, 18.0f, 0, board);
+        board.commitPendingEntities();
+        const int before = victim->hp;
+        for (int tick = 1; tick <= 60 && victim->hp == before; ++tick) {
+            board.currentTick = tick;
+            board.commitPendingEntities(tick);
+            for (const auto& e : board.getEntities()) if (e->isAlive()) e->update(board);
+            board.commitPendingEntities(tick);
+            board.resolveCollisions();
+            board.cleanDeadEntities(tick);
+        }
+        return before - victim->hp;
+    };
+    REQUIRE(firstHitOn(true) == 38);
+    REQUIRE(firstHitOn(false) == 194);
+}
+
+
 TEST_CASE("Goblin Barrel lands one Goblin beyond the target and two short of it, for either side", "[card_registry][spell][spawn][patch0037]") {
     // Published spawn offsets (x 0 / 500 / -500, y 500 apart); the recording of
     // 2026-11-20 shows which way round: on a Princess Tower one Goblin lands

@@ -1186,6 +1186,13 @@ class UtilityTeacher:
         # support our most advanced unit. An anti-air card meets a flying
         # building-targeter first, since nothing else can.
         cells = []
+        if self._skips_the_bridge(card_id):
+            # A deploy-anywhere troop that is not the deck's resolved win
+            # condition (a Miner beside Wall Breakers) still has its own route
+            # to a tower: offer the cell beside the weaker enemy tower first,
+            # then the defensive cell. Without this it would only ever be
+            # offered a cell on its own half, which wastes what the card is.
+            cells.extend(self._beside_tower_cells(card_id, obs)[:1])
         tx, ty = self._deepest_threat(obs)
         ax, ay = self._air_siege_threat(obs)
         if ax is not None and card_probes.damages_air(card_id):
@@ -1201,6 +1208,15 @@ class UtilityTeacher:
             cells.append((float(tactics.BRIDGE_XS[self.lane_bias]),
                           float(tactics.BRIDGE_ROW)))
         return cells[:k]
+
+    def _skips_the_bridge(self, card_id):
+        """A troop the engine lets us place on the enemy half, and that takes
+        tower HP from there (measured, as for a win condition).
+        """
+        info = E.get_card_info(card_id)
+        return (bool(info.get("deploy_anywhere", False))
+                and not info["is_building"] and not info["is_spell"]
+                and wincon_damage_per_elixir(card_id) >= WINCON_MIN_DAMAGE_PER_ELIXIR)
 
     def _siege_cells(self, obs):
         """Where a Mortar or X-Bow must stand to threaten anything: the

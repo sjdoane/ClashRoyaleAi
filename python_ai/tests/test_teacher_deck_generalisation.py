@@ -73,20 +73,25 @@ def test_a_spell_that_spawns_bodies_becomes_the_win_condition(pool, by_name):
 
 
 def test_decks_that_already_had_a_win_condition_are_untouched(pool, by_name):
-    """The decks that resolved a win condition under the old cost ranking. Three
+    """The decks that resolved a win condition under the old cost ranking. One
     moved with the damage-ranked resolver, to the card a human names the deck
-    after (Miner over Wall Breakers, Balloon over Lava Hound); the rest are
-    unchanged.
+    after (Balloon over Lava Hound); the rest are unchanged.
+
+    The two decks that hold both a Miner and Wall Breakers resolve to Wall
+    Breakers since patch 0047: the resolver ranks by tower HP taken alone per
+    elixir, and the Miner's published Crown Tower damage is a fifth of his hit
+    (38, not 194), so he measures 101 per elixir against the Wall Breakers'
+    302. He stays a route to the tower (test_teacher_still_mines.py).
     """
     expected = {
         "hog_26_mirror": "Hog Rider",
         "three_musketeers_bridge": "Battle Ram",
         "rg_fisherman_cycle": "Royal Giant",
-        "miner_poison_control": "Miner",
+        "miner_poison_control": "Wall Breakers",
         "royal_hogs_furnace": "Royal Hogs",
         "giant_double_dragon": "Giant",
         "pekka_bridge_spam": "Battle Ram",
-        "wall_breakers_cycle": "Miner",
+        "wall_breakers_cycle": "Wall Breakers",
         "golem_beatdown": "Golem",
         "lavaloon": "Balloon",
         "mega_knight_ram": "Battle Ram",

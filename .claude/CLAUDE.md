@@ -887,6 +887,57 @@ ran ahead of it at Very Fast and were shot first.
   the rider. A Clone of a riding unit keeps the original carrier's id.
 - Tests: `python_ai/tests/test_attached_riders_ride_their_carrier.py`.
 
+## 2026-11-22: published Crown Tower damage as one rule (patch 0047)
+
+**GAMEPLAY-AFFECTING.** New `include/core/CrownTowerDamage.h`: every
+`CrownTowerDamagePercent` row of the published game data (FirstLight-Zero
+card_specs.json / projectiles.json, release 15.535.13) whose card the engine
+has, keyed by registry NAME (Evolutions inherit), applied in
+`CardRegistry::add` / `addEvolution`. The covered card rows no longer carry a
+`.withCrownTowerDamage(N)` literal; do not add one back, change the table.
+
+| card | published | level-11 damage | on a Crown Tower before | now |
+|---|---|---|---|---|
+| Miner (hit) | -80 | 194 | 194 | 38 |
+| Fireball | -75 | 689 | 159 | 172 |
+| Arrows (per wave) | -80 | 123 | 31 | 25 |
+| Rocket | -77 | 1485 | 371 | 342 |
+| Lightning (per strike) | -75 | 1057 | 286 | 264 |
+| Zap | -75 | 192 | 48 | 48 |
+| Zap Evolution (per pulse) | base row | 192 | 58 | 48 |
+| Giant Snowball | -75 | 179 | 45 | 45 |
+| Giant Snowball Evolution | base row | 179 | 54 | 45 |
+| The Log | -87 | 269 | 35 | 35 |
+| Electro Wizard / Hero deploy zap | -100 | 118 | 118 | 0 |
+| Goblin Machine rocket (unit -24) | -50 | 304 | 304 | 152 |
+
+- Spells: `spellCrownTowerDamage = round(damage x (100 + percent) / 100)`.
+  Units: `crownTowerHitMultiplier`, which melee already honoured; a ranged
+  unit's factor now travels on its `Projectile` (`crownTowerFactor`) and scales
+  the direct hit. Splash from a projectile is not scaled (no covered card needs
+  it).
+- NOT in the release extract, left as the registry had them: Poison,
+  Earthquake, Tornado, Goblin Curse, Vines, Void, Barbarian Barrel, Hero
+  Barbarian Barrel, Royal Delivery (their reductions live in the buff table),
+  Mega Knight's landing, Goblin Drill's surfacing. Freeze has a row (-75, 58
+  base damage) but deals no damage in the engine. Evolution records
+  (Zap_EV1, SnowballSpell_EV1) are not resolved in the extract: an Evolution
+  uses its base card's row.
+- Teacher (`python_ai/opponents/teacher.py`): with the Miner at 101 tower HP
+  per elixir, a deck that also holds Wall Breakers (302) resolves to Wall
+  Breakers (`miner_poison_control`, `wall_breakers_cycle`; the two tests say
+  why). So that the Miner does not become a troop that is only offered cells
+  on its own half, `_cells_for` gives any deploy-anywhere troop that takes
+  tower HP the cell beside the weaker enemy tower first, whatever its role
+  (`_skips_the_bridge`). Measured over 4 matches per deck against the 2.6
+  deck: Miner plays / beside an enemy tower 30/29 and 31/31 before; 20/0 and
+  50/0 with the damage alone; 20/17 and 50/29 with the rule.
+- The reward's Fireball lethal window follows (`card_probes.damage_spell`:
+  159 -> 172; Lightning 286 -> 264).
+- Tests: `python_ai/tests/test_published_crown_tower_damage.py`,
+  `python_ai/tests/test_teacher_still_mines.py`, a Miner case in
+  `tests/core/test_card_registry.cpp`.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

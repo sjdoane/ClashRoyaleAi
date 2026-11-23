@@ -26,7 +26,15 @@ EXPECTED_POOL = {
     "classic_log_bait_inferno": "Goblin Barrel",
     "graveyard_control": "Graveyard",
     "lavaloon": "Balloon",
-    "miner_poison_control": "Miner",
+    # Wall Breakers, not Miner, since patch 0047. The resolver ranks a deck's
+    # routes to a tower by the tower HP each takes alone per elixir. The Miner
+    # used to hit Crown Towers for his full 194; the published figure is a
+    # fifth of that (CrownTowerDamagePercent -80: 38 a hit), which puts him at
+    # 101 HP per elixir against the Wall Breakers' 302. A deck that holds both
+    # therefore resolves to Wall Breakers, which is what the corrected numbers
+    # say. The Miner is still sent at the tower: see
+    # test_teacher_still_mines.py.
+    "miner_poison_control": "Wall Breakers",
     "xbow_30_cycle": "X-Bow",
     "mortar_cycle": "Mortar",
     "golem_beatdown": "Golem",

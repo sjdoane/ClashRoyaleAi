@@ -8,6 +8,7 @@
 #include "Board.h"
 #include "CardStats.h"
 #include "CardFactories.h"
+#include "CrownTowerDamage.h"
 #include "FreezeOnHit.h"
 #include "SpawnOnDeath.h"
 #include "AreaDamageOnDeath.h"
@@ -452,7 +453,9 @@ private:
         return troop(-42, "Souldier", 0.0f, Archetype::MeleeSquad, 81, 0.7f, 1.2f, 133, 18, 'Q');
     }
 
-    void add(const CardStats& stats) {
+    void add(const CardStats& registered) {
+        // Published Crown Tower reductions (CrownTowerDamage.h, patch 0047).
+        const CardStats stats = CrownTowerDamage::applied(registered);
         CardDefinition def;
         def.id = stats.id;
         def.name = stats.name;
@@ -487,6 +490,8 @@ private:
     // PlayerState::EvolutionSlotState).
     void addEvolution(int evolutionId, CardStats baseStats, CardStats evolvedStats,
             int cycleThreshold, int evolvedUses) {
+        CrownTowerDamage::apply(baseStats);
+        CrownTowerDamage::apply(evolvedStats);
         CardDefinition def;
         def.id = evolutionId;
         def.name = baseStats.name;
@@ -714,17 +719,17 @@ private:
         // 0.6 s to 2.0 s, a real Barrel 2.8 s to an enemy Princess Tower).
         // Arrows: 3 volleys of 123, not one 369 hit. The flight is to the
         // first volley; its speed is published only (not measured here).
-        add(spell(3, "Arrows", 3.0f, 3.5f, 123, 10, '*').withRepeats(3, 2).withCrownTowerDamage(31) /* audit 0003: wiki Arrows, level 11 */
+        add(spell(3, "Arrows", 3.0f, 3.5f, 123, 10, '*').withRepeats(3, 2) /* audit 0003: wiki Arrows, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(1100));
         add(spell(7, "Fireball", 4.0f, 2.5f, 689, 10, 'O')
             .withKnockback(1.0f)
-            .withCrownTowerDamage(159) // audit 0003: wiki Fireball, level 11 (25% since 1/6/2026)
+            // audit 0003: wiki Fireball, level 11; Crown Tower damage: CrownTowerDamage.h
             .withThrownFromKingTower(600));
-        add(spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withCrownTowerDamage(48) /* audit 0003: wiki Zap, level 11 */);
+        add(spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z') /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */);
         add(spell(30, "Rocket", 6.0f, 2.0f, 1485, 15, 'r')
-            .withKnockback(1.0f).withCrownTowerDamage(371) /* audit 0003: wiki Rocket, level 11 */
+            .withKnockback(1.0f) /* audit 0003: wiki Rocket, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(350));
-        add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j').withCrownTowerDamage(286) /* audit 0003: wiki Lightning, level 11 */);
+        add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j') /* audit 0003: wiki Lightning, level 11; Crown Tower damage: CrownTowerDamage.h */);
         // Poison: 92 damage every second for 8 s; whoever stands in it takes
         // each pulse. A Crown Tower takes 21 per pulse (168 in all: official
         // June 2026 notes, fixed in game on 26 Aug), and enemy troops inside
@@ -751,8 +756,7 @@ private:
         add(spell(33, "The Log", 2.0f, 3.9f, 269, 8, 'o')
             .withGroundOnly()
             .withRollingSweep(10.1f, 3.9f, 0.34f, 0.7f)
-            .withRollBodyDepth(1.2f)
-            .withCrownTowerDamage(35)); // audit 0003: wiki The Log, level 11 (13% since 1/6/2026)
+            .withRollBodyDepth(1.2f)); // audit 0003: wiki The Log, level 11; Crown Tower damage: CrownTowerDamage.h
 
         // --- the 2026 roster expansion (ids 46+) ---
         // Every remaining non-Champion, non-Evolution, non-Tower-Troop card,
@@ -1066,7 +1070,7 @@ private:
         // === Spells (expansion) ===
         add(spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
             .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
-            .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */
+            .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(800));
         // Barbarian Barrel: rolls 4.5 tiles at width 2.6 (published), and its
         // Barbarian spawns where the barrel stops. No knockback: the real
@@ -1249,8 +1253,8 @@ private:
         // Zap ("Triple Shock"): three zaps instead of one. The growing radius
         // between zaps is not modelled; the 3-tick gap is not sourced.
         addEvolution(124,
-            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withCrownTowerDamage(48) /* audit 0003: wiki Zap, level 11 */,
-            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withRepeats(3, 3).withCrownTowerDamage(58) /* audit 0003: wiki Zap/Evolution, level 11 */,
+            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z') /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */,
+            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withRepeats(3, 3) /* audit 0003: wiki Zap/Evolution, level 11; Crown Tower damage: CrownTowerDamage.h */,
             2, 1);
 
         // Skeletons ("Never-ending Horde"): see evolvedSkeletonChildStats.
@@ -1647,11 +1651,11 @@ private:
         addEvolution(158,
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
-                .withKnockback(1.0f).withCrownTowerDamage(45) /* audit 0003: wiki Giant Snowball, level 11 */
+                .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
                 .withThrownFromKingTower(800),
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
                 .withSpellOnHit(std::make_shared<FreezeOnHit>(40, 0.7f))
-                .withKnockback(-4.5f).withCrownTowerDamage(54) /* audit 0003: wiki Giant Snowball/Evolution, level 11 */
+                .withKnockback(-4.5f) /* audit 0003: wiki Giant Snowball/Evolution, level 11; Crown Tower damage: CrownTowerDamage.h */
                 .withThrownFromKingTower(800),
             2, 1);
 

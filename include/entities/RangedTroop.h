@@ -31,6 +31,7 @@ protected:
             board.allocateId(), position.x, position.y, team, target, 1.5f, getCurrentDamage(), onHitEffects,
             boomerang, boomerangReturnDelayTicks, id, cardId, splashRadius, lineSplash, lineSplashRange,
             splashAppliesOnHit);
+        arrow->crownTowerFactor = crownTowerHitFactor(*target);
         board.addEntity(arrow);
     }
 };

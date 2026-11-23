@@ -97,6 +97,8 @@ TEST_CASE("a spell's crown-tower damage follows its team's level", "[card_levels
         return hp0 - game.getTowerHp(1, 1);
     };
     const int at11 = fireballOnTower(11);
-    REQUIRE(at11 == 159);   // audit 0003: wiki Fireball crown-tower damage, level 11
-    REQUIRE(fireballOnTower(15) == CardLevels::scale(159, 15));
+    // Published CrownTowerDamagePercent -75 (CrownTowerDamage.h, patch 0047):
+    // 689 x 25% = 172. It was a hand-entered 159 (23%) before.
+    REQUIRE(at11 == 172);
+    REQUIRE(fireballOnTower(15) == CardLevels::scale(172, 15));
 }
