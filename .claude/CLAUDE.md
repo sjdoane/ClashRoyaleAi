@@ -1151,6 +1151,36 @@ time. Compared with every `FreezeOnHit` in the registry:
 - Tests: `python_ai/tests/test_published_stun_and_slow_durations.py`,
   `tests/core/test_card_registry.cpp` (`[patch0051]`).
 
+## 2026-11-22: a unit published with LoadFirstHit lands unloaded (patch 0052)
+
+**GAMEPLAY-AFFECTING** (Sparky only today). The brief asked whether "units
+count as loaded on landing" is the real rule. It is, with one published
+exception. The unit records of release 15.535.13 carry a `LoadFirstHit` flag
+and exactly one unit has it: ZapMachine (Sparky; hit speed 4000, load time
+3000). RoyaleAPI's "The Secret Stats" article describes the same thing: a troop
+enters the arena with its load time already served and owes only its first-hit
+time (hit speed minus load time); Sparky is the one troop that does not, and
+has to charge in full after landing.
+
+`LoadTimes::Row::loadFirstHit` holds the flag (name-keyed, so an Evolution or
+Hero of such a card would inherit it), `CardFactories::applyCardMetadata`
+copies it to `CombatEntity::landsUnloaded`, and `CombatEntity::update` starts a
+whole hit speed on the tick the deploy time ends. From there the ordinary rule
+applies: the cooldown runs down with or without a target, and a new engagement
+winds up for the first-hit time, so the first shot comes
+max(hit speed - time since landing, first hit) after a target is in range.
+Sparky dropped on a target used to fire 1.0 s after her deploy time; now 4.0 s.
+`get_card_stats` reports `lands_unloaded`.
+
+Tests: `tests/core/test_card_registry.cpp` `[patch0052]` (dropped on a target
+40 updates then every 40; 2 s of walking leaves 2 s; loaded after 4.5 s she
+owes the 1.0 s first hit; a Musketeer still fires her 0.7 s first hit; one
+flagged row in the table), `python_ai/tests/test_published_stun_and_slow_durations.py`
+(only Sparky reports `lands_unloaded`).
+
+Not found in the published data: `ResetHitTimerWhenNoTarget` (Little Prince
+only) is not modelled.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

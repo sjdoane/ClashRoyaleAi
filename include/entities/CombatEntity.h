@@ -106,6 +106,10 @@ public:
     // and a new unit has not been stunned. The implicit copy carries it, so
     // snapshots keep the exact remaining deploy time.
     int deployTicksRemaining = 0;
+    // Published LoadFirstHit: the unit comes out of its deploy time with a
+    // whole hit speed to wait, where every other unit comes out loaded
+    // (LoadTimes.h; set by CardFactories).
+    bool landsUnloaded = false;
     // First-hit wind-up (LoadTimes.h: hit speed minus the published load
     // time): after a target comes into range, wind up this many ticks before
     // the first hit. 0 = hit at once.
@@ -833,7 +837,12 @@ public:
 
         // Above: bookkeeping that runs while deploying. Below: action, which a
         // deploying unit takes none of.
-        if (deploying) return;
+        if (deploying) {
+            // Published LoadFirstHit: the hit speed starts when the deploy
+            // time ends (set here, below this tick's cooldown decrement).
+            if (deployTicksRemaining == 0 && landsUnloaded) currentCooldown = static_cast<float>(attackCooldown);
+            return;
+        }
 
         if (fullHp <= 0) fullHp = hp;
         if (selfPeriodicEffect && selfPeriodicIntervalTicks > 0) {

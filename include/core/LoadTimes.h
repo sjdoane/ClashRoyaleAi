@@ -61,6 +61,12 @@ struct Row {
     // Executioner's covers his axe's flight out and back). 0 = the card's
     // attackCooldown is the published hit speed.
     int hitSpeedTicks = 0;
+    // Published LoadFirstHit: the unit lands UNLOADED and has to load before
+    // its first hit like before any other. Every other unit lands loaded.
+    // One unit in release 15.535.13 has it (ZapMachine); RoyaleAPI's "secret
+    // stats" article says the same: troops enter the arena preloaded, Sparky
+    // is the only one that does not.
+    bool loadFirstHit = false;
 };
 
 inline const Row* table(int& count) {
@@ -147,7 +153,7 @@ inline const Row* table(int& count) {
         { "Skeleton Dragons", 16, Source::FLZ }, // SkeletonDragons 1600 ms
         { "Skeleton King", 13, Source::FLZ }, // SkeletonKing 1300 ms
         { "Skeletons", 6, Source::FLZ }, // Skeletons 600 ms
-        { "Sparky", 30, Source::CRAPI }, // ZapMachine 3000 ms
+        { "Sparky", 30, Source::CRAPI, 0, true }, // ZapMachine 3000 ms, LoadFirstHit
         { "Spear Goblins", 11, Source::FLZ }, // SpearGoblins 1100 ms
         { "Tesla", 7, Source::FLZ }, // Tesla 700 ms
         { "Three Musketeers", 7, Source::FLZ }, // ThreeMusketeers 700 ms
@@ -184,6 +190,12 @@ inline const Row* find(const std::string& name) {
     static const std::string heroPrefix = "Hero ";
     if (name.compare(0, heroPrefix.size(), heroPrefix) == 0) return find(name.substr(heroPrefix.size()));
     return nullptr;
+}
+
+// Whether a card lands unloaded (published LoadFirstHit).
+inline bool landsUnloaded(const std::string& name) {
+    const Row* row = find(name);
+    return row && row->loadFirstHit;
 }
 
 // The published load time of a card, 0 if it has no row.

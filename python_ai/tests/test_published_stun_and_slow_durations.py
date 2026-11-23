@@ -48,3 +48,18 @@ def test_a_stun_is_a_full_stop_and_the_ice_wizards_slow_is_one_strength():
     ice_wizard = E.get_card_stats(34)["base"]["on_hit"]["slow_factor"]
     snowball = E.get_card_stats(100)["base"]["spell_on_hit"]["slow_factor"]
     assert ice_wizard == snowball
+
+
+def test_only_the_unit_published_with_load_first_hit_lands_unloaded():
+    """Patch 0052. Release 15.535.13 has `LoadFirstHit` on one unit, ZapMachine
+    (Sparky): she lands unloaded and waits a whole hit speed. Every other unit
+    lands loaded and owes only its first-hit time."""
+    unloaded = []
+    for cid in E.get_all_card_ids():
+        stats = E.get_card_stats(cid)
+        for form in ("base", "evolved"):
+            if stats.get(form) and stats[form].get("lands_unloaded"):
+                unloaded.append(stats["name"])
+    assert sorted(set(unloaded)) == ["Sparky"]
+    sparky = E.get_card_stats(60)["base"]
+    assert sparky["attack_cooldown_ticks"] == 40 and sparky["load_ticks"] == 30

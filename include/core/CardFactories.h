@@ -140,6 +140,12 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     // multiplier) is not copied from stats.
     applyOnHit(entity, stats);
     if (stats.initialCooldownTicks > 0) entity->seedCooldown(stats.initialCooldownTicks);
+    // Published LoadFirstHit (LoadTimes.h): the unit lands unloaded, so its
+    // first hit is a whole hit speed after its deploy time at the earliest.
+    // Walking loads it as after any hit. CombatEntity::update starts the
+    // count when the deploy time ends; the seed covers a unit without one.
+    entity->landsUnloaded = LoadTimes::landsUnloaded(stats.name);
+    if (entity->landsUnloaded) entity->seedCooldown(stats.attackCooldown);
     if (stats.passiveDamageReduction < 1.0f) entity->applyCurse(stats.passiveDamageReduction, 999999);
 }
 

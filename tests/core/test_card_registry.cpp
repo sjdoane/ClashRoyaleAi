@@ -2113,6 +2113,91 @@ TEST_CASE("A stun in the middle of a fight costs its own length and nothing more
     REQUIRE(updatesUntilHit(knight, dummy, board) == 12);
 }
 
+namespace {
+// Updates `unit` until it lets a projectile go, returning how many updates
+// that took; -1 if it never does within `limit`.
+int updatesUntilShot(const std::shared_ptr<CombatEntity>& unit, Board& board, int limit = 100) {
+    auto shots = [&board]() {
+        int n = 0;
+        for (const auto& e : board.getEntities()) if (std::dynamic_pointer_cast<Projectile>(e)) ++n;
+        return n;
+    };
+    const int before = shots();
+    for (int i = 1; i <= limit; ++i) {
+        unit->update(board);
+        board.commitPendingEntities();
+        if (shots() > before) return i;
+    }
+    return -1;
+}
+
+std::shared_ptr<CombatEntity> placeAlone(Board& board, int cardId, float x, float y) {
+    CardRegistry::getInstance().getCard(cardId)->spawnEntity(x, y, 0, board);
+    board.commitPendingEntities();
+    auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    unit->position = { x, y };
+    return unit;
+}
+}
+
+TEST_CASE("A unit with the published LoadFirstHit lands unloaded; every other unit lands loaded",
+          "[card_registry][load_time][patch0052]") {
+    // Sparky (ZapMachine): hit speed 4.0 s, load time 3.0 s, LoadFirstHit.
+    // Musketeer: hit speed 1.0 s, load time 0.3 s (first hit 0.7 s), no flag.
+    REQUIRE(LoadTimes::landsUnloaded("Sparky"));
+    REQUIRE_FALSE(LoadTimes::landsUnloaded("Musketeer"));
+    REQUIRE_FALSE(LoadTimes::landsUnloaded("Knight"));
+    // The flag is the only one of its kind in the table.
+    int count = 0, flagged = 0;
+    const LoadTimes::Row* rows = LoadTimes::table(count);
+    for (int i = 0; i < count; ++i) if (rows[i].loadFirstHit) ++flagged;
+    REQUIRE(flagged == 1);
+
+    SECTION("dropped next to a target, Sparky fires a whole hit speed after her deploy time") {
+        Board board;
+        auto target = std::make_shared<DummyEntity>(900, 5.0f, 8.0f, 100000, 1);
+        spawn(board, target);
+        auto sparky = placeAlone(board, 60, 5.0f, 5.0f);
+        REQUIRE(sparky->landsUnloaded);
+        REQUIRE(sparky->loadTicks == 10);
+        advancePastDeploy(sparky, board);
+        // 40 ticks of hit speed. It used to be the 1.0 s first hit alone
+        // (the 11th update).
+        REQUIRE(updatesUntilShot(sparky, board) == 40);
+        // And then every hit speed.
+        REQUIRE(updatesUntilShot(sparky, board) == 40);
+    }
+    SECTION("the load runs while she walks: 2 s without a target leaves 2 s") {
+        Board board;
+        auto sparky = placeAlone(board, 60, 5.0f, 5.0f);
+        advancePastDeploy(sparky, board);
+        for (int i = 0; i < 20; ++i) sparky->update(board);
+        sparky->position = { 5.0f, 5.0f };
+        auto target = std::make_shared<DummyEntity>(900, 5.0f, 8.0f, 100000, 1);
+        spawn(board, target);
+        REQUIRE(updatesUntilShot(sparky, board) == 20);
+    }
+    SECTION("once loaded she fires her 1.0 s first hit after finding a target") {
+        Board board;
+        auto sparky = placeAlone(board, 60, 5.0f, 5.0f);
+        advancePastDeploy(sparky, board);
+        for (int i = 0; i < 45; ++i) sparky->update(board);
+        sparky->position = { 5.0f, 5.0f };
+        auto target = std::make_shared<DummyEntity>(900, 5.0f, 8.0f, 100000, 1);
+        spawn(board, target);
+        REQUIRE(updatesUntilShot(sparky, board) == 11);
+    }
+    SECTION("a Musketeer dropped next to a target fires her 0.7 s first hit") {
+        Board board;
+        auto target = std::make_shared<DummyEntity>(900, 5.0f, 8.0f, 100000, 1);
+        spawn(board, target);
+        auto musketeer = placeAlone(board, 6, 5.0f, 5.0f);
+        REQUIRE_FALSE(musketeer->landsUnloaded);
+        advancePastDeploy(musketeer, board);
+        REQUIRE(updatesUntilShot(musketeer, board) == 8);
+    }
+}
+
 TEST_CASE("Switching between targets in range keeps the hit-speed rhythm; a new engagement winds up again",
           "[card_registry][load_time]") {
     // Knight: hit speed 1.2 s, first hit 0.5 s. Two targets in reach.
