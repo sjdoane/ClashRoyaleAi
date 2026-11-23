@@ -5,9 +5,10 @@
 form and field the engine models (hit points, shield, damage, hit speed, first
 hit, speed, range, sight, deploy time, lifetime, count, spell radius and
 projectile speed, death damage, charge multiplier, splash), level 11 being
-floor(level-1 x 2.56). Rows of the fields `collision` (per-card collision
-radius) and `unit_proj_speed` (per-unit projectile speed) are carried for
-reference and are pinned by the patch that models them, if any.
+floor(level-1 x 2.56). `unit_proj_speed` is the speed of a ranged troop's
+shot (ProjectileSpeeds.h, patch 0049). Rows of the field `collision` (per-card
+collision radius) are carried for reference and are pinned by the patch that
+models them, if any.
 
 DATING. That release is the game right after the 4 Aug 2026 balance update: it
 holds every change of that date and none of the later ones, and the "old"
@@ -49,8 +50,9 @@ FIELDS = {
     "charge_mult": (0.01, lambda e: e["charge_multiplier"]),
     "splash": (0.01, lambda e: e["splash_radius"]),
     "proj_radius": (0.01, lambda e: e["splash_radius"]),
+    "unit_proj_speed": (1, lambda e: e["projectile_speed"]),
 }
-NOT_PINNED_HERE = {"collision", "unit_proj_speed"}
+NOT_PINNED_HERE = {"collision"}
 
 # (card, field) -> (current value, the official note). Applies to the card's
 # Evolution and Hero rows too, not to a second unit of the card. "derived" = the note changes the hit speed and
@@ -231,3 +233,19 @@ def test_a_hero_without_a_row_of_its_own_loads_like_its_base_card():
         assert hero["first_hit_windup_ticks"] == base["first_hit_windup_ticks"] > 0, name
         checked += 1
     assert checked == 7
+
+
+def test_a_ranged_troops_shot_flies_at_its_published_speed():
+    """Patch 0049: published speed / 480 tiles a tick, the thrown-spell divisor."""
+    rows = [r for r in _rows() if r[3] == "unit_proj_speed"]
+    assert len(rows) >= 60
+    assert {r[4] for r in rows} >= {170, 400, 500, 550, 600, 700, 800, 1000, 1400}
+    musketeer = E.get_card_stats(168)["base"]  # Hero Musketeer: flies like the Musketeer
+    assert musketeer["projectile_speed"] == 1000
+    assert abs(musketeer["projectile_tiles_per_tick"] - 1000 / 480.0) < 1e-6
+    # Projectile records named after the unit that no unit record links.
+    assert E.get_card_stats(87)["base"]["secondary_unit"]["projectile_speed"] == 600   # RamRiderBola
+    assert E.get_card_stats(55)["base"]["secondary_unit"]["projectile_speed"] == 350   # GoblinMachineRocketProjectile
+    # No published projectile: the engine's old 1.5 tiles a tick.
+    zappies = E.get_card_stats(79)["base"]
+    assert zappies["projectile_speed"] == 0 and zappies["projectile_tiles_per_tick"] == 1.5

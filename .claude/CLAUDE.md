@@ -1035,6 +1035,50 @@ and not applied here: every ranged troop still throws at one speed.
   7 + 1), `tests/core/test_card_registry.cpp` (`[load_time][patch0048]`), and
   the existing expectations that moved, each with its source in a comment.
 
+## 2026-11-22: a ranged troop's shot flies at its published speed (patch 0049)
+
+**GAMEPLAY-AFFECTING.** Every ranged troop's projectile flew 1.5 tiles a tick
+(`RangedTroop::performAttack`, `RangedBuildingTargeter::performAttack`). New
+`include/core/ProjectileSpeeds.h`: the published Speed of each unit's
+projectile record (FirstLight-Zero card_specs.json / projectiles.json,
+release 15.535.13), keyed by registry NAME (Evolutions inherit; "Hero X"
+without a row flies like X; a row belongs to the card's ranged form, so
+"Rascals" is the Rascal Girl and "Goblinstein" the Doctor). Applied in
+`CardFactories::applyCardMetadata` to `CombatEntity::shotTilesPerTick`,
+exposed as `projectile_speed` / `projectile_tiles_per_tick` in
+`get_card_stats`.
+
+Tiles a tick = published speed / 480: the 48 per tile per second measured on
+thrown spells (patch 0030) and already used for the Princess Tower's arrow
+(patch 0036). **Not measured for a troop's shot**: over 4-6 tiles the old and
+the new flight differ by one or two frames of an 11 fps recording.
+
+| published | tiles a tick | 5 tiles take | units |
+|---|---|---|---|
+| 170 | 0.35 | 1.5 s | Bowler |
+| 350 | 0.73 | 0.7 s | Goblin Machine's rocket |
+| 400 | 0.83 | 0.6 s | Bomber, Goblin Demolisher, Ice / Fire / Heal Spirit, Lava Hound |
+| 500 | 1.04 | 0.5 s | Spear Goblins, Baby Dragon, Firecracker, Skeleton Dragons, Goblinstein's Doctor |
+| 550 | 1.15 | 0.5 s | Executioner, Hunter |
+| 600 | 1.25 | 0.4 s | Archers, Wizard, Princess, Witch, Mother Witch, Furnace, Ram Rider's bola |
+| 700 | 1.46 | 0.4 s | Ice Wizard |
+| 800 | 1.67 | 0.3 s | Dart Goblin, Flying Machine, Archer Queen, Little Prince, Rascal Girl |
+| 1000 | 2.08 | 0.3 s | Musketeer, Three Musketeers, Magic Archer, Royal Giant, Cannon Cart, Electro Spirit |
+| 1400 | 2.92 | 0.2 s | Sparky |
+| (old) 720 | 1.5 | 0.4 s | every one of them before; still Zappies and the Minion Giant |
+
+- No row = the old 1.5: the table has no projectile for the Zappies (instant
+  in the game) and no record for the Minion Giant.
+- **Buildings are not covered.** Cannon (published 1000), X-Bow (1600), Bomb
+  Tower (500) and the rest still hit on the attack tick
+  (`Building::performAttack`); the Mortar's shell keeps its own delay.
+- The Bowler's boulder still homes on one target and applies its line when it
+  arrives; it now arrives 1.1 s after the throw at 4 tiles instead of 0.3 s.
+  The real boulder hits each troop as it passes.
+- Pinned by `python_ai/tests/test_published_stats_table.py` (the fixture's 67
+  `unit_proj_speed` rows are now compared like every other field) and
+  `tests/core/test_card_registry.cpp` `[patch0049]`.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

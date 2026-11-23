@@ -2,6 +2,7 @@
 #include "CardStats.h"
 #include "LoadTimes.h"
 #include "SightClips.h"
+#include "ProjectileSpeeds.h"
 #include "Board.h"
 #include "MeleeTroop.h"
 #include "RangedTroop.h"
@@ -85,6 +86,8 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
         entity->sightClip = clipRow->clip;
         entity->sightClipSide = clipRow->clipSide;
     }
+    // Published speed of the card's shot (ProjectileSpeeds.h, patch 0049).
+    entity->shotTilesPerTick = ProjectileSpeeds::tilesPerTick(stats.name);
     entity->transformAtHpFraction = stats.transformAtHpFraction;
     entity->transformCheckMaxHp = stats.hp;
     entity->transformLifetimeTicks = stats.transformLifetimeTicks;

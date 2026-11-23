@@ -28,7 +28,7 @@ protected:
     void performAttack(Board& board, std::shared_ptr<Entity> target) override {
         // On-hit effects travel with the shot and land when it does.
         auto arrow = std::make_shared<Projectile>(
-            board.allocateId(), position.x, position.y, team, target, 1.5f, getCurrentDamage(), onHitEffects,
+            board.allocateId(), position.x, position.y, team, target, shotTilesPerTick, getCurrentDamage(), onHitEffects,
             boomerang, boomerangReturnDelayTicks, id, cardId, splashRadius, lineSplash, lineSplashRange,
             splashAppliesOnHit);
         arrow->crownTowerFactor = crownTowerHitFactor(*target);

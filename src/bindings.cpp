@@ -76,6 +76,9 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
         d["sight_clip"] = clipRow ? clipRow->clip : 0.0f;
         d["sight_clip_side"] = clipRow ? clipRow->clipSide : 0.0f;
     }
+    // Published speed of the card's shot (ProjectileSpeeds.h); 0 = no row.
+    d["projectile_speed"] = ProjectileSpeeds::forName(s.name);
+    d["projectile_tiles_per_tick"] = ProjectileSpeeds::tilesPerTick(s.name);
     d["deploy_ticks"] = s.deployTicks;
     d["count"] = static_cast<int>(s.spawnOffsets.size());
     py::list offs;

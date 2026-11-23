@@ -404,6 +404,10 @@ public:
     // publish one.
     float sightClip = 0.0f;
     float sightClipSide = 0.0f;
+    // Tiles a tick of this unit's shot, where it fires one (RangedTroop,
+    // RangedBuildingTargeter). From the published speed in ProjectileSpeeds.h;
+    // 1.5 is the engine's old constant, kept by units without a row.
+    float shotTilesPerTick = 1.5f;
 
     // HP-threshold transform (Cannon Cart: at <= 50% hp it grounds itself and
     // self-destructs after a fixed lifespan). The fraction is of

@@ -1982,6 +1982,78 @@ TEST_CASE("Load times of release 15.535.13 and the notes after it", "[card_regis
     REQUIRE(LoadTimes::forName("Hero Ice Golem") == 15);
 }
 
+TEST_CASE("A ranged troop's shot flies at its published speed", "[card_registry][projectile][patch0049]") {
+    // Published speed / 480 tiles a tick (ProjectileSpeeds.h). The shot lands
+    // on update ceil(distance / tiles a tick). At 4 tiles every shot used to
+    // take 3 updates (1.5 tiles a tick).
+    struct Row { int cardId; const char* name; int published; float distance; int updates; };
+    const Row rows[] = {
+        { 6,  "Musketeer",   1000, 4.0f, 2 },    // 2.08 tiles a tick
+        { 20, "Dart Goblin",  800, 4.0f, 3 },    // 1.67
+        { 34, "Ice Wizard",   700, 4.0f, 3 },    // 1.46
+        { 11, "Wizard",       600, 4.0f, 4 },    // 1.25
+        { 44, "Baby Dragon",  500, 3.5f, 4 },    // 1.04 (range 3.5)
+        { 9,  "Bomber",       400, 4.0f, 5 },    // 0.83
+        { 22, "Bowler",       170, 4.0f, 12 },   // 0.35
+        { 79, "Zappies",        0, 4.0f, 3 },    // no published projectile: the old 1.5
+    };
+    for (const Row& r : rows) {
+        INFO(r.name);
+        REQUIRE(ProjectileSpeeds::forName(r.name) == r.published);
+        const float distance = r.distance;
+        const int expected = r.updates;
+        Board board;
+        auto target = std::make_shared<DummyEntity>(900, 5.0f, 5.0f + distance, 100000, 1);
+        spawn(board, target);
+        CardRegistry::getInstance().getCard(r.cardId)->spawnEntity(5.0f, 5.0f, 0, board);
+        board.commitPendingEntities();
+        // The squad member standing on the placement point.
+        std::shared_ptr<CombatEntity> shooter;
+        for (const auto& e : board.getEntities()) {
+            auto c = std::dynamic_pointer_cast<CombatEntity>(e);
+            if (c && c->team == 0 && (!shooter || std::fabs(c->position.x - 5.0f) < std::fabs(shooter->position.x - 5.0f))) shooter = c;
+        }
+        REQUIRE(shooter);
+        shooter->position = { 5.0f, 5.0f };
+        advancePastDeploy(shooter, board);
+        std::shared_ptr<Projectile> shot;
+        for (int i = 0; i < 60 && !shot; ++i) {
+            shooter->update(board);
+            board.commitPendingEntities();
+            for (const auto& e : board.getEntities()) {
+                if (auto p = std::dynamic_pointer_cast<Projectile>(e)) shot = p;
+            }
+        }
+        REQUIRE(shot);
+        REQUIRE(target->hp == 100000);
+        int updates = 0;
+        while (target->hp == 100000 && updates < 40) { shot->update(board); ++updates; }
+        REQUIRE(updates == expected);
+    }
+}
+
+TEST_CASE("Projectile speeds: Evolutions and Heroes inherit, every row names a registered card",
+          "[card_registry][projectile][patch0049]") {
+    auto& reg = CardRegistry::getInstance();
+    REQUIRE(ProjectileSpeeds::forName(reg.getCard(140)->name) == 1000);   // Evolved Musketeer
+    REQUIRE(ProjectileSpeeds::forName(reg.getCard(168)->name) == 1000);   // Hero Musketeer
+    REQUIRE(ProjectileSpeeds::forName("Hero Bowler") == 170);
+    REQUIRE(ProjectileSpeeds::forName("Knight") == 0);
+    REQUIRE(ProjectileSpeeds::tilesPerTick("Knight") == ProjectileSpeeds::DEFAULT_TILES_PER_TICK);
+    REQUIRE(ProjectileSpeeds::tilesPerTick("Princess") == Catch::Approx(1.25f));   // as the Princess Tower's arrow
+    int count = 0;
+    const ProjectileSpeeds::Row* rows = ProjectileSpeeds::table(count);
+    for (int i = 0; i < count; ++i) {
+        INFO(rows[i].name);
+        bool found = false;
+        for (int id = 0; id < 400 && !found; ++id) {
+            const auto* c = reg.getCard(id);
+            found = c && c->name == rows[i].name;
+        }
+        REQUIRE(found);
+    }
+}
+
 TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]") {
     Board board;
     auto building = std::make_shared<Building>(999, 5.0f, 5.5f, 100000, 1, 'C', 5.0f, 10, 10);
