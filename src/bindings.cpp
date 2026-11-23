@@ -89,6 +89,13 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     // engine pushes with (patch 0058); a building is never pushed and reports 0.
     d["published_mass"] = BodySizes::publishedMass(s.name, s.id);
     d["body_mass"] = s.archetype == Archetype::DefensiveBuilding ? 0.0f : BodySizes::mass(s.name, s.id);
+    // Published deploy stagger of a played multi-unit card (SummonDelays.h,
+    // patch 0059), in ticks between units; 0 = none.
+    {
+        const SummonDelays::Row* stagger = SummonDelays::find(s.name);
+        d["summon_deploy_delay_ticks"] = stagger ? stagger->ticks : 0;
+        d["summon_deploy_delay_second_ticks"] = stagger ? stagger->secondTicks : 0;
+    }
     d["deploy_ticks"] = s.deployTicks;
     d["count"] = static_cast<int>(s.spawnOffsets.size());
     py::list offs;

@@ -477,7 +477,7 @@ private:
         def.symbol = stats.symbol;
         def.isFlying = stats.isFlying;
         def.spawnEntity = [stats](float x, float y, int team, Board& board) {
-            CardFactories::spawn(stats, x, y, team, board);
+            CardFactories::spawn(stats, x, y, team, board, true);
         };
         def.stats = std::make_shared<const CardStats>(stats);
         cards[stats.id] = std::move(def);
@@ -513,13 +513,13 @@ private:
         def.symbol = baseStats.symbol;
         def.isFlying = baseStats.isFlying;
         def.spawnEntity = [baseStats](float x, float y, int team, Board& board) {
-            CardFactories::spawn(baseStats, x, y, team, board);
+            CardFactories::spawn(baseStats, x, y, team, board, true);
         };
         def.isEvolution = true;
         def.evolutionCycleThreshold = cycleThreshold;
         def.evolvedUsesGranted = evolvedUses;
         def.spawnEvolvedEntity = [evolvedStats](float x, float y, int team, Board& board) {
-            CardFactories::spawn(evolvedStats, x, y, team, board);
+            CardFactories::spawn(evolvedStats, x, y, team, board, true);
         };
         def.stats = std::make_shared<const CardStats>(baseStats);
         def.evolvedStats = std::make_shared<const CardStats>(evolvedStats);

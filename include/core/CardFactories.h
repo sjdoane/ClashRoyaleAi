@@ -5,6 +5,7 @@
 #include "ProjectileSpeeds.h"
 #include "BodySizes.h"
 #include "Pushback.h"
+#include "SummonDelays.h"
 #include "Board.h"
 #include "MeleeTroop.h"
 #include "RangedTroop.h"
@@ -330,7 +331,9 @@ inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board
     board.addEntity(spell);
 }
 
-inline void spawn(const CardStats& stats, float x, float y, int team, Board& board) {
+// `played`: the card itself is being played (set only by the registry's spawn
+// functions); the published deploy stagger applies to nothing else.
+inline void spawn(const CardStats& stats, float x, float y, int team, Board& board, bool played = false) {
     const size_t firstPrimary = board.pendingEntityCount();
     switch (stats.archetype) {
         case Archetype::MeleeSquad:             spawnMeleeSquad(stats, x, y, team, board); break;
@@ -344,8 +347,8 @@ inline void spawn(const CardStats& stats, float x, float y, int team, Board& boa
     // Compound cards (Goblin Giant, Ram Rider, Goblin Machine, Goblin Gang,
     // Rascals): the second, independently targeting unit spawns at the same
     // point.
+    const size_t firstSecondary = board.pendingEntityCount();
     if (stats.secondaryUnit) {
-        const size_t firstSecondary = board.pendingEntityCount();
         spawn(*stats.secondaryUnit, x, y, team, board);
         // Attached secondaries (patch 0046) ride the card's first unit.
         if (stats.secondaryAttached) {
@@ -357,6 +360,23 @@ inline void spawn(const CardStats& stats, float x, float y, int team, Board& boa
                 if (auto rider = std::dynamic_pointer_cast<Troop>(board.getPendingEntity(i))) {
                     rider->rideOn(*carrier, stats.secondaryDropsOnCarrierDeath);
                 }
+            }
+        }
+    }
+    // Published deploy stagger of a played multi-unit card (SummonDelays.h,
+    // patch 0059): unit k of the card deploys k delays after its first, unit
+    // k of a second group (k + 1) second-delays after it.
+    if (const SummonDelays::Row* stagger = played ? SummonDelays::find(stats.name) : nullptr) {
+        int k = 0;
+        for (size_t i = firstPrimary; i < firstSecondary; ++i) {
+            if (auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getPendingEntity(i))) {
+                unit->deployTicksRemaining += (k++) * stagger->ticks;
+            }
+        }
+        k = 1;
+        for (size_t i = firstSecondary; i < board.pendingEntityCount(); ++i) {
+            if (auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getPendingEntity(i))) {
+                unit->deployTicksRemaining += (k++) * stagger->secondTicks;
             }
         }
     }

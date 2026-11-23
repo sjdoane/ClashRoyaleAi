@@ -1571,6 +1571,78 @@ carries an Ice Golem and moves a Golem much less, the lane pair on a tower),
 20/24 / 4/24 of an overlap, hand-built troops halve it). No existing
 expectation moved.
 
+## 2026-11-22: the units of a played card deploy one published delay apart (patch 0059)
+
+**GAMEPLAY-AFFECTING** for every multi-unit card below (none is in
+`DEFAULT_DECK`; most opponents hold one). Every unit of a card had the same
+deploy time, so five Barbarians or six Royal Recruits started to move and to
+wind up on one tick. The game's CARD records carry `SummonDeployDelay`, and two
+of them `SummonDeployDelaySecond` (FirstLight-Zero card_specs.json, release
+15.535.13). New `include/core/SummonDelays.h`, keyed by registry NAME:
+
+| published | cards |
+|---|---|
+| SummonDeployDelay 100 | Archers, Minions, Barbarians, Spear Goblins, Minion Horde, Guards, Three Musketeers, Goblin Gang (its three Goblins), Elite Barbarians, Royal Recruits, Bats, Zappies, Wall Breakers, Royal Hogs, Skeleton Dragons |
+| SummonDeployDelay 200 | Goblins |
+| SummonDeployDelaySecond 100 | Rascals (the two Girls), Goblinstein (the Doctor) |
+| no such field | Skeletons, Skeleton Army, every one-unit card. Fire Spirit carries 100 with SummonNumber 1, which changes nothing |
+
+Unit k of the card (0, 1, 2, ...) has k delays added to its deploy time; unit
+k of a second group has (k + 1) second-delays added. Barbarians are ready 1.0,
+1.1, 1.2, 1.3, 1.4 s after the play, Goblins 1.0, 1.2, 1.4, 1.6 s, Royal
+Recruits 1.0 to 1.5 s, Rascals' Boy 1.0 and the Girls 1.1 and 1.2 s.
+
+- **The reading is inferred**: the field names are all that is published. That
+  the delay is between consecutive units, and that the first unit keeps the
+  plain deploy time, is the plain reading of "summon deploy delay"; a delay
+  published for Goblinstein's single Doctor has no other meaning than "after
+  the first body". No recording here shows a multi-unit card closely enough to
+  check it (our deck has none; an opponent's squad is not tracked per unit).
+- **Which unit is first is not published.** The order is the registry's
+  `spawnOffsets` order (for most squads front or left first). For a squad
+  walking up a lane this decides which body arrives first by 0.1 s a unit.
+- Goblin Gang publishes no second delay: its Spear Goblins all keep the plain
+  deploy time (they land with the first Goblin).
+- The Evolution records that are resolved in the pack (Archers, Barbarians,
+  Minion Horde, Royal Recruits, Bats, Wall Breakers, Royal Hogs) carry the same
+  100; an Evolution shares the name and with it the row. Evolved Elite
+  Barbarians have no record (`AngryBarbarians_EV1` is NotInUse) and take the
+  plain card's. "Hero X" with no row is X (Hero Goblins: assumed, its record
+  was not read).
+- **Only a card that is played.** `CardFactories::spawn` has a `played` flag
+  that only the registry's `spawnEntity` / `spawnEvolvedEntity` set (so
+  `playCard` and `inject` are staggered alike). The Goblins of a Goblin Barrel
+  or a hut, the Barbarians of a Battle Ram, the Bats of a Night Witch and
+  whatever an ability summons go through the same factory without it and land
+  together: they have no card record of this kind. A first version keyed this
+  on "registry id >= 0"; a child `CardStats` built without an id has id 0, so
+  that would have been wrong silently.
+- `inject(..., deploy_ticks >= 0)` still sets every unit's deploy time outright
+  and so removes the stagger (test hook).
+- The unit records carry a separate `DeployDelay` (400 ms for most units, 300
+  for Musketeer, Hunter and Fisherman). What it is was not established; it is
+  NOT used.
+- `get_card_stats(id)["base"]` reports `summon_deploy_delay_ticks` and
+  `summon_deploy_delay_second_ticks` (0 = none).
+
+Tests: `python_ai/tests/test_deploy_stagger.py` (every row through the bindings
+and on what is spawned for both teams, Skeletons and the Skeleton Army
+together, the second bodies, Goblin Gang, a card played from the hand, a Goblin
+Barrel's Goblins and a Battle Ram's Barbarians not staggered, the inject
+override), `tests/core/test_card_registry.cpp` `[patch0059]` (table, the
+sequences, Evolution and Hero, the same stats spawned without the flag).
+
+One existing expectation moved:
+
+- `tests/core/test_cards_0015.cpp` `[patch0055]` (Evolved Elite Barbarians'
+  Rage): it read "440 lost on one update: one spear each" and "the first
+  barbarian is enraged for exactly 20 updates". Both encoded the two
+  barbarians deploying on the same tick, not a published or recorded value:
+  the spears are now one update apart, 220 each, and the second throw
+  restarts the Rage of both. The published values are still pinned: each
+  spear 220, two spears and no third within 5 s, and both barbarians enraged
+  for exactly 20 updates from the last throw (the 8 Sep 2026 note's 2 s).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

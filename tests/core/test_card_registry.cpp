@@ -2538,3 +2538,112 @@ TEST_CASE("Two touching troops give way by the other's share of their published 
         REQUIRE(b->position.x == Catch::Approx(5.6f).margin(1e-3));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Patch 0059: the published deploy stagger of the multi-unit cards
+// (SummonDeployDelay / SummonDeployDelaySecond of the card records,
+// FirstLight-Zero card_specs.json, release 15.535.13; core/SummonDelays.h).
+// ---------------------------------------------------------------------------
+namespace {
+// Deploy ticks of what `spawnFn` puts on a bare board, in spawn order.
+template <typename SpawnFn>
+std::vector<int> deployTicksOf(SpawnFn&& spawnFn) {
+    Board board;
+    spawnFn(board);
+    board.commitPendingEntities();
+    std::vector<int> out;
+    for (const auto& e : board.getEntities()) {
+        if (auto c = std::dynamic_pointer_cast<CombatEntity>(e)) out.push_back(c->deployTicksRemaining);
+    }
+    return out;
+}
+std::vector<int> playedDeployTicks(int cardId, bool evolved = false, int team = 0) {
+    const CardDefinition* def = CardRegistry::getInstance().getCard(cardId);
+    REQUIRE(def != nullptr);
+    return deployTicksOf([&](Board& board) {
+        if (evolved) def->spawnEvolvedEntity(9.0f, 10.0f, team, board);
+        else def->spawnEntity(9.0f, 10.0f, team, board);
+    });
+}
+}  // namespace
+
+TEST_CASE("the units of a played multi-unit card deploy one published delay apart",
+          "[card_registry][deploy][patch0059]") {
+    auto& reg = CardRegistry::getInstance();
+    using V = std::vector<int>;
+
+    // The table: every row is a registered card with more than one body, and
+    // the delays are the published 100 ms / 200 ms in ticks.
+    for (const auto& row : SummonDelays::ROWS) {
+        INFO(row.name);
+        bool registered = false;
+        for (int id = 0; id <= 200; ++id) {
+            if (const CardDefinition* c = reg.getCard(id)) registered = registered || c->name == row.name;
+        }
+        REQUIRE(registered);
+        REQUIRE((row.ticks > 0) != (row.secondTicks > 0));
+    }
+    REQUIRE(SummonDelays::find("Barbarians")->ticks == 1);
+    REQUIRE(SummonDelays::find("Goblins")->ticks == 2);
+    REQUIRE(SummonDelays::find("Rascals")->secondTicks == 1);
+    REQUIRE(SummonDelays::find("Hero Goblins") == SummonDelays::find("Goblins"));
+    REQUIRE(SummonDelays::find("Skeletons") == nullptr);
+    REQUIRE(SummonDelays::find("Skeleton Army") == nullptr);
+    REQUIRE(SummonDelays::find("Knight") == nullptr);
+    REQUIRE(SummonDelays::find("Goblin Barrel") == nullptr);
+
+    SECTION("100 ms a unit: Barbarians, Elite Barbarians, Royal Recruits, Three Musketeers") {
+        REQUIRE(playedDeployTicks(8) == V{ 10, 11, 12, 13, 14 });
+        REQUIRE(playedDeployTicks(17) == V{ 10, 11 });
+        REQUIRE(playedDeployTicks(77) == V{ 10, 11, 12, 13, 14, 15 });
+        REQUIRE(playedDeployTicks(80) == V{ 10, 11, 12 });
+        // Team 1 the same.
+        REQUIRE(playedDeployTicks(8, false, 1) == V{ 10, 11, 12, 13, 14 });
+    }
+    SECTION("200 ms a unit: Goblins") {
+        REQUIRE(playedDeployTicks(4) == V{ 10, 12, 14, 16 });
+    }
+    SECTION("no published delay: Skeletons and the Skeleton Army land together") {
+        REQUIRE(playedDeployTicks(24) == V{ 10, 10, 10 });
+        REQUIRE(playedDeployTicks(12) == V(15, 10));
+    }
+    SECTION("a second group: Rascals' Girls and Goblinstein's Doctor follow the first body") {
+        REQUIRE(playedDeployTicks(113) == V{ 10, 11, 12 });
+        REQUIRE(playedDeployTicks(121) == V{ 10, 11 });
+        // Goblin Gang publishes no second delay: its Goblins are staggered,
+        // its Spear Goblins are not.
+        REQUIRE(playedDeployTicks(112) == V{ 10, 11, 12, 10, 10, 10 });
+    }
+    SECTION("an Evolution and a Hero share the row of the plain card") {
+        REQUIRE(playedDeployTicks(155, true) == V{ 10, 11, 12, 13, 14 });   // evolved Barbarians
+        REQUIRE(playedDeployTicks(155, false) == V{ 10, 11, 12, 13, 14 });  // their plain form
+        REQUIRE(playedDeployTicks(178, true) == V{ 10, 11 });               // evolved Elite Barbarians
+        REQUIRE(playedDeployTicks(172) == V{ 10, 12, 14, 16 });             // Hero Goblins
+    }
+    SECTION("only a PLAYED card: the same stats spawned by something else land together") {
+        // What a Battle Ram, a Barbarian Hut or a Goblin Barrel does: spawn a
+        // CardStats through CardFactories::spawn without the played flag.
+        const CardStats barbarians = *reg.getCard(8)->stats;
+        REQUIRE(deployTicksOf([&](Board& board) { CardFactories::spawn(barbarians, 9.0f, 10.0f, 0, board); })
+                == V{ 10, 10, 10, 10, 10 });
+        const CardStats goblins = *reg.getCard(4)->stats;
+        REQUIRE(deployTicksOf([&](Board& board) { CardFactories::spawn(goblins, 9.0f, 10.0f, 0, board); })
+                == V{ 10, 10, 10, 10 });
+    }
+    SECTION("a staggered unit starts moving that many ticks after the first") {
+        Board board;
+        reg.getCard(8)->spawnEntity(9.0f, 8.0f, 0, board);
+        board.commitPendingEntities();
+        std::vector<std::shared_ptr<CombatEntity>> barbs;
+        for (const auto& e : board.getEntities()) barbs.push_back(std::dynamic_pointer_cast<CombatEntity>(e));
+        REQUIRE(barbs.size() == 5);
+        std::vector<int> deployedAt(5, -1);
+        for (int t = 1; t <= 20; ++t) {
+            for (auto& b : barbs) b->update(board);
+            for (size_t i = 0; i < barbs.size(); ++i) {
+                if (deployedAt[i] < 0 && barbs[i]->deployTicksRemaining == 0) deployedAt[i] = t;
+            }
+        }
+        REQUIRE(deployedAt == V{ 10, 11, 12, 13, 14 });
+    }
+}

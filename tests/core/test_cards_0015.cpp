@@ -200,14 +200,35 @@ TEST_CASE("the registered Evolved Elite Barbarians are enraged for 2 s by a spea
     REQUIRE(barbs.size() == 2);
     // One ground troop in the 3-4.5 band of both, too tough to die, harmless.
     auto foe = m.dummy(9.0f, 12.0f, 1, 100000);
-    int enragedUpdates = 0, hpAfterThrow = -1;
+    // Until patch 0059 both barbarians finished deploying on one update and
+    // threw on it. The second now deploys the published 100 ms after the first
+    // (SummonDeployDelay), so its spear is one update later. Each spear is
+    // still 220, and the Rage still lasts exactly 20 updates from the throw
+    // that (re)started it.
+    std::vector<int> throwTicks, drops;
+    int enragedAfterLastThrow[2] = { 0, 0 };
+    int lastHp = foe->hp;
     for (int t = 1; t <= 45; ++t) {
         m.step();
-        if (hpAfterThrow < 0 && foe->hp < 100000) hpAfterThrow = foe->hp;
-        if (barbs[0]->buffTicksRemaining > 0) enragedUpdates++;
+        if (foe->hp < lastHp) {
+            drops.push_back(lastHp - foe->hp);
+            throwTicks.push_back(t);
+        }
+        lastHp = foe->hp;
+        if (throwTicks.size() >= 2) {
+            for (int i = 0; i < 2; ++i)
+                if (barbs[i]->buffTicksRemaining > 0) enragedAfterLastThrow[i]++;
+        }
     }
-    REQUIRE(hpAfterThrow == 100000 - 2 * 220);      // one spear each, on the same update; the next is 5 s away
-    REQUIRE(enragedUpdates == 20);
+    // One spear each; the next is 5 s away. What follows is the pair's
+    // enraged melee on the dummy, not a spear.
+    REQUIRE(drops.size() >= 2);
+    REQUIRE(drops[0] == 220);
+    REQUIRE(drops[1] == 220);
+    REQUIRE(throwTicks[1] - throwTicks[0] == 1);
+    REQUIRE(std::count(drops.begin(), drops.end(), 220) == 2);
+    REQUIRE(enragedAfterLastThrow[0] == 20);
+    REQUIRE(enragedAfterLastThrow[1] == 20);
 }
 
 TEST_CASE("an evolved Elite Barbarian recharges the spear every 5 s", "[evolution][evo_elite_barbarians][patch0015]") {
