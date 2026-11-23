@@ -206,9 +206,15 @@ TEST_CASE("A stun breaks the target lock too, unlike a plain closer enemy showin
     auto closer = std::make_shared<DummyEntity>(3, 0.0f, 0.1f, 1000, 1, 'C');
     spawn(board, closer);
 
-    // As above, but stunned first. slowFactor 1.0 only marks the tick as
-    // frozen.
-    attacker->applyFreeze(1, 1.0f);
+    // A slow is not a stun: the lock holds (patch 0050).
+    attacker->applyFreeze(1, 0.5f);
+    attacker->update(board);
+    REQUIRE(attacker->lastTargetId == original->id);
+
+    // As above, but stunned first: one stunned tick (no attack), then it
+    // resumes on whatever is closest.
+    attacker->applyFreeze(1, 0.0f);
+    attacker->update(board);
     attacker->update(board);
 
     REQUIRE(attacker->lastTargetId == closer->id); // the stun broke the lock: switched to the closer enemy
@@ -534,9 +540,18 @@ TEST_CASE("Ramping damage resets when the attacker is frozen, even mid-ramp", "[
 
     for (int i = 0; i < 40; ++i) attacker->update(board); // fully ramped
 
-    attacker->applyFreeze(1, 1.0f); // duration matters here, not slow strength
+    // A slow is not a stun and resets nothing (patch 0050).
+    attacker->applyFreeze(1, 0.5f);
     int hpBefore = enemy->hp;
-    attacker->update(board); // spent frozen -> ramp resets even though the target didn't change
+    attacker->update(board);
+    attacker->update(board);
+    REQUIRE(hpBefore - enemy->hp > 2 * 50); // still ramped
+
+    attacker->applyFreeze(1, 0.0f); // a stun, however short
+    hpBefore = enemy->hp;
+    attacker->update(board); // spent stunned: no hit, and the ramp resets though the target didn't change
+    REQUIRE(hpBefore == enemy->hp);
+    attacker->update(board);
 
     REQUIRE(hpBefore - enemy->hp == 50); // back to stage 1, not full damage
 }
@@ -611,9 +626,10 @@ TEST_CASE("A grace period does not delay the reset caused by a stun -- freeze st
 
     for (int i = 0; i < 41; ++i) attacker->update(board); // fully ramped
 
-    attacker->applyFreeze(1, 1.0f);
+    attacker->applyFreeze(1, 0.0f);
     int hpBefore = enemy->hp;
-    attacker->update(board); // spent frozen -> resets even though a grace period is configured
+    attacker->update(board); // spent stunned -> resets even though a grace period is configured
+    attacker->update(board);
 
     REQUIRE(hpBefore - enemy->hp == 50); // back to stage 1, not the preserved full stage
 }
@@ -1672,16 +1688,36 @@ TEST_CASE("resetCooldownOnFreeze fully restarts the attack cooldown instead of j
     attacker->update(board); // lands the attack, currentCooldown -> 10
     attacker->update(board); // decrements to 9 (unfrozen tick)
 
-    attacker->applyFreeze(5, 0.5f);
+    attacker->applyFreeze(5, 0.0f);
     REQUIRE(attacker->attackCount == 1); // hasn't fired again yet
 
-    // The cooldown resets to the full 10 rather than staying at 9: five frozen
-    // ticks drain 0.5 each (10 -> 7.5), then normal ticks drain 1, so the next
-    // attack takes exactly 13 calls, against 12 without the reset.
-    for (int i = 0; i < 12; ++i) attacker->update(board);
+    // The cooldown resets to the full 10 rather than staying at 9: five
+    // stunned ticks hold it, then normal ticks drain 1, so the next attack
+    // takes exactly 15 calls, against 14 without the reset.
+    for (int i = 0; i < 14; ++i) attacker->update(board);
     REQUIRE(attacker->attackCount == 1); // not ready yet; would be without the reset
     attacker->update(board);
-    REQUIRE(attacker->attackCount == 2); // ready on the 13th
+    REQUIRE(attacker->attackCount == 2); // ready on the 15th
+}
+
+TEST_CASE("resetCooldownOnFreeze is for stuns and freezes: a slow only slows", "[combat_entity][freeze][patch0050]") {
+    Board board;
+    auto target = std::make_shared<DummyEntity>(1, 0.0f, 1.0f, 10000, 1);
+    spawn(board, target);
+
+    auto attacker = std::make_shared<StationaryCombatant>(2, 0.0f, 0.0f, 100, 0, 5.0f, 50, 10);
+    attacker->resetCooldownOnFreeze = true;
+
+    attacker->update(board); // lands the attack, currentCooldown -> 10
+    attacker->update(board); // 9
+
+    // Five slowed ticks drain 0.5 each (9 -> 6.5), then 7 normal ticks: the
+    // 12th call, as for any other unit.
+    attacker->applyFreeze(5, 0.5f);
+    for (int i = 0; i < 11; ++i) attacker->update(board);
+    REQUIRE(attacker->attackCount == 1);
+    attacker->update(board);
+    REQUIRE(attacker->attackCount == 2);
 }
 
 // ---------------- recoil on attack (Firecracker) ----------------

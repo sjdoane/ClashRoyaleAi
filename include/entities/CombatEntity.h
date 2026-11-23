@@ -673,7 +673,8 @@ public:
             }
             refreshFreezeView();
         }
-        if (resetCooldownOnFreeze) {
+        // Only a stun or a freeze resets (Sparky); a slow does not.
+        if (resetCooldownOnFreeze && slowFactor <= 0.0f) {
             currentCooldown = static_cast<float>(attackCooldown);
         }
     }
@@ -868,7 +869,8 @@ public:
         // trusted only while the locked target is within attack range; out of
         // range (still approaching, knocked back, pulled away) there is no
         // lock, and findTarget() re-scans every tick for whatever is closest in
-        // sight. A stun breaks the lock outright.
+        // sight. A stun or a freeze breaks the lock outright; a slow does not
+        // (patch 0050).
         std::shared_ptr<Entity> target;
         if (forcedTargetTicksRemaining > 0) {
             for (const auto& e : board.getEntities()) {
@@ -876,7 +878,7 @@ public:
             }
         }
         if (!target) {
-            target = wasFrozen ? nullptr : resolveCurrentTarget(board);
+            target = stunned ? nullptr : resolveCurrentTarget(board);
             if (target && position.distanceTo(target->position) > effectiveRangeTo(target)) {
                 target = nullptr;
             }
@@ -885,12 +887,19 @@ public:
             }
         }
 
-        // A stun, or no target at all, cancels a wind-up.
-        if (!target || stunned) windupTargetId = -1;
+        // No target at all cancels a wind-up. A stun does not: it PAUSES the
+        // attack (the wind-up is held below, like the cooldown) and the unit
+        // carries on where it stopped, on whatever it targets when it resumes.
+        // Official, 13 March 2017: "All stun/freeze effects will now pause the
+        // target's attack, causing them to retarget when they resume.
+        // Exceptions are Sparky, Inferno Tower and Inferno Dragon, which will
+        // still be reset by stun/freeze effects." (patch 0050)
+        if (!target) windupTargetId = -1;
 
         if (target) {
-            if (wasFrozen) {
-                // A stun resets unconditionally, grace period or not.
+            if (stunned) {
+                // A stun resets the ramp unconditionally, grace period or
+                // not. A slow is not a stun and resets nothing.
                 currentTargetId = target->id;
                 ticksOnTarget = 0;
                 ticksSinceLastHit = 0;
@@ -1050,8 +1059,8 @@ public:
                 if (!windowRooted) moveTowards(board, LanePath::approachPoint(board, team, position, target));
                 if (chargeThreshold > 0.0f) chargeProgress += beforeMove.distanceTo(position);
             }
-        } else if (wasFrozen || rampGracePeriodTicks <= 0 || ticksSinceLastHit >= rampGracePeriodTicks) {
-            // No target: reset fully if frozen this tick, with no grace period
+        } else if (stunned || rampGracePeriodTicks <= 0 || ticksSinceLastHit >= rampGracePeriodTicks) {
+            // No target: reset fully if stunned this tick, with no grace period
             // configured, or once it has run out.
             currentTargetId = -1;
             ticksOnTarget = 0;

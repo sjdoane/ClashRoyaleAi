@@ -2054,7 +2054,7 @@ TEST_CASE("Projectile speeds: Evolutions and Heroes inherit, every row names a r
     }
 }
 
-TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]") {
+TEST_CASE("A stun during the wind-up pauses it", "[card_registry][load_time][patch0050]") {
     Board board;
     auto building = std::make_shared<Building>(999, 5.0f, 5.5f, 100000, 1, 'C', 5.0f, 10, 10);
     spawn(board, building);
@@ -2066,8 +2066,29 @@ TEST_CASE("A stun during the wind-up restarts it", "[card_registry][load_time]")
     for (int i = 0; i < 4; ++i) hog->update(board); // 4 of the 6 wind-up ticks
     REQUIRE(building->hp == 100000);
     hog->applyFreeze(3, 0.0f);
-    // 3 stunned ticks, then the full 6-tick wind-up again, then the hit.
-    REQUIRE(updatesUntilHit(hog, building, board) == 3 + 6 + 1);
+    // 3 stunned ticks, then the 2 wind-up ticks that were left, then the hit.
+    // Official (13 March 2017): stun and freeze effects "pause the target's
+    // attack"; before patch 0050 the wind-up started again (3 + 6 + 1).
+    REQUIRE(updatesUntilHit(hog, building, board) == 3 + 2 + 1);
+}
+
+TEST_CASE("A stun in the middle of a fight costs its own length and nothing more", "[card_registry][load_time][patch0050]") {
+    // Knight: hit speed 1.2 s, first hit 0.5 s.
+    Board board;
+    auto dummy = std::make_shared<DummyEntity>(901, 5.0f, 5.6f, 100000, 1);
+    spawn(board, dummy);
+    CardRegistry::getInstance().getCard(0)->spawnEntity(5.0f, 5.0f, 0, board);
+    board.commitPendingEntities();
+    auto knight = std::dynamic_pointer_cast<CombatEntity>(board.getEntities().back());
+    advancePastDeploy(knight, board);
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 6);
+    for (int i = 0; i < 9; ++i) knight->update(board);   // 0.3 s of the cycle left
+    knight->applyFreeze(5, 0.0f);
+    // 5 stunned ticks, then the 3 that were left. Before patch 0050 the stun
+    // also restarted the 0.5 s first-hit wind-up (5 + 5 + 1).
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 5 + 3);
+    // And the rhythm carries on.
+    REQUIRE(updatesUntilHit(knight, dummy, board) == 12);
 }
 
 TEST_CASE("Switching between targets in range keeps the hit-speed rhythm; a new engagement winds up again",

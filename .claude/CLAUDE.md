@@ -1079,6 +1079,48 @@ the new flight differ by one or two frames of an 11 fps recording.
   `unit_proj_speed` rows are now compared like every other field) and
   `tests/core/test_card_registry.cpp` `[patch0049]`.
 
+## 2026-11-22: a stun pauses the attack; a slow is not a stun (patch 0050)
+
+**GAMEPLAY-AFFECTING.** The official rule (Supercell, balance notes of 13
+March 2017, "a fix and clarification of the stun/freeze mechanics"): *"All
+stun/freeze effects will now pause the target's attack, causing them to
+retarget when they resume. Exceptions are Sparky, Inferno Tower and Inferno
+Dragon, which will still be reset by stun/freeze effects."* The fan wiki's
+Electro Wizard page says the same of the current game (his zap "does not
+reset non-charge attacks but rather freezes the attack frame in place").
+
+`CombatEntity::update` differed in two ways:
+
+1. **A stun restarted the first-hit wind-up** (`windupTargetId = -1` on every
+   stunned tick; my own unsourced rule from patch 0034). So a stun cost its
+   length plus up to the whole first-hit time again: a Princess Tower (0.8 s
+   wind-up, 0.8 s hit speed) lost the stun plus 0.8 s, 0.4 s more than the
+   pause on average; a Musketeer 0.25 s more, a Hog Rider up to 0.6 s. Now the
+   wind-up is held like the cooldown and the unit carries on where it stopped,
+   on whatever it targets when it resumes.
+2. **A slow counted as a stun** wherever the code asked `wasFrozen` (any
+   freeze slot, slows included): a slowed unit dropped its target lock and
+   re-scanned every tick, a slowed Inferno never ramped, a slowed Sparky lost
+   her charge (`resetCooldownOnFreeze`). The comments already said "a stun";
+   two upstream tests pinned the opposite with a factor-1.0 "freeze". Now only
+   a full stop (factor 0: Zap, the spirits, Freeze) breaks the lock, resets
+   the ramp and resets Sparky. A slow slows the cooldown, the wind-up and
+   movement and nothing else.
+
+Unchanged: a stun still holds the cooldown, stops movement and resets a damage
+ramp at once (grace period or not). A charge (Prince, Battle Ram) is still not
+reset by a stun; the real game resets it, not changed here.
+
+Evidence level: the official sentence is from 2017 and no later official text
+on the mechanic was found; the wiki wording agrees. Nothing published says a
+slow retargets or resets, and the Ice Wizard is not among the cards any source
+lists as an Inferno reset.
+
+- Tests: `tests/core/test_card_registry.cpp` (`[patch0050]`: a stun during the
+  wind-up pauses it; a stun mid-fight costs its own length), and
+  `tests/entities/test_combat_entity.cpp` (lock, ramp and Sparky reset on a
+  stun but not on a slow).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
