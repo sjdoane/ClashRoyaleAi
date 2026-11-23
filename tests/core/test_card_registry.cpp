@@ -720,8 +720,8 @@ TEST_CASE("Ice Wizard is genuinely ranged: freeze lands with the arrow, not when
     auto projectile = std::dynamic_pointer_cast<Projectile>(board.getEntities().back());
     REQUIRE(projectile != nullptr);
 
-    projectile->update(board); // projectile speed 1.5 >= distance 1.0: lands this tick
-    REQUIRE(enemy->freezeTicks == 30);
+    projectile->update(board); // projectile speed 1.46 >= distance 1.0: lands this tick
+    REQUIRE(enemy->freezeTicks == 25); // published IceWizardSlowDown 2500 ms (patch 0051)
     REQUIRE(enemy->freezeSlow == Catch::Approx(0.65f));
 }
 
@@ -884,8 +884,30 @@ TEST_CASE("Giant Snowball deals damage and applies a partial slow via spellOnHit
     while (spell->isAlive()) spell->update(board);
 
     REQUIRE(enemy->hp == 821); // 1000 - 179
-    REQUIRE(enemy->freezeTicks == 15);
-    REQUIRE(enemy->freezeSlow == Catch::Approx(0.5f));
+    // Published: TargetBuff IceWizardSlowDown for 3000 ms, the Ice Wizard's own
+    // slow (35 %). It was 1.5 s at 50 % (patch 0051).
+    REQUIRE(enemy->freezeTicks == 30);
+    REQUIRE(enemy->freezeSlow == Catch::Approx(0.65f));
+}
+
+TEST_CASE("Zap and Lightning stun for 0.5 s", "[card_registry][spell_on_hit][patch0051]") {
+    // Published: Zap's area effect and Lightning's bolt carry ZapFreeze for
+    // 500 ms. Neither stunned at all before patch 0051.
+    for (int cardId : { 29, 31, 124 }) {
+        INFO(cardId);
+        Board board;
+        auto enemy = std::make_shared<StationaryCombatant>(1, 5.0f, 6.0f, 100000, 1, 5.0f, 10, 10);
+        spawn(board, enemy);
+        CardRegistry::getInstance().getCard(cardId)->spawnEntity(5.0f, 5.0f, 0, board);
+        board.commitPendingEntities();
+        auto spell = std::dynamic_pointer_cast<AreaSpell>(board.getEntities().back());
+        REQUIRE(spell != nullptr);
+        int updates = 0;
+        while (spell->isAlive() && enemy->hp == 100000 && updates++ < 100) spell->update(board);
+        REQUIRE(enemy->hp < 100000);
+        REQUIRE(enemy->freezeTicks == 5);
+        REQUIRE(enemy->freezeSlow == Catch::Approx(0.0f));
+    }
 }
 
 TEST_CASE("Battle Ram releases 2 Barbarians on death, reusing the Barbarians card's own sourced stats", "[card_registry][death]") {

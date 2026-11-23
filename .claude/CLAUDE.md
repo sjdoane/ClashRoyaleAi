@@ -1121,6 +1121,36 @@ lists as an Inferno reset.
   `tests/entities/test_combat_entity.cpp` (lock, ramp and Sparky reset on a
   stun but not on a slow).
 
+## 2026-11-22: stun and slow durations from the published buff times (patch 0051)
+
+**GAMEPLAY-AFFECTING.** The game data (FirstLight-Zero card_specs.json /
+projectiles.json, release 15.535.13) names the buff each card applies and its
+time. Compared with every `FreezeOnHit` in the registry:
+
+| card | published | engine before | now |
+|---|---|---|---|
+| Zap (and its Evolution) | ZapFreeze 500 ms | **no stun** | 5 ticks, full stop |
+| Lightning | ZapFreeze 500 ms on the bolt | **no stun** | 5 ticks, full stop |
+| Electro Spirit | ZapFreeze 500 ms | 8 ticks | 5 |
+| Zappies | ZapFreeze 500 ms | 3 ticks | 5 |
+| Ice Wizard, Hero Ice Wizard | IceWizardSlowDown 2500 ms | 30 ticks at 0.65 | 25 at 0.65 |
+| Giant Snowball (and its Evolution's base form) | IceWizardSlowDown 3000 ms | 15 ticks at 0.5 | 30 at 0.65 |
+| Electro Wizard, Electro Dragon, Ice Spirit, Freeze (3.5 s, note of 8 Sep), Ice Golem (2.5 s, note of 8 Sep) | | already right | |
+
+- The table gives buff names and times, not strengths. The Snowball's 0.65 is
+  the Ice Wizard's, because the table gives both the same buff
+  (`IceWizardSlowDown`); the Ice Wizard's own 35 % is the wiki value the
+  registry already had.
+- Not changed, not published in the extract: the Ice Golem's slow strength
+  (0.70 here; its buff `FreezeIceGolemite` has no record), Earthquake's
+  (`Earthquake` buff, 1000 ms refreshed every 0.1 s for 3 s; here a 3 s slow
+  of attack and movement per wave), the evolved Snowball's 4 s at 0.7, the
+  Electro Giant's reflected ZapFreeze (a periodic area stun stands in).
+- With patch 0050 a Zap on a Princess Tower costs it 0.5 s of arrows and a
+  retarget, nothing more.
+- Tests: `python_ai/tests/test_published_stun_and_slow_durations.py`,
+  `tests/core/test_card_registry.cpp` (`[patch0051]`).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

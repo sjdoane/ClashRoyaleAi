@@ -634,7 +634,7 @@ private:
         // Ice Wizard fires a projectile; the slow lands on arrival.
         add(troop(34, "Ice Wizard", 3.0f, Archetype::RangedSquad, 689, SPEED_MEDIUM, 5.5f, 90, 17, 'i')
             .withTargetsAir()
-            .withOnHit(std::make_shared<FreezeOnHit>(30, 0.65f))
+            .withOnHit(std::make_shared<FreezeOnHit>(25, 0.65f) /* published: IceWizardSlowDown 2500 ms (was 30 ticks) */)
             .withSplash(1.5f) /* audit 0003: wiki Ice Wizard, level 11 */);
 
         // Executioner's axe hits on arrival and again 1.5 s later on the
@@ -732,11 +732,15 @@ private:
             .withKnockback(1.0f)
             // audit 0003: wiki Fireball, level 11; Crown Tower damage: CrownTowerDamage.h
             .withThrownFromKingTower(600));
-        add(spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z') /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */);
+        add(spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z')
+            .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
+            /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */);
         add(spell(30, "Rocket", 6.0f, 2.0f, 1485, 15, 'r')
             .withKnockback(1.0f) /* audit 0003: wiki Rocket, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(350));
-        add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j') /* audit 0003: wiki Lightning, level 11; Crown Tower damage: CrownTowerDamage.h */);
+        add(spell(31, "Lightning", 6.0f, 3.5f, 1057, 5, 'j')
+            .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
+            /* audit 0003: wiki Lightning, level 11; Crown Tower damage: CrownTowerDamage.h */);
         // Poison: 92 damage every second for 8 s; whoever stands in it takes
         // each pulse. A Crown Tower takes 21 per pulse (168 in all: official
         // June 2026 notes, fixed in game on 26 Aug), and enemy troops inside
@@ -940,7 +944,7 @@ private:
         add(troop(75, "Electro Spirit", 1.0f, Archetype::RangedSquad, 215, SPEED_VERY_FAST, 2.5f, 99, 10, '>')
             .withTargetsAir()
             .withSplitTargets(2)
-            .withOnHit(std::make_shared<FreezeOnHit>(8, 0.0f))
+            .withOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms (was 8 ticks) */
             .withDieAfterFirstHit());
 
         // === Swarms (expansion) ===
@@ -958,7 +962,7 @@ private:
         add(troop(79, "Zappies", 4.0f, Archetype::RangedSquad, 529, SPEED_MEDIUM, 4.5f, 117, 23, '[')
             .withOffsets({ {0.0f, 0.0f}, {0.6f, 0.0f}, {-0.6f, 0.0f} })
             .withTargetsAir()
-            .withOnHit(std::make_shared<FreezeOnHit>(3, 0.0f)).withSightRange(5.0f) /* audit 0003: wiki Zappies, level 11 */);
+            .withOnHit(std::make_shared<FreezeOnHit>(5, 0.0f) /* published: ZapFreeze 500 ms (was 3 ticks) */).withSightRange(5.0f) /* audit 0003: wiki Zappies, level 11 */);
         // withSightRange(6.0f), like the single Musketeer (id 6): three of her,
         // with attackRange 6.0.
         add(troop(80, "Three Musketeers", 9.0f, Archetype::RangedSquad, 906, SPEED_MEDIUM, 6.0f, 204, 13, ']')
@@ -1080,7 +1084,7 @@ private:
 
         // === Spells (expansion) ===
         add(spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
-            .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
+            .withSpellOnHit(std::make_shared<FreezeOnHit>(30, 0.65f) /* published: IceWizardSlowDown 3000 ms, the Ice Wizard's own slow (was 15 ticks at 0.5) */)
             .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
             .withThrownFromKingTower(800));
         // Barbarian Barrel: rolls 4.5 tiles at width 2.6 (published), and its
@@ -1265,8 +1269,12 @@ private:
         // Zap ("Triple Shock"): three zaps instead of one. The growing radius
         // between zaps is not modelled; the 3-tick gap is not sourced.
         addEvolution(124,
-            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z') /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */,
-            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withRepeats(3, 3) /* audit 0003: wiki Zap/Evolution, level 11; Crown Tower damage: CrownTowerDamage.h */,
+            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z')
+                .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
+                /* audit 0003: wiki Zap, level 11; Crown Tower damage: CrownTowerDamage.h */,
+            spell(29, "Zap", 2.0f, 2.5f, 192, 3, 'Z').withRepeats(3, 3)
+                .withSpellOnHit(std::make_shared<FreezeOnHit>(5, 0.0f)) /* published: ZapFreeze 500 ms */
+                /* audit 0003: wiki Zap/Evolution, level 11; Crown Tower damage: CrownTowerDamage.h */,
             2, 1);
 
         // Skeletons ("Never-ending Horde"): see evolvedSkeletonChildStats.
@@ -1665,7 +1673,7 @@ private:
         // not modelled.
         addEvolution(158,
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
-                .withSpellOnHit(std::make_shared<FreezeOnHit>(15, 0.5f))
+                .withSpellOnHit(std::make_shared<FreezeOnHit>(30, 0.65f) /* published: IceWizardSlowDown 3000 ms, the Ice Wizard's own slow (was 15 ticks at 0.5) */)
                 .withKnockback(1.0f) /* audit 0003: wiki Giant Snowball, level 11; Crown Tower damage: CrownTowerDamage.h */
                 .withThrownFromKingTower(800),
             spell(100, "Giant Snowball", 2.0f, 2.5f, 179, 8, '!')
@@ -1952,7 +1960,7 @@ private:
         // end early when the Snowman dies.
         add(troop(183, "Hero Ice Wizard", 3.0f, Archetype::RangedSquad, 689, SPEED_MEDIUM, 5.5f, 90, 17, 'i')
             .withTargetsAir()
-            .withOnHit(std::make_shared<FreezeOnHit>(30, 0.65f))
+            .withOnHit(std::make_shared<FreezeOnHit>(25, 0.65f) /* published: IceWizardSlowDown 2500 ms (was 30 ticks) */)
             .withSplash(1.5f)
             .withHeroAbility(2.0f, 0, std::make_shared<HeroIceWizardSnowmanEffect>(heroIceWizardSnowmanStats(),
                 5.5f, 2.5f, 46, 50), 1));
