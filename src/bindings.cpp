@@ -530,6 +530,12 @@ PYBIND11_MODULE(clash_royale_env, m) {
         // (ClashEnv::seed).
         .def("seed", &ClashEnv::seed, py::arg("seed"))
         .def("get_elixir_spent", &ClashEnv::getElixirSpent, py::arg("team"))
+        .def("get_ability_activations", &ClashEnv::getAbilityActivations, py::arg("team"),
+             "Champion / Hero abilities `team` has activated this match (the "
+             "engine's count, not the flags raised).")
+        .def("get_ability_elixir_spent", &ClashEnv::getAbilityElixirSpent, py::arg("team"),
+             "Elixir `team` has spent on abilities this match; get_elixir_spent "
+             "counts cards only.")
         // Surviving towers (King and Princesses) for one team; see
         // ClashEnv::getTowersAlive.
         .def("get_towers_alive", &ClashEnv::getTowersAlive, py::arg("team"))

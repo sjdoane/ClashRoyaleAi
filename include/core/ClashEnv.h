@@ -1109,6 +1109,12 @@ public:
         return game.getStatistics().damageDealtByCard(cardId, team);
     }
     float getElixirSpent(int team) const { return game.getStatistics().elixirSpent(team); }
+    // Champion / Hero abilities `team` actually activated this match, and the
+    // elixir they cost (not part of getElixirSpent, which is cards only). The
+    // engine's own count: a raised flag is not an activation when the slot was
+    // not ready or the tick's card play left too little elixir.
+    int getAbilityActivations(int team) const { return game.getStatistics().championAbilityActivations(team); }
+    float getAbilityElixirSpent(int team) const { return game.getStatistics().championAbilityElixirSpent(team); }
 };
 
 // Every registered playable card id. Child units (Golemite, Ram Rider's
