@@ -1311,6 +1311,61 @@ Test: `tests/core/test_cards_0015.cpp` `[patch0055]` (the registered evolved
 pair throws one spear each at a troop in the band and is enraged for exactly
 20 updates).
 
+## 2026-11-22: the Hog 2.6 offence checked end to end, tests only (patch 0056)
+
+No behaviour change. The simulated Hog 2.6 side scores 0.51 crowns a match
+against a real 0.71, so the Hog Rider and its usual support were checked
+against the published table (release 15.535.13) and the two recordings of
+2026-11-20 (`runs/live/20261120-093139`, `20261120-185026`; tower numerals
+read from the saved frames, positions from the detection boxes at about 21
+pixels a row). `python_ai/tests/test_hog_26_offence_timeline.py` pins the
+result.
+
+What agrees:
+
+| | recordings | published | engine |
+|---|---|---|---|
+| landing to first movement | 1.0 s (n=13) | DeployTime 1000 | 10 ticks |
+| first movement to first hit, Hog on the bridge corner (16, 15) | 4.2-4.5 s (n=5) | | 4.2 s (moves tick 11, hits tick 53) |
+| speed on the straight stretch | 2.24-2.36 real tiles/s (n=5) | Speed 120 | 2.65 engine tiles/s over a stretch one row longer (12 rows for the real 11) |
+| hit interval | 1.59, 1.64, 1.69 s | HitSpeed 1600 | 16 ticks |
+| damage a hit | 317 | 317 at level 11 | 317 |
+| river jump | straight diagonal from the placement tile | JumpEnabled | straight line, river ignored |
+| Ice Spirit on a tower | not measurable | Freeze 1100 ms, no tower reduction | arrows 11 ticks late, 110 |
+| Fireball / The Log on a tower | | -75% (159 after the 8 Sep 2026 note) / -87% (35) | 159 / 35 |
+
+A lone Hog against a lone Princess Tower lands 7 hits here (ticks 53 to 149,
+dead at tick 153 after 16 arrows). Neither recording has an unanswered Hog to
+compare with, and the seventh hit has a 0.4 s margin, so the test asks for six.
+
+What does not agree, and is NOT changed:
+
+- **A Hog placed beside an Ice Golem pushes it in the real game.** In
+  `20261120-185026` the Ice Golem went down on (15, 15) and the Hog on
+  (16, 15) 1.06 s later. The Golem (Slow, 0.94 tiles/s) then covered 3.3 rows
+  in 1.8 s with the Hog behind it, stayed about one row ahead of the Hog until
+  row 19.6, and the Hog's first hit came 0.6 s late (7.51 s after the tap
+  against 6.84-7.06). The published bodies explain it: CollisionRadius 600
+  and 700, so two units one tile apart already overlap, and the faster one
+  shoves the slower one along (Mass 4 against 6). The Golem is therefore the
+  first body inside the tower's range and takes the arrows. Here every troop
+  has the one implicit radius 0.4 (`Entity::IMPLICIT_TROOP_RADIUS`), the two
+  never touch, the Hog runs ahead and is shot from its first step: with the
+  Golem played 1.1 s before the Hog the Hog still lands 7 hits and takes all
+  16 arrows, while a Golem that really is ahead (played 3 s before) gives it
+  11 hits. That is the largest gap found on the offence side.
+- Fixing it means published per-card radii for bodies, a push that respects
+  mass, and the same radii in reach (`effectiveRangeTo` and
+  `effectiveSightWith` are range + own radius + target radius, both 0.4
+  today), or melee troops with range 0.5 could not reach a body of radius
+  0.75. Every melee and ranged engagement distance moves with it. Not
+  attempted in this batch.
+- Live play only: a tap takes about 1.5 s to become a landing unit (0.39 s
+  for the gesture, then about 1.1 s before the drop-in animation starts;
+  n=13 Hog placements). The engine and the replays start the 1.0 s deploy at
+  the play. A policy acting live is that much later than the same policy in
+  the simulator.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
