@@ -1643,6 +1643,114 @@ One existing expectation moved:
   spear 220, two spears and no third within 5 s, and both barbarians enraged
   for exactly 20 updates from the last throw (the 8 Sep 2026 note's 2 s).
 
+## 2026-11-22: a bridge is crossed across its width (patch 0060)
+
+**GAMEPLAY-AFFECTING for every match.** `Board::getNextWaypoint` sent every
+walker to the CENTRE of its bridge's mouth (x 2.5 or 14.5) and straight across
+from there, although the deck is two tiles wide. A squad crossed in single file
+(patch 0055 measured the Elite Barbarians 0.8-1.0 tiles apart in a column), a
+unit that was already in the lane stepped sideways to the centre line first,
+and a unit coming from the middle walked half a tile further than it had to.
+
+**EVIDENCE LEVEL: recordings only, four tracks. Nothing published describes the
+path.** Our own troops in `runs/live/20261120-093139` and `20261120-185026`
+(x = placement tile + the column shift of the detection box, good to about 0.4
+of a tile; scratch `cross_live.py`):
+
+| track | recorded x, row by row | centre routing | now |
+|---|---|---|---|
+| Ice Golem from tile (8, 10), left bridge | 4.8, 4.0 before the river; 3.5, 3.4 in it; 3.3, 3.2, 3.2 after | 4.1, 3.1; 2.5, 2.5; 2.6, 2.6, 2.7 | 4.8, 4.0; 3.5, 3.45; 3.35, 3.3, 3.25 |
+| Musketeer from (9, 9), right bridge, two tracks | 12.2, 12.65, 13.05 before; 13.3, 13.5, 13.4 in and after | 12.4, 13.2, 14.0; 14.5 | 12.4, 13.1, 13.5; 13.55, 13.6, 13.65 |
+| Ice Golem placed in the lane on (14, 12) | 13.6-13.7 on every row, flat | 14.0 drifting to 14.5 at the bank | 14.0 on every row |
+| Ice Golem from (15, 13) | 14.8 falling to 14.2 | 15.0 to 14.5 at the bank | 15.0 to 14.8 at the bank, 14.4 four rows on (the recording does not tell the two apart) |
+
+The rule taken from them: **a walker keeps its own straight line to its target
+where that line crosses the deck, and otherwise heads for the nearest point of
+the mouth, the deck's near corner; from there it crosses toward its target and
+stays on the deck.** Which bridge is unchanged (the nearer centre).
+
+- `Board::crossingX(from, to, bankY, bridgeX)`: where the line meets a bank,
+  clamped to the deck. `getNextWaypoint` uses it for the near bank, the far
+  bank and the exit; the three arrival guards (the 2026-08-09, 2026-08-20 and
+  2026-09-24 notes) are kept, each on the new point.
+- `Board::clampToBoard`: a unit that ends a tick in the river beside a deck is
+  put back **the shorter way**, onto the deck's edge or onto the nearer bank.
+  It was always the bank, so a unit shoved a tenth of a tile off the deck was
+  thrown up to a tile forward or back. Within `DECK_EDGE_TOLERANCE` (0.02) of
+  the deck it is always the edge: a unit standing within the arrival epsilon of
+  a corner but just outside the span is sent across, and the old rule would
+  have handed it back to the bank it had just left, for ever (the fourth
+  absorbing state of this function, found by reading before it was built).
+- Hog Rider and everything else that ignores the river never call either and
+  are unchanged. The Hog landing in the lane after its jump (patch 0058) is
+  still not modelled.
+
+What moves:
+
+| | before | now |
+|---|---|---|
+| Ice Golem from (8, 10) reaches the far bank | 11.0 s after landing | 10.3 s |
+| Musketeer from (9, 9) | 9.1 s | 8.6 s |
+| Knight from (16.5, 12), outside the lane | 5.7 s | 5.4 s |
+| Giant placed on the bridge tile (2, 15) | 3.9 s, via x 2.5 | 3.6 s, straight up x 2.0-2.2 |
+| Elite Barbarians from (14.5, 12) at the far bank | both at x 14.5, 0.6 s apart | x 13.97 and 14.63, 0.4 s apart |
+| five Barbarians from (14.5, 12) | x 14.5-14.8, the last 2.9 s after the first | x 13.5-15.35, the last 1.4 s after the first |
+| six Royal Recruits from (8.5, 12) | three through each centre | three along each inner edge (3.4, 13.6-13.75) |
+
+Not known, not decided by the tracks:
+
+- Whether a real body keeps its whole width on the deck (centre no nearer the
+  edge than its radius). The Ice Golem at 3.2-3.5 with a 0.7 body fits "centre
+  on the edge" and, at the limit of the 0.4, "0.7 inside" as well.
+- The Musketeer's approach is 0.2-0.45 to the left of a straight line to the
+  corner on the two rows before the river in both tracks: inside the accuracy,
+  but the same way twice. The real path may bend.
+- **Squads**: no recording shows a squad per unit. That a squad placed abreast
+  crosses abreast, and that units coming from the side queue along the near
+  edge, follow from the rule and are untested.
+- Only our side, two cards, three start tiles. Team 1 is the mirror by
+  construction.
+
+Checked for stalls, because this function has deadlocked three times:
+the corner sweep below; 3,078 lone Knights, Giants and Golems from every 0.1
+of the arena, three rows, both teams, all across within the time a straight
+walk needs; the 3,208 crossings of `[orbit]`; and 772 random-deck, random-play
+matches watched unit by unit before and after (scratch `stall_scan.py`): a
+ground troop stationary for 4 s near the river with nothing in reach, 33
+before, 24 after. The ones traced are fights the scan misreads (spawned units
+with no card id) and troops queued behind a stationary or much heavier
+friendly body, which happens in both builds (bodies do not steer round each
+other; `test_navigation_wedge.cpp`).
+
+Tests: `tests/core/test_board.cpp` `[patch0060]` (a line through the deck is
+kept; the two recorded starts get the near corner; the clamp's shorter way and
+its tolerance; no point around the four corners and along the mouths returns
+itself, 47,600 queries; the 3,078 walkers; squads of Barbarians, Skeleton Army
+and Royal Recruits all cross, and in the lane not in single file),
+`python_ai/tests/test_bridge_crossed_across_its_width.py` (the three recorded
+tracks row by row, pairs and squads abreast, team 1 the mirror, a Knight from
+every half column on both sides).
+
+Existing expectations that moved, and what each had encoded:
+
+- `tests/core/test_board.cpp`, three `getNextWaypoint` cases ("routes
+  below-to-above via the nearest bridge's start edge", "above-to-below",
+  "picks the left bridge when it is nearer"): each expected the bridge's
+  centre x. The engine's single crossing point, not a recorded or published
+  value. Now the near corner (13.5) and the unit's own x (2.0).
+- `tests/core/test_arena_layout.cpp` ("bridges are two tiles wide", "the river
+  mask marks a column passable iff a unit can actually stand there") and
+  `tests/core/test_terminal_renderer.cpp` ("the rendered river row matches what
+  a troop can actually walk on"): their probe for "a unit can stand here" was
+  "the clamp leaves y alone", which encoded a clamp that never moves a unit
+  sideways. It is now "the clamp leaves the position alone". What they pin,
+  the river row `WWBBWWWWWWWWWWBBWW`, is unchanged.
+- `python_ai/tests/test_teacher_combos.py` "the teacher actually executes a
+  planned pair end to end": the staged rollout horizon 70 -> 60. The test
+  stages a utility race between an Ice Golem + Hog pair and a lone Hog and
+  already carried a horizon picked after patch 0034; the Ice Golem placed on
+  (2, 15) now walks straight up the bridge. Neither recorded nor published.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

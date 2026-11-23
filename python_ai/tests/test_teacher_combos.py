@@ -403,13 +403,16 @@ def test_the_teacher_actually_executes_a_planned_pair_end_to_end():
     """
     env = _env()
     _stage_hand(env, 0, [ICE_GOLEM, HOG, CANNON, SKELETONS], 10.0)
-    # 70 ticks. The pair has to win twice: when it is planned, and again when
+    # 60 ticks. The pair has to win twice: when it is planned, and again when
     # the follow-up is re-scored as it falls due. Which horizons do both
-    # depends on how many Hog hits fit in the rollout: with the Hog's first
-    # hit 0.6 s after reaching the tower (LoadTimes.h, patch 0034) a lone Hog
-    # out-scores the pair at 100 ticks and the follow-up loses at 50; at 70
-    # the pair holds, as it did with the 1.0 s wind-up before.
-    t = _teacher(horizon=70)
+    # depends on how many Hog hits fit in the rollout, a race this test only
+    # stages, so the horizon is whatever lets the pair win it: 70 after patch
+    # 0034 (the Hog's first hit 0.6 s after reaching the tower), 60 since
+    # patch 0060, where the Ice Golem placed on (2, 15) walks straight up the
+    # bridge instead of first stepping to its centre line. Measured then: the
+    # pair is planned and kept at 40, 50, 60 and 120 ticks; at 70 and 100 a
+    # lone Hog out-scores it, at 80 and 90 the follow-up loses.
+    t = _teacher(horizon=60)
     spent0 = env.get_elixir_spent(0)
 
     slot, x, y = t.act(env, _obs(env))

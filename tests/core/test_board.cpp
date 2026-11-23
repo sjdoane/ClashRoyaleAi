@@ -6,6 +6,8 @@
 #include "CardRegistry.h"
 #include "GameManager.h"
 #include "MeleeTroop.h"
+#include "Tower.h"
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <vector>
@@ -307,25 +309,33 @@ TEST_CASE("getNextWaypoint returns the target directly when both points are insi
     REQUIRE(wp.y == Catch::Approx(17.0f));
 }
 
+// Until patch 0060 the three cases below expected the CENTRE of the bridge's
+// mouth (board.getRightBridge().x): the engine's single crossing point, not a
+// recorded or published value. A walker now keeps its own line where that
+// crosses the deck and otherwise heads for the nearest point of the mouth.
 TEST_CASE("getNextWaypoint routes below-to-above via the nearest bridge's start edge", "[board][waypoint]") {
     Board board;
-    // Closer to the right bridge than the left.
+    // Closer to the right bridge than the left, and left of its deck: the
+    // deck's near corner.
     Vector2D wp = board.getNextWaypoint(Vector2D{ 10.0f, 5.0f }, Vector2D{ 10.0f, 25.0f });
-    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x));
+    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x - Board::BRIDGE_HALF_WIDTH));
     REQUIRE(wp.y == Catch::Approx(15.5f)); // riverY_start
 }
 
 TEST_CASE("getNextWaypoint routes above-to-below via the nearest bridge's end edge", "[board][waypoint]") {
     Board board;
     Vector2D wp = board.getNextWaypoint(Vector2D{ 10.0f, 25.0f }, Vector2D{ 10.0f, 5.0f });
-    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x));
+    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x - Board::BRIDGE_HALF_WIDTH));
     REQUIRE(wp.y == Catch::Approx(17.5f)); // riverY_end
 }
 
 TEST_CASE("getNextWaypoint picks the left bridge when it is nearer", "[board][waypoint]") {
     Board board;
+    // x 2.0 is on the left deck (1.5 to 3.5): straight across.
     Vector2D wp = board.getNextWaypoint(Vector2D{ 2.0f, 5.0f }, Vector2D{ 2.0f, 25.0f });
-    REQUIRE(wp.x == Catch::Approx(board.getLeftBridge().x));
+    REQUIRE(wp.x == Catch::Approx(2.0f));
+    REQUIRE(board.isOnBridge(wp.x));
+    REQUIRE(std::abs(wp.x - board.getLeftBridge().x) <= Board::BRIDGE_HALF_WIDTH);
 }
 
 // --- the bridge-mouth absorbing state ---
@@ -512,6 +522,221 @@ TEST_CASE("a troop on a bank line walks onto the bridge instead of oscillating a
     REQUIRE(missing == 0);
     INFO(stuck << " of " << runs << " placements never crossed; first few:" << examples.str());
     REQUIRE(stuck == 0);
+}
+
+// --- patch 0060: a bridge is crossed across its width ---
+// Evidence: the recordings of 2026-11-20 (engine notes). An Ice Golem from
+// tile (8, 10) walks a straight line to the near corner of the left bridge
+// (x 3.5) and crosses along that edge; a Musketeer from (9, 9) does the same
+// at the right bridge (13.5); an Ice Golem placed in the lane at x 13.6-14
+// crosses where it stands, with no excursion to the centre line (14.5).
+
+TEST_CASE("a walker whose line crosses the deck keeps its line", "[board][waypoint][patch0060]") {
+    Board board;
+    for (float x : { 13.6f, 14.0f, 14.5f, 15.2f, 1.7f, 3.3f }) {
+        INFO("x " << x);
+        Vector2D up = board.getNextWaypoint(Vector2D{ x, 12.0f }, Vector2D{ x, 27.0f });
+        REQUIRE(up.x == Catch::Approx(x));
+        REQUIRE(up.y == Catch::Approx(15.5f));
+        Vector2D down = board.getNextWaypoint(Vector2D{ x, 21.0f }, Vector2D{ x, 6.0f });
+        REQUIRE(down.x == Catch::Approx(x));
+        REQUIRE(down.y == Catch::Approx(17.5f));
+    }
+    // A slanted line through the deck: the point where it meets the bank.
+    Vector2D wp = board.getNextWaypoint(Vector2D{ 15.0f, 13.5f }, Vector2D{ 14.0f, 27.0f });
+    REQUIRE(wp.x == Catch::Approx(15.0f - 2.0f / 13.5f).margin(1e-4));
+    REQUIRE(wp.y == Catch::Approx(15.5f));
+}
+
+TEST_CASE("a walker coming from the side heads for the near corner of the deck", "[board][waypoint][patch0060]") {
+    Board board;
+    // The two recorded starts, to their lane's Princess Tower.
+    Vector2D golem = board.getNextWaypoint(Vector2D{ 8.0f, 10.0f }, Vector2D{ 3.0f, 27.0f });
+    REQUIRE(golem.x == Catch::Approx(3.5f));
+    REQUIRE(golem.y == Catch::Approx(15.5f));
+    Vector2D musketeer = board.getNextWaypoint(Vector2D{ 9.0f, 9.0f }, Vector2D{ 14.0f, 27.0f });
+    REQUIRE(musketeer.x == Catch::Approx(13.5f));
+    REQUIRE(musketeer.y == Catch::Approx(15.5f));
+    // From outside the lane, the outer corner; team 1 mirrored.
+    REQUIRE(board.getNextWaypoint(Vector2D{ 17.0f, 12.0f }, Vector2D{ 14.0f, 27.0f }).x == Catch::Approx(15.5f));
+    Vector2D down = board.getNextWaypoint(Vector2D{ 8.0f, 23.0f }, Vector2D{ 3.0f, 6.0f });
+    REQUIRE(down.x == Catch::Approx(3.5f));
+    REQUIRE(down.y == Catch::Approx(17.5f));
+
+    // On the corner, the next leg is the far bank, on the deck, on the line to
+    // the target.
+    Vector2D across = board.getNextWaypoint(Vector2D{ 3.5f, 15.5f }, Vector2D{ 3.0f, 27.0f });
+    REQUIRE(across.y == Catch::Approx(17.5f));
+    REQUIRE(across.x == Catch::Approx(3.5f - 0.5f * 2.0f / 11.5f).margin(1e-4));
+    // A target on the other side of the corner: straight up the edge.
+    Vector2D edge = board.getNextWaypoint(Vector2D{ 3.5f, 15.5f }, Vector2D{ 9.0f, 20.0f });
+    REQUIRE(edge.x == Catch::Approx(3.5f));
+    REQUIRE(edge.y == Catch::Approx(17.5f));
+}
+
+TEST_CASE("clampToBoard puts a unit beside a deck back the shorter way", "[board][clamp][patch0060]") {
+    Board board;
+    // A tenth of a tile off the deck in mid-river: onto the edge, not a tile
+    // forward or back to a bank.
+    Vector2D a = board.clampToBoard(Vector2D{ 3.6f, 16.5f }, false);
+    REQUIRE(a.x == Catch::Approx(3.5f));
+    REQUIRE(a.y == Catch::Approx(16.5f));
+    Vector2D b = board.clampToBoard(Vector2D{ 13.2f, 16.2f }, false);
+    REQUIRE(b.x == Catch::Approx(13.5f));
+    REQUIRE(b.y == Catch::Approx(16.2f));
+    // Nearer the bank than the deck: the bank, as before.
+    Vector2D c = board.clampToBoard(Vector2D{ 4.5f, 15.8f }, false);
+    REQUIRE(c.x == Catch::Approx(4.5f));
+    REQUIRE(c.y == Catch::Approx(15.5f));
+    // Within the edge tolerance of the deck it is the edge even right at the
+    // bank: a unit sent across from a corner must not be handed back to it.
+    Vector2D d = board.clampToBoard(Vector2D{ 3.5f + Board::DECK_EDGE_TOLERANCE * 0.9f, 15.505f }, false);
+    REQUIRE(d.x == Catch::Approx(3.5f));
+    REQUIRE(d.y == Catch::Approx(15.505f));
+    // On the deck, edges included: untouched.
+    Vector2D e = board.clampToBoard(Vector2D{ 3.5f, 16.0f }, false);
+    REQUIRE(e.x == Catch::Approx(3.5f));
+    REQUIRE(e.y == Catch::Approx(16.0f));
+}
+
+TEST_CASE("getNextWaypoint never returns the caller's own position at a deck corner or along a mouth",
+          "[board][waypoint][regression][patch0060]") {
+    Board board;
+    // Every 0.25 across both mouths and a tile to each side, finer than the
+    // arrival epsilon around each such point, both banks, targets across the
+    // river in both directions at five x. A point that returns itself (within
+    // the tolerance Troop::moveTowards refuses to move in) is absorbing unless
+    // it is the target.
+    const float bridges[] = { board.getLeftBridge().x, board.getRightBridge().x };
+    const float banks[] = { 15.5f, 17.5f };
+    const float targetYs[] = { 27.0f, 6.0f, 20.0f, 13.0f };
+    const float targetXs[] = { 0.0f, 3.0f, 8.5f, 14.0f, 17.0f };
+    int checked = 0;
+    for (float bx : bridges) {
+        for (int ix = -8; ix <= 8; ++ix) {
+            for (float by : banks) {
+                for (float ty : targetYs) {
+                    for (float tx : targetXs) {
+                        for (int dx = -3; dx <= 3; ++dx) {
+                            for (int dy = -3; dy <= 3; ++dy) {
+                                Vector2D here{ bx + ix * 0.25f + dx * 0.004f, by + dy * 0.004f };
+                                Vector2D target{ tx, ty };
+                                const bool sameSide = (here.y <= 15.5f && ty <= 15.5f) || (here.y >= 17.5f && ty >= 17.5f);
+                                if (sameSide) continue;
+                                Vector2D wp = board.getNextWaypoint(here, target);
+                                ++checked;
+                                INFO("stuck at x=" << here.x << " y=" << here.y << " target (" << tx << ", " << ty << ")");
+                                REQUIRE(here.distanceTo(wp) > Board::WAYPOINT_ARRIVAL_EPS);
+                                // Whatever it is handed across the river is on a deck.
+                                if (wp.y == Catch::Approx(15.5f) || wp.y == Catch::Approx(17.5f)) {
+                                    if (!(wp.x == target.x && wp.y == target.y)) REQUIRE(board.isOnBridge(wp.x));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    REQUIRE(checked > 40000);
+}
+
+// Real cards through the GameManager tick loop: nobody stalls at a mouth, a
+// corner or an edge, alone or in a squad, and a squad placed abreast crosses
+// abreast.
+TEST_CASE("walkers from every start cross the bridge, and a squad crosses abreast",
+          "[board][waypoint][regression][patch0060]") {
+    const std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    constexpr int KNIGHT = 0, GIANT = 2, BARBARIANS = 8, SKELETON_ARMY = 12, ROYAL_RECRUITS = 77, GOLEM = 19;
+
+    SECTION("single walkers, every 0.1 across the arena, three rows, both teams") {
+        int stuck = 0, runs = 0;
+        std::ostringstream examples;
+        for (int card : { KNIGHT, GIANT, GOLEM }) {
+            for (int team : { 0, 1 }) {
+                for (float rowsBack : { 0.0f, 0.3f, 3.0f }) {
+                    for (int i = 0; i <= 170; ++i) {
+                        GameManager game(deck, deck);
+                        Board& board = game.getBoard();
+                        const float x = i * 0.1f;
+                        const float y = team == 0 ? board.getRiverStart() - rowsBack : board.getRiverEnd() + rowsBack;
+                        CardRegistry::getInstance().getCard(card)->spawnEntity(x, y, team, board);
+                        board.commitPendingEntities();
+                        std::shared_ptr<Troop> unit;
+                        for (const auto& e : board.getEntities()) {
+                            if (e->cardId == card) unit = std::dynamic_pointer_cast<Troop>(e);
+                        }
+                        REQUIRE(unit);
+                        // Deploy, at most 7.5 tiles to a mouth, the river, slack.
+                        const int budget = DEPLOY_TIME_TICKS
+                            + static_cast<int>(std::ceil((8.0f + rowsBack + 2.5f) / unit->getSpeed())) + 10;
+                        bool crossed = false;
+                        for (int t = 0; t < budget && !crossed; ++t) {
+                            game.step();
+                            crossed = team == 0 ? unit->position.y > board.getRiverEnd()
+                                                : unit->position.y < board.getRiverStart();
+                        }
+                        ++runs;
+                        if (!crossed && ++stuck <= 8) {
+                            examples << "\n  card " << card << " team " << team << " from (" << x << ", " << y
+                                     << "), now (" << unit->position.x << ", " << unit->position.y << ")";
+                        }
+                    }
+                }
+            }
+        }
+        INFO(stuck << " of " << runs << " never crossed; first few:" << examples.str());
+        REQUIRE(stuck == 0);
+        REQUIRE(runs == 3 * 2 * 3 * 171);
+    }
+
+    SECTION("squads: every unit crosses, at more than one x") {
+        for (int card : { BARBARIANS, SKELETON_ARMY, ROYAL_RECRUITS }) {
+            for (int team : { 0, 1 }) {
+                for (float x : { 2.5f, 3.5f, 8.5f, 13.0f, 14.5f, 16.5f }) {
+                    GameManager game(deck, deck);
+                    Board& board = game.getBoard();
+                    // Towers asleep: this is about walking, not about who survives.
+                    for (const auto& e : board.getEntities())
+                        if (auto t = std::dynamic_pointer_cast<Tower>(e)) t->sleep();
+                    const float y = team == 0 ? 12.0f : 21.0f;
+                    CardRegistry::getInstance().getCard(card)->spawnEntity(x, y, team, board);
+                    board.commitPendingEntities();
+                    std::vector<std::shared_ptr<Troop>> squad;
+                    for (const auto& e : board.getEntities()) {
+                        if (e->cardId == card) squad.push_back(std::dynamic_pointer_cast<Troop>(e));
+                    }
+                    REQUIRE(squad.size() >= 5);
+                    std::vector<float> crossedAtX(squad.size(), -1.0f);
+                    for (int t = 0; t < 260; ++t) {
+                        game.step();
+                        for (size_t k = 0; k < squad.size(); ++k) {
+                            const bool over = team == 0 ? squad[k]->position.y > board.getRiverEnd()
+                                                        : squad[k]->position.y < board.getRiverStart();
+                            if (over && crossedAtX[k] < 0.0f) crossedAtX[k] = squad[k]->position.x;
+                        }
+                    }
+                    INFO("card " << card << " team " << team << " x " << x);
+                    float lo = 99.0f, hi = -99.0f;
+                    for (float cx : crossedAtX) {
+                        REQUIRE(cx >= 0.0f);
+                        // Read one step after leaving the deck, so a step's
+                        // sideways drift is allowed.
+                        const float offCentre = std::min(std::abs(cx - board.getLeftBridge().x),
+                                                         std::abs(cx - board.getRightBridge().x));
+                        REQUIRE(offCentre <= Board::BRIDGE_HALF_WIDTH + 0.3f);
+                        lo = std::min(lo, cx);
+                        hi = std::max(hi, cx);
+                    }
+                    // Placed in the lane the squad is not funnelled into single
+                    // file: its crossing points span some of the deck. (Coming
+                    // from the side it queues along the near edge; not asserted.)
+                    const bool inLane = x == 2.5f || x == 14.5f;
+                    if (inLane) REQUIRE(hi - lo > 0.4f);
+                }
+            }
+        }
+    }
 }
 
 // --- isBackRowDeadZone ---

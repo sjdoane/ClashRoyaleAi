@@ -19,7 +19,9 @@ bool physicallyCrossableAt(const Board& board, int x) {
     const float midRiver = (board.getRiverStart() + board.getRiverEnd()) * 0.5f;
     const Vector2D probe{ static_cast<float>(x), midRiver };
     const Vector2D settled = board.clampToBoard(probe, /*ignoresRiver=*/false);
-    return settled.y == Catch::Approx(midRiver);   // not snapped to a bank
+    // Left where it is: not snapped to a bank and, since patch 0060, not
+    // moved sideways onto a deck's edge either.
+    return settled.y == Catch::Approx(midRiver) && settled.x == Catch::Approx(probe.x);
 }
 
 } // namespace

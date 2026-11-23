@@ -2,6 +2,7 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 #include "ArenaLayout.h"
 #include "CardLevels.h"
@@ -377,6 +378,17 @@ public:
     }
 
     // Keeps a position on the board and out of the river unless allowed in it.
+    //
+    // A ground unit in the river band beside a bridge deck is put back the
+    // SHORTER way: sideways onto the deck's edge, or onto the nearer bank
+    // (patch 0060). Until then it was always the bank, which was harmless
+    // while every walker crossed along the deck's centre line; units now cross
+    // anywhere across the deck, the edges included, and a nudge of a hundredth
+    // of a tile there must not throw a unit a tile forward or back. Within
+    // DECK_EDGE_TOLERANCE of the deck it is always the edge: a unit standing
+    // within the arrival tolerance of a deck corner is sent across from there
+    // (getNextWaypoint), and must not be handed back to the bank by its own
+    // first step.
     Vector2D clampToBoard(Vector2D pos, bool ignoresRiver) const {
         pos.x = std::max(0.0f, std::min(pos.x, static_cast<float>(width - 1)));
         pos.y = std::max(0.0f, std::min(pos.y, static_cast<float>(height - 1)));
@@ -384,8 +396,15 @@ public:
         if (!ignoresRiver && pos.y > riverY_start && pos.y < riverY_end) {
             // isOnBridge(), so the observation encoder gets the same answer.
             if (!isOnBridge(pos.x)) {
-                float riverMid = (riverY_start + riverY_end) / 2.0f;
-                pos.y = (pos.y < riverMid) ? riverY_start : riverY_end;
+                const float edgeX = nearestDeckEdgeX(pos.x);
+                const float toEdge = std::abs(pos.x - edgeX);
+                const float toBank = std::min(pos.y - riverY_start, riverY_end - pos.y);
+                if (toEdge <= toBank || toEdge <= DECK_EDGE_TOLERANCE) {
+                    pos.x = edgeX;
+                } else {
+                    float riverMid = (riverY_start + riverY_end) / 2.0f;
+                    pos.y = (pos.y < riverMid) ? riverY_start : riverY_end;
+                }
             }
         }
         return pos;
@@ -397,6 +416,58 @@ public:
     // the unit freezes for the rest of the match (tests/core/test_board.cpp).
     static constexpr float WAYPOINT_ARRIVAL_EPS = 0.01f;
 
+    // Twice the arrival tolerance: see clampToBoard.
+    static constexpr float DECK_EDGE_TOLERANCE = 2.0f * WAYPOINT_ARRIVAL_EPS;
+
+    // The x of the deck edge (either bridge) nearest to `x`.
+    float nearestDeckEdgeX(float x) const {
+        const float edges[] = { leftBridge.x - BRIDGE_HALF_WIDTH, leftBridge.x + BRIDGE_HALF_WIDTH,
+                                rightBridge.x - BRIDGE_HALF_WIDTH, rightBridge.x + BRIDGE_HALF_WIDTH };
+        float best = edges[0];
+        for (float e : edges) {
+            if (std::abs(x - e) < std::abs(x - best)) best = e;
+        }
+        return best;
+    }
+
+    // Where a walker going from `from` to `to` meets the bank line y = bankY of
+    // the bridge centred on bridgeX: where its straight line crosses that
+    // line, kept on the deck. A line that does not reach the bank between the
+    // two points (the walker is already past it, or `to` is on the deck) takes
+    // `to`'s x.
+    float crossingX(const Vector2D& from, const Vector2D& to, float bankY, float bridgeX) const {
+        float x = to.x;
+        const float dy = to.y - from.y;
+        if (std::abs(dy) > 1e-6f) {
+            const float t = (bankY - from.y) / dy;
+            if (t >= 0.0f && t <= 1.0f) x = from.x + (to.x - from.x) * t;
+        }
+        return std::max(bridgeX - BRIDGE_HALF_WIDTH, std::min(x, bridgeX + BRIDGE_HALF_WIDTH));
+    }
+
+    // The next point a ground walker at currentPos heads for on its way to
+    // targetPos: targetPos itself unless the river is between them.
+    //
+    // A BRIDGE IS CROSSED ACROSS ITS WIDTH (patch 0060). Until then every
+    // walker was sent through the one point at the centre of the nearer
+    // bridge's mouth, so a squad placed abreast crossed in single file and a
+    // unit walking in the lane a tile off the centre line swerved to it and
+    // back. Now the walker keeps its straight line to the target wherever
+    // that line crosses the deck, and otherwise heads for the nearest point of
+    // the deck's mouth, which is its corner. Measured on the recordings of
+    // 2026-11-20 (engine notes, patch 0060): an Ice Golem from tile (8, 10)
+    // and a Musketeer from (9, 9) walk a straight line to the near corner of
+    // the bridge and cross along that edge; an Ice Golem placed in the lane
+    // at x 13.6 crosses at 13.6.
+    //
+    // The bridge is still the nearer one, by its centre.
+    //
+    // ARRIVAL: Troop::moveTowards does not move closer than
+    // WAYPOINT_ARRIVAL_EPS to a waypoint, so no branch may hand a walker a
+    // point it is already that close to while it still has to cross: on the
+    // near bank it is handed the far bank, at the far bank the target
+    // (tests/core/test_board.cpp sweeps every branch, both directions, the
+    // corners included).
     Vector2D getNextWaypoint(const Vector2D& currentPos, const Vector2D& targetPos) const {
         bool isCurrentBelow = currentPos.y <= riverY_start;
         bool isTargetBelow = targetPos.y <= riverY_start;
@@ -412,42 +483,31 @@ public:
         float distToRight = currentPos.distanceTo(rightBridge);
         float bridgeX = (distToLeft < distToRight) ? leftBridge.x : rightBridge.x;
 
-        if (isCurrentBelow) {
-            // The bank tests are inclusive, so a unit already on the near bank
-            // is still "below"; hand it the far bank, or it is routed to where
-            // it stands.
-            Vector2D nearBank{bridgeX, riverY_start};
+        if (isCurrentBelow || isCurrentAbove) {
+            // On dry land with the river ahead. The bank tests are inclusive,
+            // so a unit already on the near bank is still "below" ("above");
+            // hand it the far bank, or it is routed to where it stands.
+            const float nearY = isCurrentBelow ? riverY_start : riverY_end;
+            const float farY = isCurrentBelow ? riverY_end : riverY_start;
+            Vector2D nearBank{ crossingX(currentPos, targetPos, nearY, bridgeX), nearY };
             if (currentPos.distanceTo(nearBank) <= WAYPOINT_ARRIVAL_EPS) {
-                return Vector2D{bridgeX, riverY_end};
+                return Vector2D{ crossingX(currentPos, targetPos, farY, bridgeX), farY };
             }
             return nearBank;
-        } else if (isCurrentAbove) {
-            Vector2D nearBank{bridgeX, riverY_end};
-            if (currentPos.distanceTo(nearBank) <= WAYPOINT_ARRIVAL_EPS) {
-                return Vector2D{bridgeX, riverY_start};
-            }
-            return nearBank;
-        } else {
-            // Inside the river band, heading for the exit bank. Within
-            // WAYPOINT_ARRIVAL_EPS of it this leg is done: return targetPos,
-            // which the first branch returns anyway once y reaches the bank.
-            // Handing back the edge itself would freeze the unit just short of
-            // dry land (tests/core/test_board.cpp, the bridge-exit block).
-            if (isTargetAbove) {
-                Vector2D exitBank{bridgeX, riverY_end};
-                if (currentPos.distanceTo(exitBank) <= WAYPOINT_ARRIVAL_EPS) {
-                    return targetPos;
-                }
-                return exitBank;
-            } else if (isTargetBelow) {
-                Vector2D exitBank{bridgeX, riverY_start};
-                if (currentPos.distanceTo(exitBank) <= WAYPOINT_ARRIVAL_EPS) {
-                    return targetPos;
-                }
-                return exitBank;
-            } else {
+        }
+        // Inside the river band, heading for the exit bank. Within
+        // WAYPOINT_ARRIVAL_EPS of it this leg is done: return targetPos,
+        // which the first branch returns anyway once y reaches the bank.
+        // Handing back the edge itself would freeze the unit just short of
+        // dry land (tests/core/test_board.cpp, the bridge-exit block).
+        if (isTargetAbove || isTargetBelow) {
+            const float exitY = isTargetAbove ? riverY_end : riverY_start;
+            Vector2D exitBank{ crossingX(currentPos, targetPos, exitY, bridgeX), exitY };
+            if (currentPos.distanceTo(exitBank) <= WAYPOINT_ARRIVAL_EPS) {
                 return targetPos;
             }
+            return exitBank;
         }
+        return targetPos;
     }
 };

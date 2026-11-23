@@ -36,7 +36,11 @@ TEST_CASE("bridges are two tiles wide, centred on the seam", "[arena][geometry]"
     const float midRiver = 16.5f;
     for (int x = 0; x < ArenaLayout::WIDTH; ++x) {
         Vector2D probe{ static_cast<float>(x), midRiver };
-        bool walkable = board.clampToBoard(probe, false).y == Catch::Approx(midRiver);
+        // "Can stand here" is "the clamp leaves it here". Until patch 0060 this
+        // read only y, which encoded a clamp that moves a unit to a bank and
+        // never sideways; a unit half a tile off a deck is now put on its edge.
+        const Vector2D settled = board.clampToBoard(probe, false);
+        bool walkable = settled.y == Catch::Approx(midRiver) && settled.x == Catch::Approx(probe.x);
         bool expected = (x == 2 || x == 3 || x == 14 || x == 15);
         INFO("column " << x << " of WWBBWWWWWWWWWWBBWW");
         REQUIRE(walkable == expected);
@@ -122,7 +126,10 @@ TEST_CASE("the river mask marks a column passable iff a unit can actually stand 
             // Ground truth: can a river-respecting unit hold this position
             // inside the river band (clampToBoard's rule)?
             Vector2D probe{ static_cast<float>(x), midRiver };
-            const bool passable = std::abs(board.clampToBoard(probe, false).y - midRiver) < 1e-4f;
+            // Both coordinates since patch 0060: the clamp may also move a unit
+            // sideways onto a deck's edge, which is not "can stand here".
+            const Vector2D settled = board.clampToBoard(probe, false);
+            const bool passable = std::abs(settled.y - midRiver) < 1e-4f && std::abs(settled.x - probe.x) < 1e-4f;
             const float marked = obs[8 * plane + riverRow * W + x];
 
             INFO("team " << team << " column " << x
