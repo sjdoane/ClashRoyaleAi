@@ -47,7 +47,43 @@ private:
 
 public:
     // Half a bridge's two-tile width; correct only with seam-centred bridges.
+    // The deck a unit can stand on (isOnBridge: clampToBoard, the observation's
+    // bridge columns, the pocket rule, the renderer). Where a unit AIMS to
+    // cross is the narrower walk corridor below (patch 0087).
     static constexpr float BRIDGE_HALF_WIDTH = 1.0f;
+
+    // THE WALK CORRIDOR (patch 0087). The centre of a unit crossing the river
+    // stays within half a tile of its lane's centre column, the Princess
+    // Tower's: x in [2.5, 3.5] and [13.5, 14.5]. Measured on the live
+    // recordings of 2026-11-23/24 (5,201 boxes of ground troops over the
+    // river, evals/hog_path2.json and the engine notes): the mass lies on
+    // 2.25-3.75 and 13.25-14.75 with one peak at each corridor edge (units
+    // arriving from outside hug 2.5 / 14.5, from the middle 3.5 / 13.5), and
+    // nothing on 1.5-2.25 or 14.75-15.5, where the two-tile deck centred on
+    // 2.5 / 14.5 used to let them walk. The inner edge is unchanged; the outer
+    // edge moved one tile in, so a unit that comes from the arena's edge
+    // crosses a tile nearer the middle and is seen by a centre building a tile
+    // sooner.
+    //
+    // It is where a unit HEADS (getNextWaypoint, getJumperWaypoint), not a
+    // wall. The deck a unit can stand on is still the drawn one (isOnBridge,
+    // two tiles), so a body pushed sideways by another can be on the outer
+    // tile. A first version made the corridor the wall as well: two bodies
+    // wider than one tile together (a Goblin Machine and its turret, 0.75
+    // each) then stood at the mouth pushing each other for ever.
+    static constexpr float WALK_HALF_WIDTH = 0.5f;
+    static constexpr float LEFT_WALK_X = ArenaLayout::LEFT_LANE_X;
+    static constexpr float RIGHT_WALK_X = ArenaLayout::RIGHT_LANE_X;
+
+    // Is this x inside a walk corridor?
+    static constexpr bool inWalkCorridor(float x) {
+        return (x >= LEFT_WALK_X - WALK_HALF_WIDTH && x <= LEFT_WALK_X + WALK_HALF_WIDTH)
+            || (x >= RIGHT_WALK_X - WALK_HALF_WIDTH && x <= RIGHT_WALK_X + WALK_HALF_WIDTH);
+    }
+    // The corridor centre nearer to x (same split as ArenaLayout::isLeftLane).
+    static constexpr float walkXFor(float x) {
+        return ArenaLayout::isLeftLane(x) ? LEFT_WALK_X : RIGHT_WALK_X;
+    }
 
     // Cell i covers [i - 0.5, i + 0.5], so the board's physical extent is x in
     // [-0.5, width - 0.5] and y likewise. isValidPlacement's footprint check
@@ -442,7 +478,7 @@ public:
             const float t = (bankY - from.y) / dy;
             if (t >= 0.0f && t <= 1.0f) x = from.x + (to.x - from.x) * t;
         }
-        return std::max(bridgeX - BRIDGE_HALF_WIDTH, std::min(x, bridgeX + BRIDGE_HALF_WIDTH));
+        return std::max(bridgeX - WALK_HALF_WIDTH, std::min(x, bridgeX + WALK_HALF_WIDTH));
     }
 
     // The next point a ground walker at currentPos heads for on its way to
@@ -479,9 +515,11 @@ public:
             return targetPos;
         }
 
-        float distToLeft = currentPos.distanceTo(leftBridge);
-        float distToRight = currentPos.distanceTo(rightBridge);
-        float bridgeX = (distToLeft < distToRight) ? leftBridge.x : rightBridge.x;
+        // The nearer corridor, by its centre (patch 0087: the lane column,
+        // until then the deck's seam half a tile further out).
+        float distToLeft = currentPos.distanceTo(Vector2D{ LEFT_WALK_X, leftBridge.y });
+        float distToRight = currentPos.distanceTo(Vector2D{ RIGHT_WALK_X, rightBridge.y });
+        float bridgeX = (distToLeft < distToRight) ? LEFT_WALK_X : RIGHT_WALK_X;
 
         if (isCurrentBelow || isCurrentAbove) {
             // On dry land with the river ahead. The bank tests are inclusive,
@@ -490,8 +528,21 @@ public:
             const float nearY = isCurrentBelow ? riverY_start : riverY_end;
             const float farY = isCurrentBelow ? riverY_end : riverY_start;
             Vector2D nearBank{ crossingX(currentPos, targetPos, nearY, bridgeX), nearY };
+            const Vector2D farBank{ crossingX(currentPos, targetPos, farY, bridgeX), farY };
             if (currentPos.distanceTo(nearBank) <= WAYPOINT_ARRIVAL_EPS) {
-                return Vector2D{ crossingX(currentPos, targetPos, farY, bridgeX), farY };
+                return farBank;
+            }
+            // Pushed along the bank onto the deck's outer tile (patch 0087):
+            // it would have to walk nearly along the bank line to reach the
+            // corridor's mouth, and whatever pushed it out stands there. It
+            // goes across from where it is, towards the corridor. A unit
+            // walking in from its placement tile never meets this: the
+            // shallowest line to a mouth, from the arena's edge on the row
+            // beside the river, is 11 degrees.
+            const float toWater = std::abs(nearY - currentPos.y);
+            const float lateral = std::abs(nearBank.x - currentPos.x);
+            if (isOnBridge(currentPos.x) && toWater < MOUTH_FUNNEL_SLOPE * lateral) {
+                return farBank;
             }
             return nearBank;
         }
@@ -509,5 +560,100 @@ public:
             return exitBank;
         }
         return targetPos;
+    }
+
+    // See getNextWaypoint: tan of the angle to the bank line below which a
+    // walker on the deck's outer tile stops heading for the corridor's mouth
+    // and crosses from where it is (10 degrees).
+    static constexpr float MOUTH_FUNNEL_SLOPE = 0.18f;
+
+    // RIVER JUMPERS (patch 0087). Where a ground unit that jumps the river
+    // (Hog Rider, Royal Hogs, Ram Rider, ...) heads next on its way to
+    // targetPos, and how fast.
+    //
+    // Until this patch a jumper walked a straight line to its target from
+    // wherever it stood. The recorded Hog Rider does not (145 own plays in
+    // the live runs of 2026-11-23/24, evals/tools/hog_path2.py):
+    //
+    //   placed on    lands at (engine row 18)   straight line
+    //   ( 1, 15)     2.52  [2.50, 2.58]  n 51   1.5
+    //   (16, 15)    14.54 [14.49, 14.58] n 55   15.5
+    //   ( 6, 15)     3.6                 n 1    5.2
+    //   ( 8, 15)     5.0                 n 1    6.8
+    //
+    // and then goes straight up that column to about row 21. With a building
+    // in sight from the start (a collector on (10, 23), an Inferno Tower on
+    // (10.5, 22.5), Hog on (16, 15)) it lands on 13.0 and 13.1, not on the
+    // straight line's 13.6 and 13.5. Every one of these is the same path:
+    // sideways and forward at the same rate (45 degrees over the real rows)
+    // until it is within half a tile of its target's column, then straight
+    // ahead. It does not slow down for the diagonal: it reaches the far bank
+    // when a Hog going straight across would (2.0-2.4 tiles/s sideways on top
+    // of its 2.3-2.7 forward), which is the game's faster jump.
+    //
+    // So, while the river is still ahead of it or under it:
+    //   - within half a tile of the target's column: straight across;
+    //   - else, far enough back to reach that column before the water at 45
+    //     degrees or steeper: the straight line to it on the near bank (what a
+    //     walker does; a Hog from behind the King tower reaches the river on
+    //     13.55, the corridor's corner);
+    //   - else 45 degrees towards the column, at sqrt(2) x speed from the bank
+    //     row on (JUMP_ZONE), so its forward speed is unchanged.
+    // Past the far bank it walks the straight line to its target as before
+    // (measured after landing: the straight line, 55 degrees where 45 would
+    // have been the other reading).
+    //
+    // One more recorded case: a Hog placed a tile or less off its target's
+    // column, on the tile beside the bridge, does not jump. It steps onto the
+    // column and walks up it: placed on (2, 15) it is on 3.0 over the river
+    // (4 of 4 plays with no building in sight), from (15, 15) on 14.0 (2 of
+    // 2), from (3, 15) on 3.05-3.2 (2), and it reaches the far bank 0.1-0.2 s
+    // after a jumping Hog would. So, short of the water, within
+    // BRIDGE_WALK_REACH of the column and on its outer side (further from the
+    // middle of the arena than the column), it heads for the column's point on
+    // the near bank at walking speed (0.24 s longer than straight from one
+    // tile off). The recorded sidestep is spread over about a row; here it is
+    // done by the bank. Outer side only, because the three Hogs recorded
+    // coming from the middle (placed behind the King Tower) reach the river on
+    // 13.55, the corridor's inner corner, not on 14.0. Nothing is recorded
+    // from one tile inside (4, 15) / (13, 15): it takes the half-tile rule.
+    //
+    // For a tower the column is the walk corridor, so jumpers and walkers
+    // cross in the same place. Flying units do not come here.
+    struct JumperStep { Vector2D waypoint; float speedScale; };
+    static constexpr float JUMP_ZONE = 1.0f;
+    static constexpr float JUMP_DIAGONAL_SPEED = 1.41421356f;
+    static constexpr float BRIDGE_WALK_REACH = 1.0f;
+    JumperStep getJumperWaypoint(const Vector2D& currentPos, const Vector2D& targetPos) const {
+        const bool up = targetPos.y > currentPos.y;
+        const float nearY = up ? riverY_start : riverY_end;
+        const float farY = up ? riverY_end : riverY_start;
+        const float dir = up ? 1.0f : -1.0f;
+        const bool targetBeyond = up ? (targetPos.y >= farY) : (targetPos.y <= farY);
+        const bool beforeFarBank = up ? (currentPos.y < farY) : (currentPos.y > farY);
+        if (!targetBeyond || !beforeFarBank) return { targetPos, 1.0f };
+
+        const float toWater = (nearY - currentPos.y) * dir;      // > 0 while short of the water
+        const float off = std::abs(targetPos.x - currentPos.x);
+        const bool outerSide = (currentPos.x - targetPos.x) * (targetPos.x - ArenaLayout::CENTER_X) > 0.0f;
+        if (outerSide && toWater > WAYPOINT_ARRIVAL_EPS && off > WAYPOINT_ARRIVAL_EPS
+            && off <= BRIDGE_WALK_REACH + 1e-3f) {
+            // Beside its crossing: onto the column at the bank, no jump.
+            return { Vector2D{ targetPos.x, nearY }, 1.0f };
+        }
+
+        const float gx = std::max(targetPos.x - WALK_HALF_WIDTH,
+                                  std::min(currentPos.x, targetPos.x + WALK_HALF_WIDTH));
+        const float lateral = std::abs(gx - currentPos.x);
+        if (lateral <= WAYPOINT_ARRIVAL_EPS) {
+            // In its column: straight across. Never a point it already stands
+            // on (Troop::moveTowards would not move).
+            const Vector2D across{ currentPos.x, farY };
+            if (currentPos.distanceTo(across) <= WAYPOINT_ARRIVAL_EPS) return { targetPos, 1.0f };
+            return { across, 1.0f };
+        }
+        if (toWater >= lateral) return { Vector2D{ gx, nearY }, 1.0f };
+        const bool jumping = toWater <= JUMP_ZONE;
+        return { Vector2D{ gx, currentPos.y + dir * lateral }, jumping ? JUMP_DIAGONAL_SPEED : 1.0f };
     }
 };

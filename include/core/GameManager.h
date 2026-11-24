@@ -512,6 +512,44 @@ public:
     // `isRollingSpell` narrows the spell exemption for The Log and Barbarian
     // Barrel, and `ownSideOnly` narrows it further, to a troop's own side, for
     // Barbarian Barrel (see the end of this function).
+    // The placement rule's own-half test: a non-spell stays OWN_HALF_RIVER_BUFFER
+    // short of the river on its own side.
+    bool onOwnHalf(int team, float y) const {
+        return team == 0 ? y <= board.getRiverStart() - OWN_HALF_RIVER_BUFFER
+                         : y >= board.getRiverEnd() + OWN_HALF_RIVER_BUFFER;
+    }
+
+    // The pocket. Once an enemy Princess Tower has fallen, its half of the
+    // width opens to placement on the enemy side of the river: the bridge of
+    // that lane and the first POCKET_REAL_ROWS real rows of the enemy bank
+    // (engine rows 11-15 of team 0's half, 18-22 of team 1's: the engine's
+    // extra bank row is inside it). River water stays closed. With both
+    // Princess Towers down the whole width is open.
+    //
+    // MEASURED, not published: in 19 recorded live matches (2026-11-23) every
+    // one of about 35 troop and building placements made past the river after
+    // a tower fell sat on the fallen tower's half, and none was deeper than
+    // engine row 11, the row most of them used. Before this rule the engine
+    // refused all of them, and a replay moved each to the river bank, 4-7 s
+    // further from the King Tower.
+    static constexpr float POCKET_DEEPEST_ROW_TEAM0_HALF = 11.0f;
+    bool inPocket(int team, float x, float y) const {
+        const int enemy = 1 - team;
+        if (enemy == 0) {
+            if (y < POCKET_DEEPEST_ROW_TEAM0_HALF - Board::CELL_HALF_EXTENT) return false;
+        } else {
+            if (y > ArenaLayout::mirrorY(POCKET_DEEPEST_ROW_TEAM0_HALF) + Board::CELL_HALF_EXTENT) return false;
+        }
+        if (y > board.getRiverStart() && y < board.getRiverEnd() && !board.isOnBridge(x)) return false;
+        const bool left = ArenaLayout::isLeftLane(x);
+        for (const auto& entity : board.getEntities()) {
+            if (entity->team != enemy || !entity->isAlive() || !entity->isTower()) continue;
+            if (entity->cardId != TOWER_PRINCESS_ID) continue;
+            if (ArenaLayout::isLeftLane(entity->position.x) == left) return false;
+        }
+        return true;
+    }
+
     bool isValidPlacement(int team, float x, float y, bool isSpell, float placedRadius,
                           bool deployAnywhere = false, bool isRollingSpell = false,
                           bool ownSideOnly = false) const {
@@ -535,10 +573,7 @@ public:
 
             // Deploy-anywhere cards (Miner, Goblin Drill) skip the own-half
             // rule but not the building check below.
-            if (!deployAnywhere) {
-                if (team == 0 && y > board.getRiverStart() - OWN_HALF_RIVER_BUFFER) return false;
-                if (team == 1 && y < board.getRiverEnd() + OWN_HALF_RIVER_BUFFER) return false;
-            }
+            if (!deployAnywhere && !onOwnHalf(team, y) && !inPocket(team, x, y)) return false;
 
             // Nothing may be placed on an existing building: the gap is its
             // radius plus the new card's footprint.
@@ -558,16 +593,15 @@ public:
         // Princess Tower's near edge, 9.00 away; from the own-half limit it
         // does not, which is why the bound is the river's end. A roller cast
         // deep in enemy territory rolls off the board. Mirrored for team 1.
-        if (isSpell && isRollingSpell) {
+        // The pocket (inPocket) is the caster's ground once the tower has
+        // fallen: recorded Hero Barbarian Barrels were cast there.
+        if (isSpell && isRollingSpell && !inPocket(team, x, y)) {
             if (team == 0 && y > board.getRiverEnd()) return false;
             if (team == 1 && y < board.getRiverStart()) return false;
         }
         // Barbarian Barrel is cast on its own side only, the troop rule above,
         // with no river allowance (UPSTREAM_REQUESTS.md item 32n).
-        if (isSpell && ownSideOnly) {
-            if (team == 0 && y > board.getRiverStart() - OWN_HALF_RIVER_BUFFER) return false;
-            if (team == 1 && y < board.getRiverEnd() + OWN_HALF_RIVER_BUFFER) return false;
-        }
+        if (isSpell && ownSideOnly && !onOwnHalf(team, y) && !inPocket(team, x, y)) return false;
         return true;
     }
 

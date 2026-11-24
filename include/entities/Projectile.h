@@ -50,6 +50,16 @@ public:
     // Crown Tower. 1 = full damage. Set by RangedTroop when it fires.
     float crownTowerFactor = 1.0f;
 
+    // A fan of pellets (Hunter; CombatEntity::pelletsOnBody). `damage` is
+    // then what the pellets on the target add up to. Every other body within
+    // splashRadius of the target takes the pellets its own body intercepts
+    // from the muzzle, but no more than the pellets the target left over
+    // (at least one). pelletCount 0 = an ordinary shot. Set by RangedTroop.
+    int pelletCount = 0;
+    float pelletFanDegrees = 0.0f;
+    float pelletDamage = 0.0f;   // one pellet
+    float pelletsOnTarget = 0.0f;
+
     Projectile(int id, float x, float y, int team, std::weak_ptr<Entity> target, float speed, int damage,
         std::vector<std::shared_ptr<IOnHitEffect>> onHitEffects = {},
         bool returnsToSender = false, int returnDelayTicks = 0,
@@ -122,6 +132,24 @@ public:
     }
 
 private:
+    void applyPelletSpread(Board& board, const std::shared_ptr<Entity>& t) {
+        const float spare = std::max(1.0f, static_cast<float>(pelletCount) - pelletsOnTarget);
+        for (const auto& entity : board.getEntities()) {
+            if (entity->id == t->id) continue;
+            if (entity->team == team || !entity->isAlive() || !entity->takesAreaDamage()) continue;
+            if (t->position.distanceTo(entity->position) > splashRadius) continue;
+            float dist = 0.0f, radius = 0.0f;
+            CombatEntity::pelletGeometry(*entity, origin.distanceTo(entity->position), dist, radius);
+            const float n = std::min(spare,
+                CombatEntity::pelletsOnBody(pelletCount, pelletFanDegrees, dist, radius));
+            const int dealt = static_cast<int>(std::lround(pelletDamage * n));
+            entity->takeDamage(dealt);
+            board.statsEvents.notifyDamageDealt(
+                { attackerId, team, attackerCardId, entity->id, entity->cardId, entity->team, dealt,
+                  board.currentTick, entity->isTower() });
+        }
+    }
+
     void applyHit(Board& board, const std::shared_ptr<Entity>& t) {
         const int dealt = (t->isTower() && crownTowerFactor != 1.0f)
             ? static_cast<int>(damage * crownTowerFactor) : damage;
@@ -137,7 +165,9 @@ private:
                 }
             }
         }
-        if (lineSplash) {
+        if (pelletCount > 0) {
+            applyPelletSpread(board, t);
+        } else if (lineSplash) {
             applyLineSplashDamage(board, origin, t->position, lineSplashRange, splashRadius,
                 t->id, attackerId, team, attackerCardId, damage);
         } else {

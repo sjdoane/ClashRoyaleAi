@@ -98,17 +98,21 @@ def test_a_unit_placed_in_the_lane_crosses_where_it_stands():
     xs = [x for _, x, y in track if y <= 21.0]
     assert max(xs) - min(xs) < 0.1            # recorded: flat on every row
     assert xs[0] == pytest.approx(14.0, abs=0.05)
-    # A Giant on the outer tile of the left bridge does not step to its centre.
+    # Patch 0087: the outer tile of a deck is not walked (recorded crossings
+    # all lie on the tower-side tile, x 2.5-3.5 and 13.5-14.5). A Giant on the
+    # outer tile of the left bridge steps in to the edge of that corridor, not
+    # to its centre.
     (giant,) = _tracks(GIANT, 2.0, 15.0)
-    assert _x_at(giant, RIVER_START) == pytest.approx(2.0, abs=0.1)
+    assert _x_at(giant, RIVER_START) == pytest.approx(2.5, abs=0.1)
 
 
 def test_a_pair_placed_abreast_crosses_abreast():
     # Elite Barbarians land a tile apart. Through one point the second reached
     # the far bank 0.6 s after the first, on the same x.
     first, second = sorted(_tracks(ELITE_BARBARIANS, 14.5, 12.0), key=lambda t: _tick_at(t, RIVER_END))
-    assert abs(_x_at(first, RIVER_END) - _x_at(second, RIVER_END)) > 0.5
-    assert _tick_at(second, RIVER_END) - _tick_at(first, RIVER_END) <= 4
+    # (0.49 apart since patch 0087 narrowed the walked part to one tile.)
+    assert abs(_x_at(first, RIVER_END) - _x_at(second, RIVER_END)) > 0.4
+    assert _tick_at(second, RIVER_END) - _tick_at(first, RIVER_END) <= 5      # 4 before patch 0087
     for track in (first, second):
         assert all(_on_a_deck(x) for _, x, y in track if RIVER_START < y < RIVER_END)
 

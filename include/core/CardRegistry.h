@@ -693,7 +693,7 @@ private:
 
         // === Defensive structures ===
         add(building(25, "Cannon", 3.0f, 824, 'C', 5.5f, 202, 10));
-        add(building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250) /* audit 0003: wiki Tesla, level 11 */);
+        add(building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250).withHidesWhenIdle(8) /* audit 0003: wiki Tesla, level 11 */);
         // withSightRange(6.0f) is not redundant with the 5.5 default: with
         // attackRange 6.0, the default would let it attack what it cannot see.
         // Pinned by test_sight_range.cpp.
@@ -850,7 +850,7 @@ private:
         // Night Witch: releases 3 Bats on death and spawns Bats periodically.
         add(troop(58, "Night Witch", 4.0f, Archetype::MeleeSquad, 906, SPEED_MEDIUM, 1.6f, 314, 13, '6')
             .withDeathEffect(std::make_shared<SpawnOnDeath>(nightWitchBatStats()))
-            .withPeriodicEffect(50, std::make_shared<PeriodicSpawnEffect>(nightWitchPeriodicBatStats())) /* audit 0003: wiki Night Witch, level 11 */);
+            .withPeriodicEffect(50, std::make_shared<PeriodicSpawnEffect>(nightWitchPeriodicBatStats())).withPeriodicFirst(10) /* audit 0003: wiki Night Witch, level 11 */);
         // Phoenix: one-time revive (phoenixReviveStats).
         add(troop(59, "Phoenix", 4.0f, Archetype::MeleeSquad, 1052, SPEED_MEDIUM, 1.6f, 217, 10, '7')
             .withFlying().withTargetsAir()
@@ -864,14 +864,14 @@ private:
         add(troop(61, "Princess", 3.0f, Archetype::RangedSquad, 261, SPEED_MEDIUM, 9.0f, 168, 30, '9')
             .withTargetsAir()
             .withSplash(2.0f).withSightRange(9.5f).withDeployTime(12) /* audit 0003: wiki Princess, level 11 */);
-        // Hunter: the real card fires 10 randomly spread pellets and no falloff
-        // curve is published. withRangeFalloff is an invented deterministic
-        // approximation: linear from full damage point-blank to half at max
-        // range.
+        // Hunter: ten pellets of 84 in a fan (published multiple_projectiles
+        // 10; the fan angle is not published, see CombatEntity::pelletsOnBody).
+        // Until 2026-11-23 this was ONE pellet with an invented falloff: 84 at
+        // contact where the real volley takes about 800.
         add(troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
             .withTargetsAir()
             .withSplash(1.5f)
-            .withRangeFalloff(0.5f));
+            .withPellets(10, HUNTER_FAN_DEGREES));
         // A piercing line: 11.0 long, half-width 0.25.
         add(troop(63, "Magic Archer", 4.0f, Archetype::RangedSquad, 529, SPEED_MEDIUM, 7.0f, 135, 11, '#')
             .withTargetsAir()
@@ -909,7 +909,7 @@ private:
             .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(furnaceFireSpiritStats())));
         add(troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
             .withTargetsAir()
-            .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */);
+            .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */);
 
         // "Spirit" troops detonate on their first hit and vanish
         // (CombatEntity::dieAfterFirstHit).
@@ -1069,7 +1069,7 @@ private:
         // effect; knockback not modelled), periodic Goblins, and 2 Goblins on
         // death.
         add(building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-            .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+            .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
             .withDeployAnywhere()
             .withSpawnEffect(2.0f, 84)
             .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats())).withLifetime(100) /* audit 0003: wiki Goblin Drill, level 11 */);
@@ -1491,10 +1491,10 @@ private:
         addEvolution(142,
             troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
                 .withTargetsAir()
-                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
+                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
             troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
                 .withTargetsAir()
-                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats()))
+                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10)
                 .withHealOnHit(20, 1040).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
             1 /* audit 0003: wiki Evolution, level 11: 1 cycle */, 1);
 
@@ -1539,9 +1539,9 @@ private:
         // s net + 5 s recharge), via PeriodicFreezeNearestEffect.
         addEvolution(146,
             troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
-                .withTargetsAir().withSplash(1.5f).withRangeFalloff(0.5f),
+                .withTargetsAir().withSplash(1.5f).withPellets(10, HUNTER_FAN_DEGREES),
             troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
-                .withTargetsAir().withSplash(1.5f).withRangeFalloff(0.5f)
+                .withTargetsAir().withSplash(1.5f).withPellets(10, HUNTER_FAN_DEGREES)
                 .withPeriodicEffect(80, std::make_shared<PeriodicFreezeNearestEffect>(4.0f, 30)),
             2, 1);
 
@@ -1620,12 +1620,12 @@ private:
         // each time) is approximated as more Goblins on death.
         addEvolution(153,
             building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
                 .withDeployAnywhere()
                 .withSpawnEffect(2.0f, 84)
                 .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats())).withLifetime(100) /* audit 0003: wiki Goblin Drill, level 11 */,
             building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
                 .withDeployAnywhere()
                 .withSpawnEffect(2.0f, 84)
                 .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats()
@@ -1635,8 +1635,8 @@ private:
         // Tesla ("Electro Pulse"): 6-tile radius, low damage and a 0.5 s stun.
         // There is no hiding to emerge from here, so it fires once on deploy.
         addEvolution(154,
-            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250) /* audit 0003: wiki Tesla, level 11 */,
-            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir()
+            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250).withHidesWhenIdle(8) /* audit 0003: wiki Tesla, level 11 */,
+            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withHidesWhenIdle(8)
                 .withSpawnEffect(6.0f, 100, std::make_shared<FreezeOnHit>(5, 0.0f)).withLifetime(250) /* audit 0003: wiki Tesla, level 11 */,
             2, 1);
 

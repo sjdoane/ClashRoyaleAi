@@ -122,9 +122,11 @@ def test_two_bodies_rest_at_the_sum_of_their_radii():
     # A Hog Rider (0.6) catching an Ice Golem (0.7) in the same lane: 1.3
     # between centres, where the old 0.4 + 0.4 let them close to 0.8.
     env = _match()
-    env.inject(ICE_GOLEM, 15.0, 15.0, 0, -1.0, -1)
+    # (On the tower column since patch 0087: from the outer tile the Hog now
+    # leaves the Golem's line for its diagonal jump and the contact is short.)
+    env.inject(ICE_GOLEM, 14.0, 15.0, 0, -1.0, -1)
     env.step_self_play(NOOP, 0.0, 0.0, NOOP, 0.0, 0.0, 11)
-    env.inject(HOG, 15.0, 13.0, 0, -1.0, -1)
+    env.inject(HOG, 14.0, 13.0, 0, -1.0, -1)
     gaps = []
     for _ in range(60):
         env.step_self_play(NOOP, 0.0, 0.0, NOOP, 0.0, 0.0, 1)

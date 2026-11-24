@@ -13,6 +13,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 class CombatEntity;
 
@@ -268,6 +269,13 @@ public:
     int revealTicksAfterAttack = 0;
     int visibleTicksRemaining = 0;
 
+    // Published hides_when_not_attacking (Tesla): underground, and not a
+    // target, unless it is deploying or has an enemy in sight; it goes back
+    // down hideAfterIdleTicks after the last one left. Uses the invisibility
+    // state above (CardStats::withHidesWhenIdle sets both).
+    bool hidesWhenIdle = false;
+    int hideAfterIdleTicks = 0;
+
     // Periodic effects while alive (Witch, Night Witch, Furnace, huts,
     // Tombstone, Goblin Drill): fires periodicEffect every
     // periodicIntervalTicks. 0 disables it.
@@ -475,6 +483,48 @@ public:
     // has no target of its own.
     float lastAttackDistance = 0.0f;
 
+    // A fan of pellets (Hunter). `damage` is one pellet; the shot deals one
+    // pellet times the number its target's body intercepts (pelletsOnBody).
+    // pelletCount 0 = an ordinary shot.
+    int pelletCount = 0;
+    float pelletFanDegrees = 0.0f;
+    // The target's body at the last attack, as the fan sees it.
+    float lastAttackTargetRadius = 0.0f;
+    static constexpr float PELLET_RADIUS = 0.07f; // published area_damage_radius 70
+
+    // How many pellets of an evenly spread fan a body intercepts: the angle
+    // the body (plus a pellet's own radius) subtends from the shooter, over
+    // the angle between two pellets. Continuous and deterministic (the real
+    // fan is random); never less than one, never more than the fan holds.
+    //
+    // PUBLISHED: 10 pellets, each the card's damage. NOT PUBLISHED: the fan
+    // angle. MEASURED (live recordings 2026-11-23, matches 4 and 6): one
+    // volley at contact takes 45-50 % of a level-11 Hog Rider (1697 hp), nine
+    // to ten pellets, which a fan of up to about 55 degrees gives. The share
+    // at range is NOT measured.
+    static float pelletsOnBody(int count, float fanDegrees, float dist, float bodyRadius) {
+        if (count <= 1 || fanDegrees <= 0.0f) return static_cast<float>(std::max(count, 1));
+        const float reach = bodyRadius + PELLET_RADIUS;
+        if (dist <= reach) return static_cast<float>(count);
+        const float spacing = fanDegrees / static_cast<float>(count - 1) * 3.14159265f / 180.0f;
+        const float width = 2.0f * std::atan2(reach, dist);
+        return std::clamp(width / spacing, 1.0f, static_cast<float>(count));
+    }
+
+    // A Crown Tower's body here is 1.5 / 2.0 where the published one is
+    // 1.0 / 1.4 (patch 0043), and a shooter stops that much further out; the
+    // fan is given the published geometry so that a tower does not catch
+    // pellets for being drawn too large.
+    static void pelletGeometry(const Entity& target, float centreDist, float& dist, float& radius) {
+        radius = effectiveRadiusOf(target);
+        dist = centreDist;
+        if (target.isTower()) {
+            const float published = radius * (2.0f / 3.0f);
+            dist = centreDist - (radius - published);
+            radius = published;
+        }
+    }
+
     // Champion marker. Gates no combat behaviour; lets GameManager find the
     // deployed Champion.
     bool isChampion = false;
@@ -552,6 +602,10 @@ public:
     // whatever lands on its tile (Entity::takesAreaDamage). A rider is not: it
     // has no body of its own while it is carried.
     bool takesAreaDamage() const override { return !isRiding(); }
+    // An underground Tesla is drawn for both players (patch 0086).
+    bool isSeenOnBoard() const override {
+        return isTargetable() || (hidesWhenIdle && !isRiding());
+    }
 
     // Soul collection: any death within radius, ally or enemy.
     void onNearbyDeath(Board&, const Vector2D& deathPosition, int) override {
@@ -819,6 +873,8 @@ public:
 
         if (parryIntervalTicks > 0 && parryTicksUntilReady > 0) parryTicksUntilReady--;
         if (startsInvisible && visibleTicksRemaining > 0) visibleTicksRemaining--;
+        // A hiding building is above ground for the whole of its deploy.
+        if (hidesWhenIdle && deploying) visibleTicksRemaining = hideAfterIdleTicks;
         if (buffTicksRemaining > 0) buffTicksRemaining--;
         if (curseTicksRemaining > 0) curseTicksRemaining--;
         // The ability's own timer starts when the body has landed (patch
@@ -914,6 +970,14 @@ public:
             }
         }
 
+        // A hiding building (Tesla) is up while an enemy it can shoot is in
+        // its sight, stunned or not. findTarget also returns the lane
+        // objective when nothing is in sight, hence the distance test.
+        if (hidesWhenIdle && target
+            && position.distanceTo(target->position) <= effectiveSightTo(target)) {
+            visibleTicksRemaining = hideAfterIdleTicks;
+        }
+
         // No target at all cancels a wind-up. A stun does not: it PAUSES the
         // attack (the wind-up is held below, like the cooldown) and the unit
         // carries on where it stopped, on whatever it targets when it resumes.
@@ -972,6 +1036,9 @@ public:
                     // fire depends on when the damage lands (at once for a
                     // direct hit, on arrival for a projectile).
                     lastAttackDistance = dist;
+                    if (pelletCount > 0) {
+                        pelletGeometry(*target, dist, lastAttackDistance, lastAttackTargetRadius);
+                    }
                     ticksSinceAttack = 0;
                     attacksStarted++;
                     if (magazineSize > 0 && magazineRounds > 0) magazineRounds--;
@@ -1001,7 +1068,9 @@ public:
                         if (chargeIsSticky && chargeProgress >= chargeThreshold) chargeHasStuck = true;
                         if (!chargeHasStuck) chargeProgress = 0.0f;
                     }
-                    if (startsInvisible) visibleTicksRemaining = revealTicksAfterAttack;
+                    if (startsInvisible) {
+                        visibleTicksRemaining = std::max(visibleTicksRemaining, revealTicksAfterAttack);
+                    }
                     // Little Prince's hit-speed ramp; ticksOnTarget already
                     // includes this hit.
                     if (hitSpeedRampFullTick > 0) {
@@ -1170,15 +1239,17 @@ protected:
     }
 
     // The published sight clip (SightClips.h), body to body like the sight
-    // itself.
+    // itself. Only the SIDEWAYS cut is applied. Patch 0042 also cut the sight
+    // along the arena at sightRange - sightClip; 84 recorded pulls (patch
+    // 0086) do not support that: three Hog Riders leaving the bridge with a
+    // centre building 7.9-8.0 tiles away and the tower 7.6 away ran straight
+    // on (the along cut hides the tower from them), and an Ice Golem was
+    // pulled by a Tesla beyond the cut. What the published SightClip field
+    // means is therefore NOT known; `sightClip` is still loaded and reported.
     bool withinSightClip(float myRadius, const Entity& target) const {
-        if (sightClip <= 0.0f && sightClipSide <= 0.0f) return true;
+        if (sightClipSide <= 0.0f) return true;
         const float r = myRadius + effectiveRadiusOf(target);
-        if (sightClipSide > 0.0f
-            && std::fabs(target.position.x - position.x) - r > sightRange - sightClipSide) return false;
-        if (sightClip > 0.0f
-            && std::fabs(target.position.y - position.y) - r > sightRange - sightClip) return false;
-        return true;
+        return std::fabs(target.position.x - position.x) - r <= sightRange - sightClipSide;
     }
 
     // Re-validates the locked target by id rather than re-scanning for the
@@ -1335,6 +1406,10 @@ protected:
         }
         if (buffTicksRemaining > 0) {
             base = static_cast<int>(base * buffDamageMultiplier);
+        }
+        if (pelletCount > 0) {
+            base = static_cast<int>(std::lround(
+                base * pelletsOnBody(pelletCount, pelletFanDegrees, lastAttackDistance, lastAttackTargetRadius)));
         }
         if (rangeFalloff && attackRange > 0.0f) {
             float distFraction = std::min(lastAttackDistance / attackRange, 1.0f);

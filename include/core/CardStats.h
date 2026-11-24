@@ -54,6 +54,11 @@ inline constexpr float SPEED_VERY_FAST = 120.0f * REAL_TILES_PER_MIN_TO_ENGINE;
 // towers and projectiles bypass.
 inline constexpr int DEPLOY_TIME_TICKS = 10;
 
+// The Hunter's fan (CombatEntity::pelletsOnBody). NOT PUBLISHED. 45 degrees
+// puts all ten pellets on a Hog Rider at contact (measured 9-10 in the live
+// recordings of 2026-11-23) and about three on a troop at his full range.
+inline constexpr float HUNTER_FAN_DEGREES = 45.0f;
+
 struct CardStats {
     int id = 0;
     std::string name;
@@ -233,6 +238,10 @@ struct CardStats {
     // damage and spells still land (Entity::takesAreaDamage, patch 0041).
     bool startsInvisible = false;
     int revealTicksAfterAttack = 0;
+    // Published hides_when_not_attacking / hide_time_ms (Tesla, patch 0086):
+    // see CombatEntity::hidesWhenIdle.
+    bool hidesWhenIdle = false;
+    int hideAfterIdleTicks = 0;
 
     // Compound cards (Goblin Giant, Ram Rider, Goblin Machine, Goblin Gang,
     // Rascals): a second, independently targeting unit spawned at the same
@@ -253,9 +262,12 @@ struct CardStats {
 
     // Periodic spawning while alive (Witch, Night Witch, Furnace, Barbarian
     // Hut, Goblin Hut, Tombstone, Goblin Drill). First fires after one full
-    // interval.
+    // interval unless periodicFirstTicks says otherwise.
     std::shared_ptr<IPeriodicEffect> periodicEffect;
     int periodicIntervalTicks = 0;
+    // Ticks from the end of the deploy to the first fire (the published
+    // SpawnStartTime); -1 = one full interval, the behaviour before patch 0083.
+    int periodicFirstTicks = -1;
     // The self-periodic hook (SelfPeriodicEffect.h, patch 0015).
     std::shared_ptr<ISelfPeriodicEffect> selfPeriodicEffect;
     int selfPeriodicIntervalTicks = 0;
@@ -314,6 +326,11 @@ struct CardStats {
     // Range-based damage falloff (Hunter). Not sourced data.
     bool rangeFalloff = false;
     float rangeFalloffMinFraction = 1.0f;
+
+    // A shot of several pellets in a fan (Hunter: published
+    // multiple_projectiles 10). `damage` is ONE pellet. 0 = an ordinary shot.
+    int pelletCount = 0;
+    float pelletFanDegrees = 0.0f;
 
     // Bonus damage within a distance band (Archers' Power Shot, Executioner's
     // Axe Smash). rangeBandMaxDist == 0 disables it.
@@ -526,9 +543,24 @@ struct CardStats {
         revealTicksAfterAttack = revealTicks;
         return *this;
     }
+    // A building that goes underground `hideTicks` after its last enemy left
+    // its sight, and cannot be targeted while it is down (Tesla).
+    CardStats& withHidesWhenIdle(int hideTicks) {
+        startsInvisible = true;
+        hidesWhenIdle = true;
+        hideAfterIdleTicks = hideTicks;
+        revealTicksAfterAttack = hideTicks;
+        return *this;
+    }
     CardStats& withPeriodicEffect(int intervalTicks, std::shared_ptr<IPeriodicEffect> effect) {
         periodicIntervalTicks = intervalTicks;
         periodicEffect = std::move(effect);
+        return *this;
+    }
+    // The published SpawnStartTime: the first fire comes `ticks` after the
+    // deploy ends instead of one full interval after it (patch 0083).
+    CardStats& withPeriodicFirst(int ticks) {
+        periodicFirstTicks = ticks;
         return *this;
     }
     // First check `firstTicks` after the deploy ends, then every
@@ -683,6 +715,12 @@ struct CardStats {
     CardStats& withRangeFalloff(float minFraction) {
         rangeFalloff = true;
         rangeFalloffMinFraction = minFraction;
+        return *this;
+    }
+    // The pellet count is published; the fan angle is not (see CombatEntity::pelletsOnBody).
+    CardStats& withPellets(int count, float fanDegrees) {
+        pelletCount = count;
+        pelletFanDegrees = fanDegrees;
         return *this;
     }
     CardStats& withRangeBandBonus(float minDist, float maxDist, float multiplier) {

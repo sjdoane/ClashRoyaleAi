@@ -165,8 +165,13 @@ def test_a_hog_rider_behind_an_ice_golem_in_the_lane_hits_later_and_longer():
     # takes its arrows, the Hog's first hit comes 0.45-0.67 s later than a lone
     # Hog's (0.4-1.0 s asked for here: one tile and one seed), and it lands
     # more hits than a lone Hog because the tower is busy.
-    lone_hits, lone_arrow = _hog_on_the_tower(None, (15.0, 14.0))
-    hits, arrow = _hog_on_the_tower((15.0, 15.0), (15.0, 14.0))
+    # Since patch 0087 (walkers aim for the tower column, the Hog jumps the
+    # river on a diagonal) the recorded tiles themselves are used: Golem on
+    # (15, 15), Hog on (16, 15) 1.06 s later. The Golem is carried forward and
+    # to the left and the Hog passes it on the right, as recorded. (Before
+    # 0087 these tiles gave a 0.1 s delay and the test used one column.)
+    lone_hits, lone_arrow = _hog_on_the_tower(None, (16.0, 15.0))
+    hits, arrow = _hog_on_the_tower((15.0, 15.0), (16.0, 15.0))
     assert 4 <= hits[0] - lone_hits[0] <= 10
     assert arrow[ICE_GOLEM] < lone_arrow[HOG] + 6          # the tower opens on the Golem
     assert arrow[HOG] - arrow[ICE_GOLEM] >= 50             # and stays on it

@@ -1850,6 +1850,260 @@ Existing expectations that moved, and what each had encoded:
   already carried a horizon picked after patch 0034; the Ice Golem placed on
   (2, 15) now walks straight up the bridge. Neither recorded nor published.
 
+## 2026-11-23: the first periodic spawn comes at the published SpawnStartTime (patch 0083)
+
+**GAMEPLAY-AFFECTING** for every opponent holding a Goblin Drill, a Witch or a
+Night Witch (none is in `DEFAULT_DECK`). `CardFactories` started every periodic
+spawner's countdown at one whole interval, so the first spawn came a whole
+interval after the deploy. New `CardStats::periodicFirstTicks`
+(`.withPeriodicFirst(ticks)`, -1 = the old rule): ticks from the end of the
+deploy to the first fire. The countdown does not run while the body deploys.
+
+| card | published start / pause | first spawn after the play, before | now |
+|---|---|---|---|
+| Goblin Drill (98, both forms of 153) | 1000 / 3000 ms | 4.0 s (first stab 5.4-5.9 s) | 1.1 s (first stab 2.5-3.0 s) |
+| Witch (and both Evolution forms) | 1000 / 7000 | 8.0 s | 2.0 s |
+| Night Witch | 1000 / 5000 | 6.0 s | 2.0 s |
+
+- Source: RoyaleAPI cr-api-data `cards_stats.json` (`spawn_start_time`,
+  `spawn_pause_time`).
+- **The Drill's value is the recording's, not the table's.** Three Goblin Drills
+  on our Princess Tower in `runs/live/20261123-104801`: the first Goblin's first
+  stab lands 2.1-2.4 s after the Drill's stopwatch appears, the next Goblin
+  about 3 s later. The spawned Goblin keeps its 1 s deploy here, so the Drill
+  uses `withPeriodicFirst(0)` (fires on the first tick after its own deploy):
+  first stab 2.5-3.0 s, still 0.3-0.6 s later than recorded. With the published
+  1000 on top of the Goblin's deploy it would be 3.5-4.0 s.
+- An unanswered Drill beside a Princess Tower now costs 10 to 16 stabs
+  (1250-2000) where it cost 5 to 8: the tower stays on the Drill, as before,
+  while the Goblins come out 3 s sooner. No recording of an unanswered Drill
+  exists to check the total; in the recorded match the first Drill took 7
+  stabs with our defence present, and the old engine gave 0 there.
+- NOT changed: spawners published with `spawn_start_time` 0 (Tombstone, Goblin
+  Hut, Barbarian Hut, Furnace) still fire first after one whole interval.
+  Whether 0 means "at once" was not checked against a recording.
+- Tests: `python_ai/tests/test_first_periodic_spawn.py`. Suites unchanged
+  otherwise: 837 cases, 836 passed, 1 failed as expected (C++); 1297 passed,
+  3 skipped (Python).
+
+## 2026-11-23: the pocket opens when a Princess Tower falls (patch 0084)
+
+**GAMEPLAY-AFFECTING for every match in which a Princess Tower falls.** The
+engine never extended the deploy zone: with an enemy tower down, troops and
+buildings were still refused past the river. `GameManager::inPocket(team, x, y)`
+now opens, for the side that took the tower, that lane's half of the width
+(`ArenaLayout::isLeftLane`) on the enemy bank down to engine row 11 of the
+loser's half (rows 18-22 seen from team 0, 11-15 from team 1), plus that lane's
+bridge cells. River water stays closed. Both Princess Towers down opens the
+whole width. Used by `isValidPlacement` for troops, buildings, the own-side-only
+spells (Barbarian Barrel, Royal Delivery) and the rolling spells.
+
+- **EVIDENCE LEVEL: measured, not published.** In the 19 live matches recorded
+  on 2026-11-23 about 35 troop and building placements were made past the river
+  after a tower fell: every one on the fallen tower's half, none deeper than
+  engine row 11, the row most of them used; Hero Barbarian Barrels were cast
+  there too. The real pocket's exact shape (whether it is a full half-width
+  rectangle, whether the depth differs near the King Tower) is not known beyond
+  those placements.
+- Why it mattered: a replay of a recorded pocket play moved it to the river
+  bank (`training/ghost.py::nearest_legal`), 4-7 s further from the King Tower.
+  With the rule the 19 recorded matches, replayed with both sides scripted, cost
+  us 0.661 of our tower health against a real 0.668 (0.600 before; patch 0085 is
+  in that figure too).
+- NOT changed: `python_ai`'s cached placement mask
+  (`net._build_placement_legality`) tracks team 0's own towers only, so the old
+  trainer's mask does not offer pocket cells. That is conservative, never
+  illegal. `HeuristicOpponent` and the teacher do not use the pocket. Spells
+  that could always be cast anywhere are unchanged.
+- Tests: `python_ai/tests/test_pocket_placement.py`; the two tripwires that
+  pinned "an enemy tower dying changes nothing"
+  (`test_placement_legality_is_static.py`,
+  `test_placement_mask_after_tower_loss.py`) now pin exactly what opens and
+  that the mask stays a subset.
+
+## 2026-11-23: the Hunter fires ten pellets in a fan (patch 0085)
+
+**GAMEPLAY-AFFECTING** for every opponent holding a Hunter (not in
+`DEFAULT_DECK`). The Hunter was one 84-damage shot with an invented range
+falloff (`withRangeFalloff(0.5)`): 42-84 a volley. The published record
+(RoyaleAPI cr-api-data `cards_stats.json`) is `multiple_projectiles` 10, 84 a
+pellet at level 11, pellet `area_damage_radius` 70, `scatter` "Line", projectile
+range 6.5, range 4.
+
+- `CardStats::withPellets(count, fanDegrees)` -> `CombatEntity::pelletCount` /
+  `pelletFanDegrees`. `CombatEntity::pelletsOnBody(count, fan, dist, bodyRadius)`
+  is the one rule: the pellets are spread evenly over the fan, and a body takes
+  those whose line passes within its radius plus the pellet's 0.07; all of them
+  inside that reach, never fewer than one. The damage of a shot is the per-pellet
+  damage times that number. Every other enemy body within the old splash radius
+  (1.5) of the target takes the pellets its own body intercepts, at most what
+  the target left over (`Projectile::applyPelletSpread`).
+- **`HUNTER_FAN_DEGREES = 45` IS NOT PUBLISHED.** It is chosen so that all ten
+  land on a Hog Rider in contact, which is measured: in the live recordings of
+  2026-11-23 a Hog lost 760-840 to one volley (9-10 pellets). The share at
+  range is NOT measured. Supercell's 24 Jan 2018 note ("range 5 -> 4, bullet
+  spread slightly smaller") is the only official text on the spread.
+- A Crown Tower is measured with its PUBLISHED body (1.0 / 1.4, two thirds of
+  the engine's 1.5 / 2.0) for this rule only (`pelletGeometry`), or the engine's
+  larger tower would catch pellets the real one does not.
+- Through the bindings: Hog Rider, Giant, Ice Golem in contact 840; Giant from
+  4.4 tiles 332; Knight from 3.5 tiles 270; a Princess Tower from his range 369
+  a volley (4.4 pellets). In the replays of the two recorded Hunter matches the
+  damage we deal went from 0.23 to 0.12 of their tower health (real 0.12) and
+  from 0.76 to 0.58 (real 0.30).
+- The generic `rangeFalloff` mechanism stays (its C++ tests use it directly);
+  no card uses it now.
+- Tests: `python_ai/tests/test_hunter_pellets.py`. Suites: 837 cases, 836
+  passed, 1 failed as expected (C++); 1314 passed, 3 skipped (Python).
+
+## 2026-11-23: which building pulls a troop: a tower is ranked by its published body, no along-arena sight cut, an underground Tesla is no target (patch 0086)
+
+**GAMEPLAY-AFFECTING for every match.** Three rules about which building or
+Crown Tower a troop turns to. They revise the readings of patch 0042 (sight
+clip) and patch 0043 (towers ranked by their 1.5 / 2.0 collision body).
+
+- **EVIDENCE LEVEL: recordings only.** 117 pull events (a building-targeter
+  with a tower and at least one other building in play) were read frame by
+  frame from the 19 live matches recorded on 2026-11-23; 84 are decided beyond
+  the position error. Before: 60 right, 6 wrong, 18 within error. With all
+  three rules: **70 right, 0 wrong, 14 within error.** The 14 are not used as
+  tests. Nothing published states any of the three as prose.
+- **A Crown Tower is RANKED by its published body.** `Tower::getTargetingRadius`
+  returns `PUBLISHED_PRINCESS_RADIUS` 1.0 / `PUBLISHED_KING_RADIUS` 1.4;
+  `findTarget` ranks by `dist - getTargetingRadius()`. A Cannon (body 0.6) pulls
+  a building-targeter when its centre is more than 0.4 nearer than the tower's;
+  it needed 0.9. Fit: a tower radius of 0.9-1.1 scores best, 0.4-1.1 fits
+  within error, 1.5 is excluded; 1.0 is the published value in that band. It
+  applies to every troop's choice of target, although the evidence is
+  building-targeters only.
+- **The published SightClip no longer cuts the sight box ALONG the arena.**
+  `CombatEntity::withinSightClip` keeps the sideways cut
+  (`sightRange - sightClipSide`, body to body) and nothing else. With the along
+  cut a Hog Rider leaving the bridge could not see the Princess Tower it was
+  running at (9 tiles ahead) but could see a building in the middle, and turned
+  to it; the recorded ones ran to the tower (events m9-j, m12-n, m12-p; Ice
+  Golem m9-i). `sight_clip` is still loaded and reported. **What the published
+  SightClip means is not known.**
+- **A Tesla is underground and cannot be picked as a target unless an enemy is
+  inside its own sight** (events m11-g, m11-l0). `CardStats::withHidesWhenIdle(8)`
+  on the three Tesla rows -> `CombatEntity::hidesWhenIdle` /
+  `hideAfterIdleTicks`, from the published hide time (800 ms). It is above
+  ground for its whole deploy and 8 ticks after, comes up on the tick an enemy
+  is inside its sight, and goes under 8 ticks after the last one left or died.
+  It stays in the observation (`Entity::isSeenOnBoard`, used by `ClashEnv`): it
+  is drawn on the real screen; only a cloaked unit is left out. Exposed as
+  `get_card_stats(id)["base"]["hide_after_idle_ticks"]`.
+
+Measured through the bindings (team-0 Hog Rider, team-1 building, enemy right
+Princess Tower at (14, 27)):
+
+| Hog at | building at | before | now |
+|---|---|---|---|
+| (14.5, 19) | Cannon (9, 24) | Cannon, then the tower | Cannon |
+| (14.5, 19) | Cannon (8.5, 24) or (9, 25) | Cannon, then the tower | tower |
+| (14.5, 18) | Cannon (8, 24) | Cannon | tower |
+| (14.5, 18) | Cannon (8, 23) | Cannon | Cannon |
+| (14.5, 18) | settled Tesla (9, 22) | Tesla from tick 1 | tower, Tesla from tick 3 |
+| (14.5, 18) | settled Tesla (9, 23) | Tesla from tick 1 | tower, Tesla from tick 6 |
+| (14.5, 18) | settled Tesla (9, 24) | Tesla | tower, never the Tesla |
+| (14.5, 18) | Tesla still deploying (9, 24) | Tesla | Tesla |
+
+NOT changed:
+
+- The sideways clip (patch 0042): a Cannon 7 tiles to the side still does not
+  pull.
+- The tower's collision body 1.5 / 2.0: reach, sight and where a unit stops
+  still use it. Only the ranking moved.
+- A Tesla surfaces instantly for targeting and its fire timing is unchanged;
+  the real one takes 0.3-0.5 s to rise. A hidden Tesla still takes area and
+  spell damage and still decays.
+- Seen in the recordings and not modelled: the Hero Ice Golem's inconsistent
+  choices, a retarget when a freeze ends, a troop walking BACK to a Goblin Drill
+  behind it, the Hog Rider's diagonal river jump, a Hog pushing a slower troop.
+- Tesla and Goblin Drill stand on half-tile centres in the real game; nothing
+  here places them there.
+
+Tests: `python_ai/tests/test_building_pull_0086.py` (12; 10 of them fail on the
+engine before this patch). No existing expectation moved. Suites: 837 cases,
+836 passed, 1 failed as expected (C++); 1326 passed, 3 skipped (Python).
+
+## 2026-11-24: units cross the river on the tower column; the Hog Rider jumps it on a diagonal (patch 0087)
+
+Lives in the copy `build/gen2_h` (training and the evals ran `build/gen2_g`
+up to this patch; switching a run to it is a dated change in
+`training/run_g2_ppo_s2r.sh`).
+
+**What was wrong.** A walker aimed for any point of the drawn two-tile deck
+(x 1.5-3.5 and 13.5-15.5, patch 0060) and a river jumper walked a straight
+line to its target. Neither is what the recordings of 2026-11-23/24 show
+(`evals/tools/hog_path.py`, `hog_path2.py`; 5,201 boxes of ground troops over
+the river, 145 own Hog Rider plays):
+
+- Ground troops cross on x 2.25-3.75 and 13.25-14.75, with a peak at 2.5 / 14.5
+  (arriving from outside) and one at 3.5 / 13.5 (arriving from the middle).
+  Nothing crosses on the outer tile of either deck.
+- The Hog Rider placed on (1, 15) lands on 2.52 (n 51), from (16, 15) on 14.54
+  (n 55); a straight line gives 1.5 and 15.5. It goes sideways and forward at
+  the same rate until it is within half a tile of its target's column, does
+  not lose forward speed doing so, and then goes straight up the column.
+- Placed a tile or less outside the column, beside the bridge, it does not
+  jump: it steps onto the column and walks (6 of 6 plays).
+
+**What changed** (`include/core/Board.h`, `include/entities/Troop.h`):
+
+- `Board::WALK_HALF_WIDTH` (0.5), `LEFT_WALK_X` / `RIGHT_WALK_X` (the lane
+  columns 3.0 / 14.0), `inWalkCorridor`, `walkXFor`. `crossingX` and
+  `getNextWaypoint` aim inside this one-tile corridor. It is an aim, not a
+  wall: `isOnBridge` (clampToBoard, the observation's bridge columns, the
+  pocket rule, the renderer) is still the drawn two-tile deck, so a pushed
+  body can stand on the outer tile, and from there it crosses where it stands
+  (`MOUTH_FUNNEL_SLOPE`) instead of walking along the bank to the mouth.
+- `Board::getJumperWaypoint` returns the next point and a speed scale for a
+  ground unit that ignores the river: 45 degrees to the target's column at
+  sqrt(2) x speed from the bank row on (`JUMP_ZONE`), straight once within half
+  a tile of it, and the walk-onto-the-column case from the outer side
+  (`BRIDGE_WALK_REACH`).
+- `Troop::moveTowards` gives a jumper up to three legs per tick. With one leg,
+  two jumpers abreast (Royal Hogs) pushed each other off the corridor edge
+  every tick and crept across the river.
+
+**Two dead ends, so nobody repeats them.** (1) The corridor as a wall: two wide
+bodies (Goblin Machine and its turret, 0.75 each) stood at the mouth pushing
+each other for ever. (2) One movement leg per tick for jumpers: the creep
+above.
+
+**What it does and does not fix.** The outer edge of the crossing moved one
+tile towards the middle, so a unit coming from the arena's edge is seen by a
+centre building a tile sooner. Measured with both sides replayed from the live
+store, our damage per match goes from 2,668 to 2,492 against about 1,200 in the
+real matches: a small part of that gap. The rest is not movement: where the
+opponent's plays are stored nearly completely, the simulated Hog already
+matches the real one (453 against 463 a play). The gap is opponent plays
+missing from the store (spells above all) and training opponents that answer a
+Hog worse than people do. See `memory/sim-vs-real-findings.md` in the outer
+repository's notes.
+
+**The recorded Golem-and-Hog pair is now reproduced on its own tiles.** Ice
+Golem on (15, 15), Hog Rider on (16, 15) 1.06 s later: the Golem is carried
+forward and to the left (14.5 to 13.3; recorded 14.5 to about 13), the Hog
+passes it on the right, and its first hit is 0.4 s later than a lone Hog's
+(recorded 0.45-0.67). Before this patch those tiles gave 0.1 s and the test
+used one column instead (see the mass-push section).
+
+**Not modelled:** a jumper's diagonal when its target is a building rather
+than a tower is the same rule (two recorded plays agree, 13.0 and 13.1); the
+recorded sidestep onto the column is spread over about a row and is done at
+the bank here; nothing is recorded for a Hog placed one tile INSIDE the column.
+
+Tests: `tests/core/test_board.cpp` (+361 lines: corridor, mirrored teams,
+jumpers from every start cross and do not stall, the recorded landing
+columns). Moved expectations, each with a comment at the assertion:
+`test_bridge_crossed_across_its_width.py` (a Giant on the outer tile steps in
+to 2.5; a pair abreast is 0.49 apart and 0.5 s apart, was > 0.5 and <= 0.4),
+`test_body_sizes.py` (contact test moved onto the tower column),
+`test_mass_push.py` (the recorded tiles). Suites: 845 cases, 844 passed, 1
+failed as expected (C++); 1326 passed, 3 skipped (Python).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

@@ -63,9 +63,18 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->hookRange = stats.hookRange;
     entity->startsInvisible = stats.startsInvisible;
     entity->revealTicksAfterAttack = stats.revealTicksAfterAttack;
+    entity->hidesWhenIdle = stats.hidesWhenIdle;
+    entity->hideAfterIdleTicks = stats.hideAfterIdleTicks;
+    // Above ground from the tick it is placed (it deploys in view).
+    if (stats.hidesWhenIdle) entity->visibleTicksRemaining = stats.hideAfterIdleTicks;
     entity->periodicEffect = stats.periodicEffect;
     entity->periodicIntervalTicks = stats.periodicIntervalTicks;
-    entity->periodicTicksUntilNext = stats.periodicIntervalTicks; // first fire after one full interval
+    // First fire one full interval after the deploy, or after the published
+    // SpawnStartTime where the card has one (the countdown fires on reaching 0,
+    // so 1 is the first tick after the deploy).
+    entity->periodicTicksUntilNext = stats.periodicFirstTicks >= 0
+        ? (stats.periodicFirstTicks > 1 ? stats.periodicFirstTicks : 1)
+        : stats.periodicIntervalTicks;
     entity->periodicHotIntervalTicks = stats.periodicHotIntervalTicks;
     entity->selfPeriodicEffect = stats.selfPeriodicEffect;
     entity->selfPeriodicIntervalTicks = stats.selfPeriodicIntervalTicks;
@@ -110,6 +119,8 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->lineSplashRange = stats.lineSplashRange;
     entity->rangeFalloff = stats.rangeFalloff;
     entity->rangeFalloffMinFraction = stats.rangeFalloffMinFraction;
+    entity->pelletCount = stats.pelletCount;
+    entity->pelletFanDegrees = stats.pelletFanDegrees;
     entity->rangeBandMinDist = stats.rangeBandMinDist;
     entity->rangeBandMaxDist = stats.rangeBandMaxDist;
     entity->rangeBandDamageMultiplier = stats.rangeBandDamageMultiplier;

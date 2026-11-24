@@ -57,6 +57,8 @@ py::dict statsDict(const CardStats& s, int depth = 0) {
     d["load_ticks"] = LoadTimes::forName(s.name);   // published load time
     d["lands_unloaded"] = LoadTimes::landsUnloaded(s.name);   // published LoadFirstHit
     d["ignores_pushback"] = Pushback::ignores(s.name);        // published IgnorePushback
+    // Published hide time of a building that goes underground (Tesla); 0 = never hides.
+    d["hide_after_idle_ticks"] = s.hidesWhenIdle ? s.hideAfterIdleTicks : 0;
     // What a unit of this card winds up before its first hit on a target in
     // range (CardFactories::applyCardMetadata): hit speed minus load time.
     d["first_hit_windup_ticks"] = s.loadTicksOverride >= 0

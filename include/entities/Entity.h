@@ -81,6 +81,11 @@ public:
     // 0041). Things that are never bodies (projectiles, spells) stay out.
     virtual bool takesAreaDamage() const { return isTargetable(); }
 
+    // Whether this is written into a player's observation. A cloaked Royal
+    // Ghost is not drawn for the opponent; a Tesla that has gone underground
+    // still is (patch 0086), although it cannot be targeted.
+    virtual bool isSeenOnBoard() const { return isTargetable(); }
+
     // True only for Building and Tower. Lets code outside the Building chain
     // (knockback, pulls) ask without a dynamic_cast, which would need
     // Building.h and create an include cycle.
@@ -103,8 +108,9 @@ public:
     virtual float getPlacementRadius() const { return getCollisionRadius(); }
 
     // Footprint for target-selection distance only, never collision or attack
-    // range. Nothing overrides it since patch 0043: every building, Crown
-    // Towers included, competes by its body.
+    // range. A building competes by its body; a Crown Tower by its PUBLISHED
+    // body, which is smaller than its collision radius here (Tower.h, patch
+    // 0086).
     virtual float getTargetingRadius() const { return getCollisionRadius(); }
 
     // Re-applies board bounds and river constraints. Only Troop overrides it;

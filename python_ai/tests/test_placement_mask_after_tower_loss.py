@@ -97,12 +97,18 @@ def test_the_engine_frees_the_footprint_of_our_own_dead_princess(slot,
                       for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
 
 
-def test_an_enemy_tower_dying_changes_nothing(net):
-    """The asymmetry is why only our own towers are tracked."""
+def test_an_enemy_tower_dying_only_ADDS_cells_so_the_mask_stays_safe(net):
+    """Only our own towers are tracked. Since the pocket rule (2026-11-23,
+    GameManager::inPocket) a fallen ENEMY Princess Tower opens cells past the
+    river; the mask does not know them, which is conservative (it never offers
+    an illegal cell). test_pocket_placement.py pins what opens.
+    """
     g = _game()
     before = _engine_cells(g, DECK[0], net)
     g.destroy_tower(1, 1)
-    assert _engine_cells(g, DECK[0], net) == before
+    after = _engine_cells(g, DECK[0], net)
+    assert before <= after
+    assert after - before
 
 
 @pytest.mark.parametrize("slot", [1, 2])

@@ -32,6 +32,13 @@ protected:
             boomerang, boomerangReturnDelayTicks, id, cardId, splashRadius, lineSplash, lineSplashRange,
             splashAppliesOnHit);
         arrow->crownTowerFactor = crownTowerHitFactor(*target);
+        if (pelletCount > 0) {
+            arrow->pelletCount = pelletCount;
+            arrow->pelletFanDegrees = pelletFanDegrees;
+            arrow->pelletsOnTarget =
+                pelletsOnBody(pelletCount, pelletFanDegrees, lastAttackDistance, lastAttackTargetRadius);
+            arrow->pelletDamage = static_cast<float>(getCurrentDamage()) / arrow->pelletsOnTarget;
+        }
         board.addEntity(arrow);
     }
 };
