@@ -318,24 +318,29 @@ TEST_CASE("getNextWaypoint routes below-to-above via the nearest bridge's start 
     // Closer to the right bridge than the left, and left of its deck: the
     // deck's near corner.
     Vector2D wp = board.getNextWaypoint(Vector2D{ 10.0f, 5.0f }, Vector2D{ 10.0f, 25.0f });
-    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x - Board::BRIDGE_HALF_WIDTH));
+    REQUIRE(wp.x == Catch::Approx(Board::RIGHT_WALK_X - Board::WALK_HALF_WIDTH));
+    REQUIRE(wp.x == Catch::Approx(13.5f));
     REQUIRE(wp.y == Catch::Approx(15.5f)); // riverY_start
 }
 
 TEST_CASE("getNextWaypoint routes above-to-below via the nearest bridge's end edge", "[board][waypoint]") {
     Board board;
     Vector2D wp = board.getNextWaypoint(Vector2D{ 10.0f, 25.0f }, Vector2D{ 10.0f, 5.0f });
-    REQUIRE(wp.x == Catch::Approx(board.getRightBridge().x - Board::BRIDGE_HALF_WIDTH));
+    REQUIRE(wp.x == Catch::Approx(Board::RIGHT_WALK_X - Board::WALK_HALF_WIDTH));
     REQUIRE(wp.y == Catch::Approx(17.5f)); // riverY_end
 }
 
 TEST_CASE("getNextWaypoint picks the left bridge when it is nearer", "[board][waypoint]") {
     Board board;
-    // x 2.0 is on the left deck (1.5 to 3.5): straight across.
+    // x 2.0 is outside the left walk corridor (2.5 to 3.5, patch 0087; it was
+    // on the old deck 1.5 to 3.5): the corridor's outer corner.
     Vector2D wp = board.getNextWaypoint(Vector2D{ 2.0f, 5.0f }, Vector2D{ 2.0f, 25.0f });
-    REQUIRE(wp.x == Catch::Approx(2.0f));
-    REQUIRE(board.isOnBridge(wp.x));
-    REQUIRE(std::abs(wp.x - board.getLeftBridge().x) <= Board::BRIDGE_HALF_WIDTH);
+    REQUIRE(wp.x == Catch::Approx(2.5f));
+    REQUIRE(Board::inWalkCorridor(wp.x));
+    REQUIRE(std::abs(wp.x - Board::LEFT_WALK_X) <= Board::WALK_HALF_WIDTH);
+    // In the corridor: straight across.
+    Vector2D own = board.getNextWaypoint(Vector2D{ 2.8f, 5.0f }, Vector2D{ 2.8f, 25.0f });
+    REQUIRE(own.x == Catch::Approx(2.8f));
 }
 
 // --- the bridge-mouth absorbing state ---
@@ -533,7 +538,9 @@ TEST_CASE("a troop on a bank line walks onto the bridge instead of oscillating a
 
 TEST_CASE("a walker whose line crosses the deck keeps its line", "[board][waypoint][patch0060]") {
     Board board;
-    for (float x : { 13.6f, 14.0f, 14.5f, 15.2f, 1.7f, 3.3f }) {
+    // Patch 0087: the corridor is 2.5-3.5 and 13.5-14.5 (it was 1.5-3.5 and
+    // 13.5-15.5; this list held 15.2 and 1.7, on the old deck's outer tile).
+    for (float x : { 13.6f, 14.0f, 14.5f, 2.5f, 2.7f, 3.3f }) {
         INFO("x " << x);
         Vector2D up = board.getNextWaypoint(Vector2D{ x, 12.0f }, Vector2D{ x, 27.0f });
         REQUIRE(up.x == Catch::Approx(x));
@@ -543,9 +550,12 @@ TEST_CASE("a walker whose line crosses the deck keeps its line", "[board][waypoi
         REQUIRE(down.y == Catch::Approx(17.5f));
     }
     // A slanted line through the deck: the point where it meets the bank.
-    Vector2D wp = board.getNextWaypoint(Vector2D{ 15.0f, 13.5f }, Vector2D{ 14.0f, 27.0f });
-    REQUIRE(wp.x == Catch::Approx(15.0f - 2.0f / 13.5f).margin(1e-4));
+    Vector2D wp = board.getNextWaypoint(Vector2D{ 14.4f, 13.5f }, Vector2D{ 14.0f, 27.0f });
+    REQUIRE(wp.x == Catch::Approx(14.4f - 0.4f * 2.0f / 13.5f).margin(1e-4));
     REQUIRE(wp.y == Catch::Approx(15.5f));
+    // The old outer tile is no longer deck: from x 15.2 or 1.7 the outer corner.
+    REQUIRE(board.getNextWaypoint(Vector2D{ 15.2f, 12.0f }, Vector2D{ 15.2f, 27.0f }).x == Catch::Approx(14.5f));
+    REQUIRE(board.getNextWaypoint(Vector2D{ 1.7f, 12.0f }, Vector2D{ 1.7f, 27.0f }).x == Catch::Approx(2.5f));
 }
 
 TEST_CASE("a walker coming from the side heads for the near corner of the deck", "[board][waypoint][patch0060]") {
@@ -557,8 +567,10 @@ TEST_CASE("a walker coming from the side heads for the near corner of the deck",
     Vector2D musketeer = board.getNextWaypoint(Vector2D{ 9.0f, 9.0f }, Vector2D{ 14.0f, 27.0f });
     REQUIRE(musketeer.x == Catch::Approx(13.5f));
     REQUIRE(musketeer.y == Catch::Approx(15.5f));
-    // From outside the lane, the outer corner; team 1 mirrored.
-    REQUIRE(board.getNextWaypoint(Vector2D{ 17.0f, 12.0f }, Vector2D{ 14.0f, 27.0f }).x == Catch::Approx(15.5f));
+    // From outside the lane, the outer corner (14.5 since patch 0087, it was
+    // 15.5); team 1 mirrored.
+    REQUIRE(board.getNextWaypoint(Vector2D{ 17.0f, 12.0f }, Vector2D{ 14.0f, 27.0f }).x == Catch::Approx(14.5f));
+    REQUIRE(board.getNextWaypoint(Vector2D{ 0.0f, 12.0f }, Vector2D{ 3.0f, 27.0f }).x == Catch::Approx(2.5f));
     Vector2D down = board.getNextWaypoint(Vector2D{ 8.0f, 23.0f }, Vector2D{ 3.0f, 6.0f });
     REQUIRE(down.x == Catch::Approx(3.5f));
     REQUIRE(down.y == Catch::Approx(17.5f));
@@ -629,7 +641,7 @@ TEST_CASE("getNextWaypoint never returns the caller's own position at a deck cor
                                 REQUIRE(here.distanceTo(wp) > Board::WAYPOINT_ARRIVAL_EPS);
                                 // Whatever it is handed across the river is on a deck.
                                 if (wp.y == Catch::Approx(15.5f) || wp.y == Catch::Approx(17.5f)) {
-                                    if (!(wp.x == target.x && wp.y == target.y)) REQUIRE(board.isOnBridge(wp.x));
+                                    if (!(wp.x == target.x && wp.y == target.y)) REQUIRE(Board::inWalkCorridor(wp.x));
                                 }
                             }
                         }
@@ -722,8 +734,12 @@ TEST_CASE("walkers from every start cross the bridge, and a squad crosses abreas
                         REQUIRE(cx >= 0.0f);
                         // Read one step after leaving the deck, so a step's
                         // sideways drift is allowed.
-                        const float offCentre = std::min(std::abs(cx - board.getLeftBridge().x),
-                                                         std::abs(cx - board.getRightBridge().x));
+                        // The deck. Since patch 0087 a unit HEADS for the
+                        // walk corridor (the inner tile and a half), but a
+                        // squad's bodies push each other and the outer ones
+                        // cross on the deck's outer tile.
+                        const float offCentre = std::min(std::abs(cx - ArenaLayout::LEFT_BRIDGE_X),
+                                                         std::abs(cx - ArenaLayout::RIGHT_BRIDGE_X));
                         REQUIRE(offCentre <= Board::BRIDGE_HALF_WIDTH + 0.3f);
                         lo = std::min(lo, cx);
                         hi = std::max(hi, cx);
@@ -849,4 +865,321 @@ TEST_CASE("pushAwayFrom clears the full radius even from dead centre",
         REQUIRE(out.x == Catch::Approx(6.4f));
         REQUIRE(out.y == Catch::Approx(4.95f));
     }
+}
+
+
+// --- patch 0087: the walk corridor, and the path of a river jumper ---
+// Evidence (engine notes, patch 0087; all from the live recordings of
+// 2026-11-23/24): ground troops cross with their centre on x 2.5-3.5 and
+// 13.5-14.5; a Hog Rider placed on (1, 15) lands on 2.52 (n 51), on (16, 15)
+// on 14.54 (n 55), on (6, 15) on 3.6, on the tile beside the bridge (2, 15) /
+// (15, 15) it walks up 3.0 / 14.0, and it reaches the far bank when a Hog
+// going straight across would.
+
+TEST_CASE("the walk corridor is half a tile each side of the Princess Tower's column",
+          "[board][clamp][patch0087]") {
+    Board board;
+    for (float x : { 2.5f, 3.0f, 3.5f, 13.5f, 14.0f, 14.5f }) REQUIRE(Board::inWalkCorridor(x));
+    for (float x : { 1.5f, 2.0f, 2.4f, 3.6f, 13.4f, 14.6f, 15.0f, 15.5f }) REQUIRE_FALSE(Board::inWalkCorridor(x));
+    REQUIRE(Board::LEFT_WALK_X == Catch::Approx(3.0f));
+    REQUIRE(Board::RIGHT_WALK_X == Catch::Approx(14.0f));
+    // It is where a unit heads, not a wall: the deck is still the drawn one,
+    // and a unit pushed onto its outer tile in mid-river stays there.
+    for (float x : { 1.5f, 2.0f, 3.5f, 13.5f, 15.0f, 15.5f }) REQUIRE(board.isOnBridge(x));
+    Vector2D a = board.clampToBoard(Vector2D{ 2.2f, 16.5f }, false);
+    REQUIRE(a.x == Catch::Approx(2.2f));
+    REQUIRE(a.y == Catch::Approx(16.5f));
+}
+
+TEST_CASE("a walker pushed along the bank onto the outer tile crosses from where it is",
+          "[board][waypoint][regression][patch0087]") {
+    Board board;
+    const Vector2D left{ 3.0f, 27.0f };
+    // Walking in from its placement tile: the corridor's mouth.
+    for (const Vector2D from : { Vector2D{ 2.0f, 15.0f }, Vector2D{ 1.0f, 15.0f }, Vector2D{ 0.0f, 15.0f },
+                                 Vector2D{ 2.0f, 12.0f } }) {
+        Vector2D wp = board.getNextWaypoint(from, left);
+        INFO("from (" << from.x << ", " << from.y << ")");
+        REQUIRE(wp.x == Catch::Approx(2.5f));
+        REQUIRE(wp.y == Catch::Approx(board.getRiverStart()));
+    }
+    // Shoved to (2.1, 15.45), 0.05 short of the water: across, towards the
+    // corridor, not sideways along the bank to the mouth.
+    Vector2D wp = board.getNextWaypoint(Vector2D{ 2.1f, 15.45f }, left);
+    REQUIRE(wp.x == Catch::Approx(2.5f));
+    REQUIRE(wp.y == Catch::Approx(board.getRiverEnd()));
+    // Team 1, right bridge.
+    Vector2D down = board.getNextWaypoint(Vector2D{ 15.2f, 17.53f }, Vector2D{ 14.0f, 6.0f });
+    REQUIRE(down.x == Catch::Approx(14.5f));
+    REQUIRE(down.y == Catch::Approx(board.getRiverStart()));
+    // Off the deck altogether there is water ahead: the mouth.
+    Vector2D off = board.getNextWaypoint(Vector2D{ 1.2f, 15.45f }, left);
+    REQUIRE(off.y == Catch::Approx(board.getRiverStart()));
+}
+
+// Two bodies that do not fit the corridor abreast. With the corridor as a wall
+// they pushed each other at the mouth for ever (Goblin Machine: no tower hit in
+// 40 s).
+TEST_CASE("pairs of wide bodies cross the river", "[board][waypoint][regression][patch0087]") {
+    const std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    constexpr int GOBLIN_MACHINE = 55, ELITE_BARBARIANS = 17, RASCALS = 113, ROYAL_RECRUITS = 77;
+    int stuck = 0, runs = 0;
+    std::ostringstream examples;
+    for (int card : { GOBLIN_MACHINE, ELITE_BARBARIANS, RASCALS, ROYAL_RECRUITS }) {
+        if (!CardRegistry::getInstance().getCard(card)) continue;
+        for (int team : { 0, 1 }) {
+            for (float rowsBack : { 0.5f, 1.5f, 4.0f }) {
+                for (int i = 0; i <= 34; ++i) {
+                    GameManager game(deck, deck);
+                    Board& board = game.getBoard();
+                    const float x = i * 0.5f;
+                    const float y = team == 0 ? board.getRiverStart() - rowsBack : board.getRiverEnd() + rowsBack;
+                    CardRegistry::getInstance().getCard(card)->spawnEntity(x, y, team, board);
+                    board.commitPendingEntities();
+                    std::vector<std::shared_ptr<Troop>> units;
+                    for (const auto& e : board.getEntities()) {
+                        if (e->team == team && !e->isTower()) {
+                            if (auto t = std::dynamic_pointer_cast<Troop>(e)) units.push_back(t);
+                        }
+                    }
+                    REQUIRE(units.size() >= 2);
+                    float slowest = units[0]->getSpeed();
+                    for (const auto& u : units) slowest = std::min(slowest, u->getSpeed());
+                    // Twice a straight walk: bodies queue at the mouth.
+                    const int budget = 2 * (DEPLOY_TIME_TICKS + 10
+                        + static_cast<int>(std::ceil((9.0f + rowsBack + 2.5f) / slowest)));
+                    auto over = [&](const std::shared_ptr<Troop>& u) {
+                        return !u->isAlive() || (team == 0 ? u->position.y > board.getRiverEnd()
+                                                           : u->position.y < board.getRiverStart());
+                    };
+                    bool all = false;
+                    for (int t = 0; t < budget && !all; ++t) {
+                        game.step();
+                        all = true;
+                        for (const auto& u : units) all = all && over(u);
+                    }
+                    ++runs;
+                    if (!all && ++stuck <= 8) {
+                        examples << "\n  card " << card << " team " << team << " from (" << x << ", " << y << "):";
+                        for (const auto& u : units) examples << " (" << u->position.x << ", " << u->position.y << ")";
+                    }
+                }
+            }
+        }
+    }
+    INFO(stuck << " of " << runs << " did not all cross; first few:" << examples.str());
+    REQUIRE(stuck == 0);
+    REQUIRE(runs >= 2 * 3 * 35 * 3);
+}
+
+TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's column, then straight",
+          "[board][waypoint][patch0087]") {
+    Board board;
+    const Vector2D left{ 3.0f, 27.0f }, right{ 14.0f, 27.0f };
+    const float fast = Board::JUMP_DIAGONAL_SPEED;
+
+    // The two bridge corners and the tile a Hog is played on from the middle.
+    Board::JumperStep a = board.getJumperWaypoint(Vector2D{ 1.0f, 15.0f }, left);
+    REQUIRE(a.waypoint.x == Catch::Approx(2.5f));
+    REQUIRE(a.waypoint.y == Catch::Approx(16.5f));
+    REQUIRE(a.speedScale == Catch::Approx(fast));
+    Board::JumperStep b = board.getJumperWaypoint(Vector2D{ 16.0f, 15.0f }, right);
+    REQUIRE(b.waypoint.x == Catch::Approx(14.5f));
+    REQUIRE(b.waypoint.y == Catch::Approx(16.5f));
+    REQUIRE(b.speedScale == Catch::Approx(fast));
+    Board::JumperStep c = board.getJumperWaypoint(Vector2D{ 6.0f, 15.0f }, left);
+    REQUIRE(c.waypoint.x == Catch::Approx(3.5f));
+    REQUIRE(c.waypoint.y == Catch::Approx(17.5f));
+    REQUIRE(c.speedScale == Catch::Approx(fast));
+
+    // In its column over the water: straight across; on the far bank: the target.
+    Board::JumperStep d = board.getJumperWaypoint(Vector2D{ 2.5f, 16.5f }, left);
+    REQUIRE(d.waypoint.x == Catch::Approx(2.5f));
+    REQUIRE(d.waypoint.y == Catch::Approx(17.5f));
+    REQUIRE(d.speedScale == Catch::Approx(1.0f));
+    Board::JumperStep e = board.getJumperWaypoint(Vector2D{ 2.5f, 17.5f }, left);
+    REQUIRE(e.waypoint.x == Catch::Approx(3.0f));
+    REQUIRE(e.waypoint.y == Catch::Approx(27.0f));
+    REQUIRE(e.speedScale == Catch::Approx(1.0f));
+
+    // Far enough back to reach the column before the water: the straight line
+    // to it on the near bank, at walking speed.
+    Board::JumperStep f = board.getJumperWaypoint(Vector2D{ 1.0f, 10.0f }, left);
+    REQUIRE(f.waypoint.x == Catch::Approx(2.5f));
+    REQUIRE(f.waypoint.y == Catch::Approx(15.5f));
+    REQUIRE(f.speedScale == Catch::Approx(1.0f));
+    Board::JumperStep fromKing = board.getJumperWaypoint(Vector2D{ 9.0f, 0.0f }, right);
+    REQUIRE(fromKing.waypoint.x == Catch::Approx(13.5f));   // recorded: 13.55 at the river
+    REQUIRE(fromKing.waypoint.y == Catch::Approx(15.5f));
+    // Not far enough back, and more than a tile from the water: 45 degrees at
+    // walking speed.
+    Board::JumperStep g = board.getJumperWaypoint(Vector2D{ 1.0f, 14.2f }, left);
+    REQUIRE(g.waypoint.x == Catch::Approx(2.5f));
+    REQUIRE(g.waypoint.y == Catch::Approx(15.7f));
+    REQUIRE(g.speedScale == Catch::Approx(1.0f));
+
+    // A building in the middle is its target: the same 45 degrees, towards
+    // the building's column.
+    Board::JumperStep h = board.getJumperWaypoint(Vector2D{ 16.0f, 15.0f }, Vector2D{ 10.0f, 23.0f });
+    REQUIRE(h.waypoint.x == Catch::Approx(10.5f));
+    REQUIRE(h.waypoint.y - 15.0f == Catch::Approx(16.0f - 10.5f));
+    REQUIRE(h.speedScale == Catch::Approx(fast));
+
+    // Team 1 is the mirror.
+    Board::JumperStep i = board.getJumperWaypoint(Vector2D{ 16.0f, 18.0f }, Vector2D{ 14.0f, 6.0f });
+    REQUIRE(i.waypoint.x == Catch::Approx(14.5f));
+    REQUIRE(i.waypoint.y == Catch::Approx(16.5f));
+    REQUIRE(i.speedScale == Catch::Approx(fast));
+
+    // A target on its own side of the river: the target.
+    Board::JumperStep k = board.getJumperWaypoint(Vector2D{ 1.0f, 10.0f }, Vector2D{ 9.0f, 14.0f });
+    REQUIRE(k.waypoint.x == Catch::Approx(9.0f));
+    REQUIRE(k.waypoint.y == Catch::Approx(14.0f));
+    REQUIRE(k.speedScale == Catch::Approx(1.0f));
+}
+
+TEST_CASE("a jumper beside its crossing, on the outer side, walks onto the column instead of jumping",
+          "[board][waypoint][patch0087]") {
+    Board board;
+    const Vector2D left{ 3.0f, 27.0f }, right{ 14.0f, 27.0f };
+    Board::JumperStep a = board.getJumperWaypoint(Vector2D{ 2.0f, 15.0f }, left);
+    REQUIRE(a.waypoint.x == Catch::Approx(3.0f));
+    REQUIRE(a.waypoint.y == Catch::Approx(15.5f));
+    REQUIRE(a.speedScale == Catch::Approx(1.0f));
+    Board::JumperStep b = board.getJumperWaypoint(Vector2D{ 15.0f, 15.0f }, right);
+    REQUIRE(b.waypoint.x == Catch::Approx(14.0f));
+    REQUIRE(b.waypoint.y == Catch::Approx(15.5f));
+    Board::JumperStep down = board.getJumperWaypoint(Vector2D{ 15.0f, 18.0f }, Vector2D{ 14.0f, 6.0f });
+    REQUIRE(down.waypoint.x == Catch::Approx(14.0f));
+    REQUIRE(down.waypoint.y == Catch::Approx(17.5f));
+    // On the column: straight across.
+    Board::JumperStep c = board.getJumperWaypoint(Vector2D{ 3.0f, 15.0f }, left);
+    REQUIRE(c.waypoint.x == Catch::Approx(3.0f));
+    REQUIRE(c.waypoint.y == Catch::Approx(17.5f));
+    // One tile on the INNER side: nothing recorded, the half-tile rule.
+    Board::JumperStep d = board.getJumperWaypoint(Vector2D{ 4.0f, 15.0f }, left);
+    REQUIRE(d.waypoint.x == Catch::Approx(3.5f));
+    REQUIRE(d.waypoint.y == Catch::Approx(15.5f));
+    // Two tiles out: the jump.
+    Board::JumperStep e = board.getJumperWaypoint(Vector2D{ 1.0f, 15.0f }, left);
+    REQUIRE(e.speedScale == Catch::Approx(Board::JUMP_DIAGONAL_SPEED));
+}
+
+TEST_CASE("getJumperWaypoint never returns the caller's own position",
+          "[board][waypoint][regression][patch0087]") {
+    Board board;
+    const Vector2D targets[] = { { 3.0f, 27.0f }, { 14.0f, 27.0f }, { 8.5f, 30.5f }, { 10.0f, 23.0f },
+                                 { 9.0f, 18.0f }, { 3.0f, 6.0f }, { 14.0f, 6.0f }, { 8.0f, 11.0f },
+                                 { 8.5f, 16.5f }, { 0.0f, 20.0f }, { 17.0f, 13.0f } };
+    int checked = 0;
+    for (const Vector2D& target : targets) {
+        for (int ix = 0; ix <= 68; ++ix) {
+            for (int iy = 0; iy <= 40; ++iy) {
+                for (int dx = -2; dx <= 2; ++dx) {
+                    for (int dy = -2; dy <= 2; ++dy) {
+                        const Vector2D here{ ix * 0.25f + dx * 0.004f, 11.5f + iy * 0.25f + dy * 0.004f };
+                        if (here.distanceTo(target) <= Board::WAYPOINT_ARRIVAL_EPS) continue;
+                        const Board::JumperStep js = board.getJumperWaypoint(here, target);
+                        ++checked;
+                        INFO("stuck at (" << here.x << ", " << here.y << ") target (" << target.x << ", " << target.y << ")");
+                        REQUIRE(here.distanceTo(js.waypoint) > Board::WAYPOINT_ARRIVAL_EPS);
+                        const bool plain = js.speedScale == Catch::Approx(1.0f);
+                        const bool fast = js.speedScale == Catch::Approx(Board::JUMP_DIAGONAL_SPEED);
+                        REQUIRE((plain || fast));
+                    }
+                }
+            }
+        }
+    }
+    REQUIRE(checked > 700000);
+}
+
+// Real cards through the GameManager tick loop.
+TEST_CASE("a Hog Rider lands where the recorded one does, when a straight one would",
+          "[board][waypoint][patch0087]") {
+    const std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    constexpr int HOG = 15;
+    struct Landing { float x; int tick; };
+    auto land = [&](float x, int team) {
+        GameManager game(deck, deck);
+        Board& board = game.getBoard();
+        const float y = team == 0 ? 15.0f : 18.0f;
+        CardRegistry::getInstance().getCard(HOG)->spawnEntity(x, y, team, board);
+        board.commitPendingEntities();
+        std::shared_ptr<Troop> hog;
+        for (const auto& e : board.getEntities()) {
+            if (e->cardId == HOG) hog = std::dynamic_pointer_cast<Troop>(e);
+        }
+        REQUIRE(hog);
+        for (int t = 1; t <= 80; ++t) {
+            game.step();
+            const bool over = team == 0 ? hog->position.y >= board.getRiverEnd()
+                                        : hog->position.y <= board.getRiverStart();
+            if (over) return Landing{ hog->position.x, t };
+        }
+        return Landing{ -1.0f, -1 };
+    };
+    struct Case { float from, lands; };
+    // placed on -> far-bank x. Recorded: 2.52, 14.54, 3.6, 3.0, 14.0, 3.05-3.2.
+    const Case cases[] = { { 1.0f, 2.5f }, { 16.0f, 14.5f }, { 6.0f, 3.5f }, { 11.0f, 13.5f },
+                           { 0.0f, 2.5f }, { 17.0f, 14.5f },
+                           { 2.0f, 3.0f }, { 15.0f, 14.0f }, { 3.0f, 3.0f }, { 14.0f, 14.0f } };
+    for (int team : { 0, 1 }) {
+        const Landing straight = land(3.0f, team);
+        REQUIRE(straight.tick > 0);
+        for (const Case& c : cases) {
+            const Landing got = land(c.from, team);
+            INFO("team " << team << " placed on x " << c.from << ": far bank at x " << got.x << " on tick " << got.tick
+                 << " (straight: tick " << straight.tick << ")");
+            REQUIRE(got.tick > 0);
+            REQUIRE(got.x == Catch::Approx(c.lands).margin(0.08));
+            // The jump costs no time; the step onto the column from the tile
+            // beside the bridge costs 0.24 s (recorded 0.1-0.2 s).
+            const bool besideBridge = c.from == 2.0f || c.from == 15.0f;
+            REQUIRE(got.tick - straight.tick >= 0);
+            REQUIRE(got.tick - straight.tick <= (besideBridge ? 3 : 1));
+        }
+    }
+}
+
+TEST_CASE("river jumpers from every start cross the river", "[board][waypoint][regression][patch0087]") {
+    const std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    constexpr int HOG = 15, PRINCE = 14, BANDIT = 50, BATTLE_RAM = 81, ROYAL_HOGS = 82;
+    int stuck = 0, runs = 0;
+    std::ostringstream examples;
+    for (int card : { HOG, PRINCE, BANDIT, BATTLE_RAM, ROYAL_HOGS }) {
+        for (int team : { 0, 1 }) {
+            for (float rowsBack : { 0.0f, 0.3f, 3.0f }) {
+                for (int i = 0; i <= 170; ++i) {
+                    GameManager game(deck, deck);
+                    Board& board = game.getBoard();
+                    const float x = i * 0.1f;
+                    const float y = team == 0 ? board.getRiverStart() - rowsBack : board.getRiverEnd() + rowsBack;
+                    CardRegistry::getInstance().getCard(card)->spawnEntity(x, y, team, board);
+                    board.commitPendingEntities();
+                    std::shared_ptr<Troop> unit;
+                    for (const auto& e : board.getEntities()) {
+                        if (e->cardId == card) unit = std::dynamic_pointer_cast<Troop>(e);
+                    }
+                    REQUIRE(unit);
+                    const int budget = DEPLOY_TIME_TICKS + 5
+                        + static_cast<int>(std::ceil((8.0f + rowsBack + 2.5f) / unit->getSpeed())) + 10;
+                    bool crossed = false;
+                    for (int t = 0; t < budget && !crossed; ++t) {
+                        game.step();
+                        crossed = team == 0 ? unit->position.y > board.getRiverEnd()
+                                            : unit->position.y < board.getRiverStart();
+                    }
+                    ++runs;
+                    if (!crossed && ++stuck <= 8) {
+                        examples << "\n  card " << card << " team " << team << " from (" << x << ", " << y
+                                 << "), now (" << unit->position.x << ", " << unit->position.y << ")";
+                    }
+                }
+            }
+        }
+    }
+    INFO(stuck << " of " << runs << " never crossed; first few:" << examples.str());
+    REQUIRE(stuck == 0);
+    REQUIRE(runs == 5 * 2 * 3 * 171);
 }

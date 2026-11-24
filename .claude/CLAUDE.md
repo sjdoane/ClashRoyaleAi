@@ -2027,6 +2027,83 @@ Tests: `python_ai/tests/test_building_pull_0086.py` (12; 10 of them fail on the
 engine before this patch). No existing expectation moved. Suites: 837 cases,
 836 passed, 1 failed as expected (C++); 1326 passed, 3 skipped (Python).
 
+## 2026-11-24: units cross the river on the tower column; the Hog Rider jumps it on a diagonal (patch 0087)
+
+Lives in the copy `build/gen2_h` (training and the evals ran `build/gen2_g`
+up to this patch; switching a run to it is a dated change in
+`training/run_g2_ppo_s2r.sh`).
+
+**What was wrong.** A walker aimed for any point of the drawn two-tile deck
+(x 1.5-3.5 and 13.5-15.5, patch 0060) and a river jumper walked a straight
+line to its target. Neither is what the recordings of 2026-11-23/24 show
+(`evals/tools/hog_path.py`, `hog_path2.py`; 5,201 boxes of ground troops over
+the river, 145 own Hog Rider plays):
+
+- Ground troops cross on x 2.25-3.75 and 13.25-14.75, with a peak at 2.5 / 14.5
+  (arriving from outside) and one at 3.5 / 13.5 (arriving from the middle).
+  Nothing crosses on the outer tile of either deck.
+- The Hog Rider placed on (1, 15) lands on 2.52 (n 51), from (16, 15) on 14.54
+  (n 55); a straight line gives 1.5 and 15.5. It goes sideways and forward at
+  the same rate until it is within half a tile of its target's column, does
+  not lose forward speed doing so, and then goes straight up the column.
+- Placed a tile or less outside the column, beside the bridge, it does not
+  jump: it steps onto the column and walks (6 of 6 plays).
+
+**What changed** (`include/core/Board.h`, `include/entities/Troop.h`):
+
+- `Board::WALK_HALF_WIDTH` (0.5), `LEFT_WALK_X` / `RIGHT_WALK_X` (the lane
+  columns 3.0 / 14.0), `inWalkCorridor`, `walkXFor`. `crossingX` and
+  `getNextWaypoint` aim inside this one-tile corridor. It is an aim, not a
+  wall: `isOnBridge` (clampToBoard, the observation's bridge columns, the
+  pocket rule, the renderer) is still the drawn two-tile deck, so a pushed
+  body can stand on the outer tile, and from there it crosses where it stands
+  (`MOUTH_FUNNEL_SLOPE`) instead of walking along the bank to the mouth.
+- `Board::getJumperWaypoint` returns the next point and a speed scale for a
+  ground unit that ignores the river: 45 degrees to the target's column at
+  sqrt(2) x speed from the bank row on (`JUMP_ZONE`), straight once within half
+  a tile of it, and the walk-onto-the-column case from the outer side
+  (`BRIDGE_WALK_REACH`).
+- `Troop::moveTowards` gives a jumper up to three legs per tick. With one leg,
+  two jumpers abreast (Royal Hogs) pushed each other off the corridor edge
+  every tick and crept across the river.
+
+**Two dead ends, so nobody repeats them.** (1) The corridor as a wall: two wide
+bodies (Goblin Machine and its turret, 0.75 each) stood at the mouth pushing
+each other for ever. (2) One movement leg per tick for jumpers: the creep
+above.
+
+**What it does and does not fix.** The outer edge of the crossing moved one
+tile towards the middle, so a unit coming from the arena's edge is seen by a
+centre building a tile sooner. Measured with both sides replayed from the live
+store, our damage per match goes from 2,668 to 2,492 against about 1,200 in the
+real matches: a small part of that gap. The rest is not movement: where the
+opponent's plays are stored nearly completely, the simulated Hog already
+matches the real one (453 against 463 a play). The gap is opponent plays
+missing from the store (spells above all) and training opponents that answer a
+Hog worse than people do. See `memory/sim-vs-real-findings.md` in the outer
+repository's notes.
+
+**The recorded Golem-and-Hog pair is now reproduced on its own tiles.** Ice
+Golem on (15, 15), Hog Rider on (16, 15) 1.06 s later: the Golem is carried
+forward and to the left (14.5 to 13.3; recorded 14.5 to about 13), the Hog
+passes it on the right, and its first hit is 0.4 s later than a lone Hog's
+(recorded 0.45-0.67). Before this patch those tiles gave 0.1 s and the test
+used one column instead (see the mass-push section).
+
+**Not modelled:** a jumper's diagonal when its target is a building rather
+than a tower is the same rule (two recorded plays agree, 13.0 and 13.1); the
+recorded sidestep onto the column is spread over about a row and is done at
+the bank here; nothing is recorded for a Hog placed one tile INSIDE the column.
+
+Tests: `tests/core/test_board.cpp` (+361 lines: corridor, mirrored teams,
+jumpers from every start cross and do not stall, the recorded landing
+columns). Moved expectations, each with a comment at the assertion:
+`test_bridge_crossed_across_its_width.py` (a Giant on the outer tile steps in
+to 2.5; a pair abreast is 0.49 apart and 0.5 s apart, was > 0.5 and <= 0.4),
+`test_body_sizes.py` (contact test moved onto the tower column),
+`test_mass_push.py` (the recorded tiles). Suites: 845 cases, 844 passed, 1
+failed as expected (C++); 1326 passed, 3 skipped (Python).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
