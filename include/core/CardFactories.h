@@ -63,6 +63,10 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->hookRange = stats.hookRange;
     entity->startsInvisible = stats.startsInvisible;
     entity->revealTicksAfterAttack = stats.revealTicksAfterAttack;
+    entity->hidesWhenIdle = stats.hidesWhenIdle;
+    entity->hideAfterIdleTicks = stats.hideAfterIdleTicks;
+    // Above ground from the tick it is placed (it deploys in view).
+    if (stats.hidesWhenIdle) entity->visibleTicksRemaining = stats.hideAfterIdleTicks;
     entity->periodicEffect = stats.periodicEffect;
     entity->periodicIntervalTicks = stats.periodicIntervalTicks;
     // First fire one full interval after the deploy, or after the published

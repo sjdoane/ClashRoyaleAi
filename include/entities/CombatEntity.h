@@ -269,6 +269,13 @@ public:
     int revealTicksAfterAttack = 0;
     int visibleTicksRemaining = 0;
 
+    // Published hides_when_not_attacking (Tesla): underground, and not a
+    // target, unless it is deploying or has an enemy in sight; it goes back
+    // down hideAfterIdleTicks after the last one left. Uses the invisibility
+    // state above (CardStats::withHidesWhenIdle sets both).
+    bool hidesWhenIdle = false;
+    int hideAfterIdleTicks = 0;
+
     // Periodic effects while alive (Witch, Night Witch, Furnace, huts,
     // Tombstone, Goblin Drill): fires periodicEffect every
     // periodicIntervalTicks. 0 disables it.
@@ -595,6 +602,10 @@ public:
     // whatever lands on its tile (Entity::takesAreaDamage). A rider is not: it
     // has no body of its own while it is carried.
     bool takesAreaDamage() const override { return !isRiding(); }
+    // An underground Tesla is drawn for both players (patch 0086).
+    bool isSeenOnBoard() const override {
+        return isTargetable() || (hidesWhenIdle && !isRiding());
+    }
 
     // Soul collection: any death within radius, ally or enemy.
     void onNearbyDeath(Board&, const Vector2D& deathPosition, int) override {
@@ -862,6 +873,8 @@ public:
 
         if (parryIntervalTicks > 0 && parryTicksUntilReady > 0) parryTicksUntilReady--;
         if (startsInvisible && visibleTicksRemaining > 0) visibleTicksRemaining--;
+        // A hiding building is above ground for the whole of its deploy.
+        if (hidesWhenIdle && deploying) visibleTicksRemaining = hideAfterIdleTicks;
         if (buffTicksRemaining > 0) buffTicksRemaining--;
         if (curseTicksRemaining > 0) curseTicksRemaining--;
         // The ability's own timer starts when the body has landed (patch
@@ -957,6 +970,14 @@ public:
             }
         }
 
+        // A hiding building (Tesla) is up while an enemy it can shoot is in
+        // its sight, stunned or not. findTarget also returns the lane
+        // objective when nothing is in sight, hence the distance test.
+        if (hidesWhenIdle && target
+            && position.distanceTo(target->position) <= effectiveSightTo(target)) {
+            visibleTicksRemaining = hideAfterIdleTicks;
+        }
+
         // No target at all cancels a wind-up. A stun does not: it PAUSES the
         // attack (the wind-up is held below, like the cooldown) and the unit
         // carries on where it stopped, on whatever it targets when it resumes.
@@ -1047,7 +1068,9 @@ public:
                         if (chargeIsSticky && chargeProgress >= chargeThreshold) chargeHasStuck = true;
                         if (!chargeHasStuck) chargeProgress = 0.0f;
                     }
-                    if (startsInvisible) visibleTicksRemaining = revealTicksAfterAttack;
+                    if (startsInvisible) {
+                        visibleTicksRemaining = std::max(visibleTicksRemaining, revealTicksAfterAttack);
+                    }
                     // Little Prince's hit-speed ramp; ticksOnTarget already
                     // includes this hit.
                     if (hitSpeedRampFullTick > 0) {
@@ -1216,15 +1239,17 @@ protected:
     }
 
     // The published sight clip (SightClips.h), body to body like the sight
-    // itself.
+    // itself. Only the SIDEWAYS cut is applied. Patch 0042 also cut the sight
+    // along the arena at sightRange - sightClip; 84 recorded pulls (patch
+    // 0086) do not support that: three Hog Riders leaving the bridge with a
+    // centre building 7.9-8.0 tiles away and the tower 7.6 away ran straight
+    // on (the along cut hides the tower from them), and an Ice Golem was
+    // pulled by a Tesla beyond the cut. What the published SightClip field
+    // means is therefore NOT known; `sightClip` is still loaded and reported.
     bool withinSightClip(float myRadius, const Entity& target) const {
-        if (sightClip <= 0.0f && sightClipSide <= 0.0f) return true;
+        if (sightClipSide <= 0.0f) return true;
         const float r = myRadius + effectiveRadiusOf(target);
-        if (sightClipSide > 0.0f
-            && std::fabs(target.position.x - position.x) - r > sightRange - sightClipSide) return false;
-        if (sightClip > 0.0f
-            && std::fabs(target.position.y - position.y) - r > sightRange - sightClip) return false;
-        return true;
+        return std::fabs(target.position.x - position.x) - r <= sightRange - sightClipSide;
     }
 
     // Re-validates the locked target by id rather than re-scanning for the

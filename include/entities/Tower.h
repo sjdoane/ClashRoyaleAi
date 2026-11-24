@@ -26,8 +26,20 @@ public:
     static constexpr float DEFAULT_PROJECTILE_TILES_PER_TICK = 2.0f;
     float projectileTilesPerTick = DEFAULT_PROJECTILE_TILES_PER_TICK;
 
-    // Target selection uses the collision radius above, like every other
-    // building (Entity::getTargetingRadius): the nearest footprint wins. Until
+    // Target selection ranks a Crown Tower by its PUBLISHED body (1.0
+    // Princess, 1.4 King), not by the engine's 1.5 / 2.0 collision radius
+    // above, which still sets reach, sight and where units stop (patch 0086).
+    // Measured on 84 recorded building pulls: with 1.5 a Hog Rider, a Golem
+    // and an Ice Golem stayed on the tower where the real ones turned to a
+    // Tesla, Cannon or Bomb Tower that was nearer by 0.3-0.5 tile centre to
+    // centre; every radius from 0.4 to 1.1 fits, 1.5 does not.
+    static constexpr float PUBLISHED_PRINCESS_RADIUS = 1.0f;
+    static constexpr float PUBLISHED_KING_RADIUS = 1.4f;
+    float getTargetingRadius() const override {
+        return (symbol == 'R') ? PUBLISHED_KING_RADIUS : PUBLISHED_PRINCESS_RADIUS;
+    }
+
+    // History: the nearest footprint wins (Entity::getTargetingRadius). Until
     // patch 0043 a Crown Tower competed with an inflated footprint (3.3 / 4.4),
     // fitted so that a Cannon 7-8 tiles off-lane would not pull a Hog Rider.
     // That fact is the published sight clip (SightClips.h, patch 0042); the

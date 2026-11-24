@@ -693,7 +693,7 @@ private:
 
         // === Defensive structures ===
         add(building(25, "Cannon", 3.0f, 824, 'C', 5.5f, 202, 10));
-        add(building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250) /* audit 0003: wiki Tesla, level 11 */);
+        add(building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250).withHidesWhenIdle(8) /* audit 0003: wiki Tesla, level 11 */);
         // withSightRange(6.0f) is not redundant with the 5.5 default: with
         // attackRange 6.0, the default would let it attack what it cannot see.
         // Pinned by test_sight_range.cpp.
@@ -1635,8 +1635,8 @@ private:
         // Tesla ("Electro Pulse"): 6-tile radius, low damage and a 0.5 s stun.
         // There is no hiding to emerge from here, so it fires once on deploy.
         addEvolution(154,
-            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250) /* audit 0003: wiki Tesla, level 11 */,
-            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir()
+            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withLifetime(250).withHidesWhenIdle(8) /* audit 0003: wiki Tesla, level 11 */,
+            building(26, "Tesla", 4.0f, 1182, 'T', 5.5f, 220, 11).withTargetsAir().withHidesWhenIdle(8)
                 .withSpawnEffect(6.0f, 100, std::make_shared<FreezeOnHit>(5, 0.0f)).withLifetime(250) /* audit 0003: wiki Tesla, level 11 */,
             2, 1);
 

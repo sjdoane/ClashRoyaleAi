@@ -1956,6 +1956,77 @@ range 6.5, range 4.
 - Tests: `python_ai/tests/test_hunter_pellets.py`. Suites: 837 cases, 836
   passed, 1 failed as expected (C++); 1314 passed, 3 skipped (Python).
 
+## 2026-11-23: which building pulls a troop: a tower is ranked by its published body, no along-arena sight cut, an underground Tesla is no target (patch 0086)
+
+**GAMEPLAY-AFFECTING for every match.** Three rules about which building or
+Crown Tower a troop turns to. They revise the readings of patch 0042 (sight
+clip) and patch 0043 (towers ranked by their 1.5 / 2.0 collision body).
+
+- **EVIDENCE LEVEL: recordings only.** 117 pull events (a building-targeter
+  with a tower and at least one other building in play) were read frame by
+  frame from the 19 live matches recorded on 2026-11-23; 84 are decided beyond
+  the position error. Before: 60 right, 6 wrong, 18 within error. With all
+  three rules: **70 right, 0 wrong, 14 within error.** The 14 are not used as
+  tests. Nothing published states any of the three as prose.
+- **A Crown Tower is RANKED by its published body.** `Tower::getTargetingRadius`
+  returns `PUBLISHED_PRINCESS_RADIUS` 1.0 / `PUBLISHED_KING_RADIUS` 1.4;
+  `findTarget` ranks by `dist - getTargetingRadius()`. A Cannon (body 0.6) pulls
+  a building-targeter when its centre is more than 0.4 nearer than the tower's;
+  it needed 0.9. Fit: a tower radius of 0.9-1.1 scores best, 0.4-1.1 fits
+  within error, 1.5 is excluded; 1.0 is the published value in that band. It
+  applies to every troop's choice of target, although the evidence is
+  building-targeters only.
+- **The published SightClip no longer cuts the sight box ALONG the arena.**
+  `CombatEntity::withinSightClip` keeps the sideways cut
+  (`sightRange - sightClipSide`, body to body) and nothing else. With the along
+  cut a Hog Rider leaving the bridge could not see the Princess Tower it was
+  running at (9 tiles ahead) but could see a building in the middle, and turned
+  to it; the recorded ones ran to the tower (events m9-j, m12-n, m12-p; Ice
+  Golem m9-i). `sight_clip` is still loaded and reported. **What the published
+  SightClip means is not known.**
+- **A Tesla is underground and cannot be picked as a target unless an enemy is
+  inside its own sight** (events m11-g, m11-l0). `CardStats::withHidesWhenIdle(8)`
+  on the three Tesla rows -> `CombatEntity::hidesWhenIdle` /
+  `hideAfterIdleTicks`, from the published hide time (800 ms). It is above
+  ground for its whole deploy and 8 ticks after, comes up on the tick an enemy
+  is inside its sight, and goes under 8 ticks after the last one left or died.
+  It stays in the observation (`Entity::isSeenOnBoard`, used by `ClashEnv`): it
+  is drawn on the real screen; only a cloaked unit is left out. Exposed as
+  `get_card_stats(id)["base"]["hide_after_idle_ticks"]`.
+
+Measured through the bindings (team-0 Hog Rider, team-1 building, enemy right
+Princess Tower at (14, 27)):
+
+| Hog at | building at | before | now |
+|---|---|---|---|
+| (14.5, 19) | Cannon (9, 24) | Cannon, then the tower | Cannon |
+| (14.5, 19) | Cannon (8.5, 24) or (9, 25) | Cannon, then the tower | tower |
+| (14.5, 18) | Cannon (8, 24) | Cannon | tower |
+| (14.5, 18) | Cannon (8, 23) | Cannon | Cannon |
+| (14.5, 18) | settled Tesla (9, 22) | Tesla from tick 1 | tower, Tesla from tick 3 |
+| (14.5, 18) | settled Tesla (9, 23) | Tesla from tick 1 | tower, Tesla from tick 6 |
+| (14.5, 18) | settled Tesla (9, 24) | Tesla | tower, never the Tesla |
+| (14.5, 18) | Tesla still deploying (9, 24) | Tesla | Tesla |
+
+NOT changed:
+
+- The sideways clip (patch 0042): a Cannon 7 tiles to the side still does not
+  pull.
+- The tower's collision body 1.5 / 2.0: reach, sight and where a unit stops
+  still use it. Only the ranking moved.
+- A Tesla surfaces instantly for targeting and its fire timing is unchanged;
+  the real one takes 0.3-0.5 s to rise. A hidden Tesla still takes area and
+  spell damage and still decays.
+- Seen in the recordings and not modelled: the Hero Ice Golem's inconsistent
+  choices, a retarget when a freeze ends, a troop walking BACK to a Goblin Drill
+  behind it, the Hog Rider's diagonal river jump, a Hog pushing a slower troop.
+- Tesla and Goblin Drill stand on half-tile centres in the real game; nothing
+  here places them there.
+
+Tests: `python_ai/tests/test_building_pull_0086.py` (12; 10 of them fail on the
+engine before this patch). No existing expectation moved. Suites: 837 cases,
+836 passed, 1 failed as expected (C++); 1326 passed, 3 skipped (Python).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

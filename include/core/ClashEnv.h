@@ -298,7 +298,7 @@ private:
         for (const auto& entity : game.getBoard().getEntities()) {
             if (!entity->isAlive()) continue;
             // Projectiles and pending spells are not board presence.
-            if (!entity->isTargetable()) continue;
+            if (!entity->isSeenOnBoard()) continue;
 
             int x = static_cast<int>(entity->position.x);
             // Mirrored for team 1, which physically sits near high y. Mirror

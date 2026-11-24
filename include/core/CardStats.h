@@ -238,6 +238,10 @@ struct CardStats {
     // damage and spells still land (Entity::takesAreaDamage, patch 0041).
     bool startsInvisible = false;
     int revealTicksAfterAttack = 0;
+    // Published hides_when_not_attacking / hide_time_ms (Tesla, patch 0086):
+    // see CombatEntity::hidesWhenIdle.
+    bool hidesWhenIdle = false;
+    int hideAfterIdleTicks = 0;
 
     // Compound cards (Goblin Giant, Ram Rider, Goblin Machine, Goblin Gang,
     // Rascals): a second, independently targeting unit spawned at the same
@@ -537,6 +541,15 @@ struct CardStats {
     CardStats& withInvisibility(int revealTicks) {
         startsInvisible = true;
         revealTicksAfterAttack = revealTicks;
+        return *this;
+    }
+    // A building that goes underground `hideTicks` after its last enemy left
+    // its sight, and cannot be targeted while it is down (Tesla).
+    CardStats& withHidesWhenIdle(int hideTicks) {
+        startsInvisible = true;
+        hidesWhenIdle = true;
+        hideAfterIdleTicks = hideTicks;
+        revealTicksAfterAttack = hideTicks;
         return *this;
     }
     CardStats& withPeriodicEffect(int intervalTicks, std::shared_ptr<IPeriodicEffect> effect) {
