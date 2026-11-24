@@ -6,7 +6,8 @@ Princesses (a destroyed own Princess frees its footprint; see
 test_placement_mask_after_tower_loss.py). The assumptions left, each a tripwire
 for an engine change:
 
-  * an enemy tower dying changes nothing (else the delta table needs a team-1 half);
+  * an enemy tower dying opens the pocket and nothing else (the cached table has
+    no team-1 half, so it is conservative there: see the first test);
   * troops change nothing (else legality is per-step and no cached table works);
   * the cached table agrees with the engine cell for cell.
 """
@@ -35,19 +36,27 @@ def game():
 
 
 @pytest.mark.parametrize("slot", [1, 2])
-def test_destroying_an_ENEMY_princess_does_not_change_legality(game, slot):
-    """Tripwire: the delta table covers our own towers only. If the engine ever
-    extends the deploy zone on taking a tower (the real game does), this fails
-    and the table must grow a team-1 half.
+def test_destroying_an_ENEMY_princess_opens_the_pocket_and_nothing_else(game, slot):
+    """Since the pocket rule (2026-11-23, GameManager::inPocket) taking a
+    Princess Tower opens that lane's bridge and the first rows of the enemy
+    bank. The cached table (net._build_placement_legality) still tracks team 0
+    only, so after an enemy tower falls it is CONSERVATIVE: it offers no pocket
+    cell, and never an illegal one. This pins exactly what opened, so that a
+    wider rule cannot slip in unseen.
     """
     before = _legal(game, DECK[0])
     assert game.destroy_tower(1, slot) is True
     after = _legal(game, DECK[0])
-    gained, lost = sorted(after - before), sorted(before - after)
-    assert not gained and not lost, (
-        f"destroying ENEMY tower slot {slot} changed legality "
-        f"(+{len(gained)} / -{len(lost)}). net._build_placement_legality's "
-        "delta table tracks team 0 only -- extend it to team 1.")
+    gained, lost = after - before, before - after
+    assert not lost
+    left = slot == 1
+    lane = range(0, 9) if left else range(9, 18)
+    bridge = (2, 3) if left else (14, 15)
+    expected = {(x, y) for x in lane for y in range(18, 23)}
+    expected |= {(x, y) for x in bridge for y in (16, 17)}
+    # a card keeps clear of what stands in the pocket (the King Tower's corner)
+    assert gained <= expected, sorted(gained - expected)
+    assert len(gained) >= len(expected) - 6, sorted(expected - gained)
 
 
 def test_troops_on_the_board_do_not_change_legality(game):

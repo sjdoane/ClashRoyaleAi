@@ -1886,6 +1886,41 @@ deploy to the first fire. The countdown does not run while the body deploys.
   otherwise: 837 cases, 836 passed, 1 failed as expected (C++); 1297 passed,
   3 skipped (Python).
 
+## 2026-11-23: the pocket opens when a Princess Tower falls (patch 0084)
+
+**GAMEPLAY-AFFECTING for every match in which a Princess Tower falls.** The
+engine never extended the deploy zone: with an enemy tower down, troops and
+buildings were still refused past the river. `GameManager::inPocket(team, x, y)`
+now opens, for the side that took the tower, that lane's half of the width
+(`ArenaLayout::isLeftLane`) on the enemy bank down to engine row 11 of the
+loser's half (rows 18-22 seen from team 0, 11-15 from team 1), plus that lane's
+bridge cells. River water stays closed. Both Princess Towers down opens the
+whole width. Used by `isValidPlacement` for troops, buildings, the own-side-only
+spells (Barbarian Barrel, Royal Delivery) and the rolling spells.
+
+- **EVIDENCE LEVEL: measured, not published.** In the 19 live matches recorded
+  on 2026-11-23 about 35 troop and building placements were made past the river
+  after a tower fell: every one on the fallen tower's half, none deeper than
+  engine row 11, the row most of them used; Hero Barbarian Barrels were cast
+  there too. The real pocket's exact shape (whether it is a full half-width
+  rectangle, whether the depth differs near the King Tower) is not known beyond
+  those placements.
+- Why it mattered: a replay of a recorded pocket play moved it to the river
+  bank (`training/ghost.py::nearest_legal`), 4-7 s further from the King Tower.
+  With the rule the 19 recorded matches, replayed with both sides scripted, cost
+  us 0.661 of our tower health against a real 0.668 (0.600 before; patch 0085 is
+  in that figure too).
+- NOT changed: `python_ai`'s cached placement mask
+  (`net._build_placement_legality`) tracks team 0's own towers only, so the old
+  trainer's mask does not offer pocket cells. That is conservative, never
+  illegal. `HeuristicOpponent` and the teacher do not use the pocket. Spells
+  that could always be cast anywhere are unchanged.
+- Tests: `python_ai/tests/test_pocket_placement.py`; the two tripwires that
+  pinned "an enemy tower dying changes nothing"
+  (`test_placement_legality_is_static.py`,
+  `test_placement_mask_after_tower_loss.py`) now pin exactly what opens and
+  that the mask stays a subset.
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
