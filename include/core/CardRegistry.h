@@ -850,7 +850,7 @@ private:
         // Night Witch: releases 3 Bats on death and spawns Bats periodically.
         add(troop(58, "Night Witch", 4.0f, Archetype::MeleeSquad, 906, SPEED_MEDIUM, 1.6f, 314, 13, '6')
             .withDeathEffect(std::make_shared<SpawnOnDeath>(nightWitchBatStats()))
-            .withPeriodicEffect(50, std::make_shared<PeriodicSpawnEffect>(nightWitchPeriodicBatStats())) /* audit 0003: wiki Night Witch, level 11 */);
+            .withPeriodicEffect(50, std::make_shared<PeriodicSpawnEffect>(nightWitchPeriodicBatStats())).withPeriodicFirst(10) /* audit 0003: wiki Night Witch, level 11 */);
         // Phoenix: one-time revive (phoenixReviveStats).
         add(troop(59, "Phoenix", 4.0f, Archetype::MeleeSquad, 1052, SPEED_MEDIUM, 1.6f, 217, 10, '7')
             .withFlying().withTargetsAir()
@@ -909,7 +909,7 @@ private:
             .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(furnaceFireSpiritStats())));
         add(troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
             .withTargetsAir()
-            .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */);
+            .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */);
 
         // "Spirit" troops detonate on their first hit and vanish
         // (CombatEntity::dieAfterFirstHit).
@@ -1069,7 +1069,7 @@ private:
         // effect; knockback not modelled), periodic Goblins, and 2 Goblins on
         // death.
         add(building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-            .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+            .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
             .withDeployAnywhere()
             .withSpawnEffect(2.0f, 84)
             .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats())).withLifetime(100) /* audit 0003: wiki Goblin Drill, level 11 */);
@@ -1491,10 +1491,10 @@ private:
         addEvolution(142,
             troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
                 .withTargetsAir()
-                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
+                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
             troop(71, "Witch", 5.0f, Archetype::RangedSquad, 839, SPEED_MEDIUM, 5.5f, 135, 11, ':')
                 .withTargetsAir()
-                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats()))
+                .withPeriodicEffect(70, std::make_shared<PeriodicSpawnEffect>(witchSkeletonStats())).withPeriodicFirst(10)
                 .withHealOnHit(20, 1040).withSplash(1.5f) /* audit 0003: wiki Witch, level 11 */,
             1 /* audit 0003: wiki Evolution, level 11: 1 cycle */, 1);
 
@@ -1620,12 +1620,12 @@ private:
         // each time) is approximated as more Goblins on death.
         addEvolution(153,
             building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
                 .withDeployAnywhere()
                 .withSpawnEffect(2.0f, 84)
                 .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats())).withLifetime(100) /* audit 0003: wiki Goblin Drill, level 11 */,
             building(98, "Goblin Drill", 4.0f, 1313, '7', 0.0f, 0, 100)
-                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats()))
+                .withPeriodicEffect(30, std::make_shared<PeriodicSpawnEffect>(goblinDrillGoblinStats())).withPeriodicFirst(0)
                 .withDeployAnywhere()
                 .withSpawnEffect(2.0f, 84)
                 .withDeathEffect(std::make_shared<SpawnOnDeath>(goblinDrillDeathGoblinStats()

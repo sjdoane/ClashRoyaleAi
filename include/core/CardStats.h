@@ -253,9 +253,12 @@ struct CardStats {
 
     // Periodic spawning while alive (Witch, Night Witch, Furnace, Barbarian
     // Hut, Goblin Hut, Tombstone, Goblin Drill). First fires after one full
-    // interval.
+    // interval unless periodicFirstTicks says otherwise.
     std::shared_ptr<IPeriodicEffect> periodicEffect;
     int periodicIntervalTicks = 0;
+    // Ticks from the end of the deploy to the first fire (the published
+    // SpawnStartTime); -1 = one full interval, the behaviour before patch 0083.
+    int periodicFirstTicks = -1;
     // The self-periodic hook (SelfPeriodicEffect.h, patch 0015).
     std::shared_ptr<ISelfPeriodicEffect> selfPeriodicEffect;
     int selfPeriodicIntervalTicks = 0;
@@ -529,6 +532,12 @@ struct CardStats {
     CardStats& withPeriodicEffect(int intervalTicks, std::shared_ptr<IPeriodicEffect> effect) {
         periodicIntervalTicks = intervalTicks;
         periodicEffect = std::move(effect);
+        return *this;
+    }
+    // The published SpawnStartTime: the first fire comes `ticks` after the
+    // deploy ends instead of one full interval after it (patch 0083).
+    CardStats& withPeriodicFirst(int ticks) {
+        periodicFirstTicks = ticks;
         return *this;
     }
     // First check `firstTicks` after the deploy ends, then every

@@ -1850,6 +1850,42 @@ Existing expectations that moved, and what each had encoded:
   already carried a horizon picked after patch 0034; the Ice Golem placed on
   (2, 15) now walks straight up the bridge. Neither recorded nor published.
 
+## 2026-11-23: the first periodic spawn comes at the published SpawnStartTime (patch 0083)
+
+**GAMEPLAY-AFFECTING** for every opponent holding a Goblin Drill, a Witch or a
+Night Witch (none is in `DEFAULT_DECK`). `CardFactories` started every periodic
+spawner's countdown at one whole interval, so the first spawn came a whole
+interval after the deploy. New `CardStats::periodicFirstTicks`
+(`.withPeriodicFirst(ticks)`, -1 = the old rule): ticks from the end of the
+deploy to the first fire. The countdown does not run while the body deploys.
+
+| card | published start / pause | first spawn after the play, before | now |
+|---|---|---|---|
+| Goblin Drill (98, both forms of 153) | 1000 / 3000 ms | 4.0 s (first stab 5.4-5.9 s) | 1.1 s (first stab 2.5-3.0 s) |
+| Witch (and both Evolution forms) | 1000 / 7000 | 8.0 s | 2.0 s |
+| Night Witch | 1000 / 5000 | 6.0 s | 2.0 s |
+
+- Source: RoyaleAPI cr-api-data `cards_stats.json` (`spawn_start_time`,
+  `spawn_pause_time`).
+- **The Drill's value is the recording's, not the table's.** Three Goblin Drills
+  on our Princess Tower in `runs/live/20261123-104801`: the first Goblin's first
+  stab lands 2.1-2.4 s after the Drill's stopwatch appears, the next Goblin
+  about 3 s later. The spawned Goblin keeps its 1 s deploy here, so the Drill
+  uses `withPeriodicFirst(0)` (fires on the first tick after its own deploy):
+  first stab 2.5-3.0 s, still 0.3-0.6 s later than recorded. With the published
+  1000 on top of the Goblin's deploy it would be 3.5-4.0 s.
+- An unanswered Drill beside a Princess Tower now costs 10 to 16 stabs
+  (1250-2000) where it cost 5 to 8: the tower stays on the Drill, as before,
+  while the Goblins come out 3 s sooner. No recording of an unanswered Drill
+  exists to check the total; in the recorded match the first Drill took 7
+  stabs with our defence present, and the old engine gave 0 there.
+- NOT changed: spawners published with `spawn_start_time` 0 (Tombstone, Goblin
+  Hut, Barbarian Hut, Furnace) still fire first after one whole interval.
+  Whether 0 means "at once" was not checked against a recording.
+- Tests: `python_ai/tests/test_first_periodic_spawn.py`. Suites unchanged
+  otherwise: 837 cases, 836 passed, 1 failed as expected (C++); 1297 passed,
+  3 skipped (Python).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`
