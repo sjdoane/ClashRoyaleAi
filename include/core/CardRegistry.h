@@ -864,14 +864,14 @@ private:
         add(troop(61, "Princess", 3.0f, Archetype::RangedSquad, 261, SPEED_MEDIUM, 9.0f, 168, 30, '9')
             .withTargetsAir()
             .withSplash(2.0f).withSightRange(9.5f).withDeployTime(12) /* audit 0003: wiki Princess, level 11 */);
-        // Hunter: the real card fires 10 randomly spread pellets and no falloff
-        // curve is published. withRangeFalloff is an invented deterministic
-        // approximation: linear from full damage point-blank to half at max
-        // range.
+        // Hunter: ten pellets of 84 in a fan (published multiple_projectiles
+        // 10; the fan angle is not published, see CombatEntity::pelletsOnBody).
+        // Until 2026-11-23 this was ONE pellet with an invented falloff: 84 at
+        // contact where the real volley takes about 800.
         add(troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
             .withTargetsAir()
             .withSplash(1.5f)
-            .withRangeFalloff(0.5f));
+            .withPellets(10, HUNTER_FAN_DEGREES));
         // A piercing line: 11.0 long, half-width 0.25.
         add(troop(63, "Magic Archer", 4.0f, Archetype::RangedSquad, 529, SPEED_MEDIUM, 7.0f, 135, 11, '#')
             .withTargetsAir()
@@ -1539,9 +1539,9 @@ private:
         // s net + 5 s recharge), via PeriodicFreezeNearestEffect.
         addEvolution(146,
             troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
-                .withTargetsAir().withSplash(1.5f).withRangeFalloff(0.5f),
+                .withTargetsAir().withSplash(1.5f).withPellets(10, HUNTER_FAN_DEGREES),
             troop(62, "Hunter", 4.0f, Archetype::RangedSquad, 885, SPEED_MEDIUM, 4.0f, 84, 22, '!')
-                .withTargetsAir().withSplash(1.5f).withRangeFalloff(0.5f)
+                .withTargetsAir().withSplash(1.5f).withPellets(10, HUNTER_FAN_DEGREES)
                 .withPeriodicEffect(80, std::make_shared<PeriodicFreezeNearestEffect>(4.0f, 30)),
             2, 1);
 

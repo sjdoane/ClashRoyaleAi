@@ -1921,6 +1921,41 @@ spells (Barbarian Barrel, Royal Delivery) and the rolling spells.
   `test_placement_mask_after_tower_loss.py`) now pin exactly what opens and
   that the mask stays a subset.
 
+## 2026-11-23: the Hunter fires ten pellets in a fan (patch 0085)
+
+**GAMEPLAY-AFFECTING** for every opponent holding a Hunter (not in
+`DEFAULT_DECK`). The Hunter was one 84-damage shot with an invented range
+falloff (`withRangeFalloff(0.5)`): 42-84 a volley. The published record
+(RoyaleAPI cr-api-data `cards_stats.json`) is `multiple_projectiles` 10, 84 a
+pellet at level 11, pellet `area_damage_radius` 70, `scatter` "Line", projectile
+range 6.5, range 4.
+
+- `CardStats::withPellets(count, fanDegrees)` -> `CombatEntity::pelletCount` /
+  `pelletFanDegrees`. `CombatEntity::pelletsOnBody(count, fan, dist, bodyRadius)`
+  is the one rule: the pellets are spread evenly over the fan, and a body takes
+  those whose line passes within its radius plus the pellet's 0.07; all of them
+  inside that reach, never fewer than one. The damage of a shot is the per-pellet
+  damage times that number. Every other enemy body within the old splash radius
+  (1.5) of the target takes the pellets its own body intercepts, at most what
+  the target left over (`Projectile::applyPelletSpread`).
+- **`HUNTER_FAN_DEGREES = 45` IS NOT PUBLISHED.** It is chosen so that all ten
+  land on a Hog Rider in contact, which is measured: in the live recordings of
+  2026-11-23 a Hog lost 760-840 to one volley (9-10 pellets). The share at
+  range is NOT measured. Supercell's 24 Jan 2018 note ("range 5 -> 4, bullet
+  spread slightly smaller") is the only official text on the spread.
+- A Crown Tower is measured with its PUBLISHED body (1.0 / 1.4, two thirds of
+  the engine's 1.5 / 2.0) for this rule only (`pelletGeometry`), or the engine's
+  larger tower would catch pellets the real one does not.
+- Through the bindings: Hog Rider, Giant, Ice Golem in contact 840; Giant from
+  4.4 tiles 332; Knight from 3.5 tiles 270; a Princess Tower from his range 369
+  a volley (4.4 pellets). In the replays of the two recorded Hunter matches the
+  damage we deal went from 0.23 to 0.12 of their tower health (real 0.12) and
+  from 0.76 to 0.58 (real 0.30).
+- The generic `rangeFalloff` mechanism stays (its C++ tests use it directly);
+  no card uses it now.
+- Tests: `python_ai/tests/test_hunter_pellets.py`. Suites: 837 cases, 836
+  passed, 1 failed as expected (C++); 1314 passed, 3 skipped (Python).
+
 ## Environment — the things that waste an hour
 
 **`clash_royale_env.pyd` is built for Python 3.11 only.** The default `python`

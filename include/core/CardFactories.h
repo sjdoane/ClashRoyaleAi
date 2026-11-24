@@ -115,6 +115,8 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
     entity->lineSplashRange = stats.lineSplashRange;
     entity->rangeFalloff = stats.rangeFalloff;
     entity->rangeFalloffMinFraction = stats.rangeFalloffMinFraction;
+    entity->pelletCount = stats.pelletCount;
+    entity->pelletFanDegrees = stats.pelletFanDegrees;
     entity->rangeBandMinDist = stats.rangeBandMinDist;
     entity->rangeBandMaxDist = stats.rangeBandMaxDist;
     entity->rangeBandDamageMultiplier = stats.rangeBandDamageMultiplier;

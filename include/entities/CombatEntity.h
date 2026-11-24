@@ -13,6 +13,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 class CombatEntity;
 
@@ -474,6 +475,48 @@ public:
     // Distance to the target at the last attack, for getCurrentDamage(), which
     // has no target of its own.
     float lastAttackDistance = 0.0f;
+
+    // A fan of pellets (Hunter). `damage` is one pellet; the shot deals one
+    // pellet times the number its target's body intercepts (pelletsOnBody).
+    // pelletCount 0 = an ordinary shot.
+    int pelletCount = 0;
+    float pelletFanDegrees = 0.0f;
+    // The target's body at the last attack, as the fan sees it.
+    float lastAttackTargetRadius = 0.0f;
+    static constexpr float PELLET_RADIUS = 0.07f; // published area_damage_radius 70
+
+    // How many pellets of an evenly spread fan a body intercepts: the angle
+    // the body (plus a pellet's own radius) subtends from the shooter, over
+    // the angle between two pellets. Continuous and deterministic (the real
+    // fan is random); never less than one, never more than the fan holds.
+    //
+    // PUBLISHED: 10 pellets, each the card's damage. NOT PUBLISHED: the fan
+    // angle. MEASURED (live recordings 2026-11-23, matches 4 and 6): one
+    // volley at contact takes 45-50 % of a level-11 Hog Rider (1697 hp), nine
+    // to ten pellets, which a fan of up to about 55 degrees gives. The share
+    // at range is NOT measured.
+    static float pelletsOnBody(int count, float fanDegrees, float dist, float bodyRadius) {
+        if (count <= 1 || fanDegrees <= 0.0f) return static_cast<float>(std::max(count, 1));
+        const float reach = bodyRadius + PELLET_RADIUS;
+        if (dist <= reach) return static_cast<float>(count);
+        const float spacing = fanDegrees / static_cast<float>(count - 1) * 3.14159265f / 180.0f;
+        const float width = 2.0f * std::atan2(reach, dist);
+        return std::clamp(width / spacing, 1.0f, static_cast<float>(count));
+    }
+
+    // A Crown Tower's body here is 1.5 / 2.0 where the published one is
+    // 1.0 / 1.4 (patch 0043), and a shooter stops that much further out; the
+    // fan is given the published geometry so that a tower does not catch
+    // pellets for being drawn too large.
+    static void pelletGeometry(const Entity& target, float centreDist, float& dist, float& radius) {
+        radius = effectiveRadiusOf(target);
+        dist = centreDist;
+        if (target.isTower()) {
+            const float published = radius * (2.0f / 3.0f);
+            dist = centreDist - (radius - published);
+            radius = published;
+        }
+    }
 
     // Champion marker. Gates no combat behaviour; lets GameManager find the
     // deployed Champion.
@@ -972,6 +1015,9 @@ public:
                     // fire depends on when the damage lands (at once for a
                     // direct hit, on arrival for a projectile).
                     lastAttackDistance = dist;
+                    if (pelletCount > 0) {
+                        pelletGeometry(*target, dist, lastAttackDistance, lastAttackTargetRadius);
+                    }
                     ticksSinceAttack = 0;
                     attacksStarted++;
                     if (magazineSize > 0 && magazineRounds > 0) magazineRounds--;
@@ -1335,6 +1381,10 @@ protected:
         }
         if (buffTicksRemaining > 0) {
             base = static_cast<int>(base * buffDamageMultiplier);
+        }
+        if (pelletCount > 0) {
+            base = static_cast<int>(std::lround(
+                base * pelletsOnBody(pelletCount, pelletFanDegrees, lastAttackDistance, lastAttackTargetRadius)));
         }
         if (rangeFalloff && attackRange > 0.0f) {
             float distFraction = std::min(lastAttackDistance / attackRange, 1.0f);
