@@ -17,6 +17,9 @@ public:
     int jumpColLatch = -1;
     float jumpColTargetX = -1000.0f;
     float stompWalkScale = 1.0f;   // floor(S (stop+wait)/stop) / S
+    // Patch 0090 (hogspeed): speed factor on land (not over the water), set by
+    // applyCardMetadata for the Hog Rider.
+    float landSpeedScale = 1.0f;
 
     // Base speed for the observation encoder. Not freeze-adjusted: the
     // observation describes the unit, and a freeze shows up as it not moving.
@@ -62,10 +65,19 @@ protected:
             }
             stompFactor = stompWalkScale * walked / 2.0f;
         }
-        const int maxLegs = jumper ? 3 : 1;
+        // Patch 0090 (walklegs): a walker too spends the rest of its step on
+        // the next leg after reaching a waypoint, but only on a leg that goes
+        // on in nearly the same direction (cos >= WALK_LEG_MIN_COS). Turning a
+        // corner with the rest of the step took two Goblin Machine bodies
+        // (0.75 + 0.75) at a bridge mouth into the water each tick, where the
+        // push and the clamp put both back for ever (tests/core/test_board.cpp,
+        // "pairs of wide bodies cross the river").
+        const bool walkLegs = !jumper && !isFlying && P0088::walkLegs();
+        const int maxLegs = (jumper || walkLegs) ? 3 : 1;
         Vector2D at = position;
         float budget = 1.0f;          // share of this tick's movement left
         bool moved = false;
+        float lastUx = 0.0f, lastUy = 0.0f;
         for (int leg = 0; leg < maxLegs && budget > 1e-3f; ++leg) {
             Vector2D waypoint = dest;
             float jumpScale = 1.0f;
@@ -87,6 +99,11 @@ protected:
             // different epsilons produce an absorbing state at the bridge mouths
             // (tests/core/test_board.cpp).
             if (distToWaypoint <= Board::WAYPOINT_ARRIVAL_EPS) break;
+            if (walkLegs) {
+                const float ux = dx / distToWaypoint, uy = dy / distToWaypoint;
+                if (leg > 0 && ux * lastUx + uy * lastUy < WALK_LEG_MIN_COS) break;
+                lastUx = ux; lastUy = uy;
+            }
             moved = true;
             // The tick-start freeze (frozenThisTick / freezeSlowThisTick), not
             // freezeTicks: update() has already counted the freezes down by
@@ -100,6 +117,9 @@ protected:
             if (inAbilityWindow()) currentSpeed *= windowMoveMultiplier;
             // The diagonal leg of a river jump (patch 0087).
             currentSpeed *= jumpScale;
+            // Patch 0090 (CR_P0088=hogspeed): the Hog Rider's measured land speed;
+            // over the water a jumper keeps its own (the crossing jumpedge fits).
+            if (landSpeedScale != 1.0f && !(jumper && overWater(board, at, dest))) currentSpeed *= landSpeedScale;
             // Patch 0088 (CR_P0088=jumpspeed): over the water a jumper moves
             // at its JumpSpeed (Hog 160 / Speed 120), on top of the diagonal.
             if (jumper && P0088::jumpSpeed() && overWater(board, at, dest)) {
@@ -128,6 +148,10 @@ protected:
         // before it moves, so a unit that stops is no longer jumping.
         if (P0088::jump() && jumper && moved && overWater(board, position, dest)) jumpingNow = true;
     }
+
+    // Patch 0090 walklegs: a further leg in the same tick only within about
+    // 18 degrees of the last one.
+    static constexpr float WALK_LEG_MIN_COS = 0.95f;
 
     static float bankRowFactor(float y, float ux, float uy) {
         const float k = ((y >= 13.0f && y < 15.0f) || (y >= 18.0f && y < 20.0f)) ? 0.5f : 1.0f;

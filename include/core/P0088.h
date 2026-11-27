@@ -104,6 +104,40 @@ inline bool onExact(const char* name) {
 inline bool pocketCells() { static const bool b = onExact("pocketcells"); return b; }
 inline bool kingPath() { static const bool b = onExact("kingpath"); return b; }
 
+// Patch 0090 switches (exact names only, like 0089; "all" does not enable them).
+// Measured on the recorded live runs (runs/bridge_1126: 2,018 real crossings,
+// round-5 detector; own Hog 270 corner plays, 20 beside the bridge):
+//   jumpedge  a river jumper whose target stands in its lane (target column
+//             within the bridge's deck) crosses like the game's Hog:
+//             - from the tile beside the bridge or on it (within a tile of the
+//               target column): the walker's route onto the bridge
+//               (Board::getNextWaypoint), no step onto the column
+//               (real x 2.24 / 2.46 / 2.71 on real rows 14.5 / 15 / 16 from (2,15));
+//             - from further out (the corner, x 1 / 16): a straight line to
+//               (column -/+ 0.8, 1.5 rows past the near bank) = real (2.2 | 14.8,
+//               row 16.0), forward at walking speed, then at its target
+//               (0087's 45-degree diagonal landed it on 2.57 | 14.43);
+//             a target off the lane keeps 0087's rule.
+//   walklegs  a walker keeps the rest of its step after reaching a waypoint
+//             (up to three legs a tick, as jumpers already do): no lost time
+//             at the bridge's mouths (real walkers cross at their own speed;
+//             the one-leg walker lost ~4 %).
+//   hogspeed  the Hog Rider walks on land at 2.34 tiles/s instead of S/50 =
+//             2.40 (the jump over the water keeps its speed, so jumpedge's
+//             crossing is unchanged). Real: 174 clean tracks on real rows
+//             18.6 -> 21.6 (both screen halves), median 2.340 tiles/s along
+//             the path, 95 % interval of the median 2.325-2.352; on the same
+//             rows and mapping Ice Golem, Skeletons and Knight match S/50
+//             within 1-2 %, so it is the card, not the screen mapping
+//             (runs/bridge_1126/speed2.py).
+inline bool jumpEdge() { static const bool b = onExact("jumpedge"); return b; }
+inline bool walkLegs() { static const bool b = onExact("walklegs"); return b; }
+inline bool hogSpeed() { static const bool b = onExact("hogspeed"); return b; }
+// hogspeed: land speed 2.34 tiles/s whether or not "speed" is on (S/50 = 2.40;
+// speedScale() 1 builds it at S x 0.02209 = 2.65).
+constexpr float HOG_LAND_SPEED_OF_S50 = 2.34f / 2.40f;
+inline float hogLandScale() { return HOG_LAND_SPEED_OF_S50 * (0.010f / 0.011045f) / speedScale(); }
+
 // Tornado (royalesim area_effect_objects Tornado, status ATTRACT_LAW
 // base_speed): life 1050 ms, every tick a victim in the radius takes an extra
 // step of attract_percentage 360 % of its own base speed toward the centre.

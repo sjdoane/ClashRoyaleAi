@@ -980,13 +980,26 @@ TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's 
 
     // The two bridge corners and the tile a Hog is played on from the middle.
     Board::JumperStep a = board.getJumperWaypoint(Vector2D{ 1.0f, 15.0f }, left);
+    Board::JumperStep b = board.getJumperWaypoint(Vector2D{ 16.0f, 15.0f }, right);
+    // Patch 0090 (CR_P0088=jumpedge): the corner jump lands on the bridge's
+    // outer edge line, 0.8 outside the column, 1.5 rows past the near bank,
+    // and keeps its forward speed: scale = length / forward length.
+    const float edgeScale = std::hypot(1.2f, 2.0f) / 2.0f;
+    if (P0088::jumpEdge()) {
+        REQUIRE(a.waypoint.x == Catch::Approx(2.2f));
+        REQUIRE(a.waypoint.y == Catch::Approx(17.0f));
+        REQUIRE(a.speedScale == Catch::Approx(edgeScale));
+        REQUIRE(b.waypoint.x == Catch::Approx(14.8f));
+        REQUIRE(b.waypoint.y == Catch::Approx(17.0f));
+        REQUIRE(b.speedScale == Catch::Approx(edgeScale));
+    } else {
     REQUIRE(a.waypoint.x == Catch::Approx(2.5f));
     REQUIRE(a.waypoint.y == Catch::Approx(16.5f));
     REQUIRE(a.speedScale == Catch::Approx(fast));
-    Board::JumperStep b = board.getJumperWaypoint(Vector2D{ 16.0f, 15.0f }, right);
     REQUIRE(b.waypoint.x == Catch::Approx(14.5f));
     REQUIRE(b.waypoint.y == Catch::Approx(16.5f));
     REQUIRE(b.speedScale == Catch::Approx(fast));
+    }
     Board::JumperStep c = board.getJumperWaypoint(Vector2D{ 6.0f, 15.0f }, left);
     REQUIRE(c.waypoint.x == Catch::Approx(3.5f));
     REQUIRE(c.waypoint.y == Catch::Approx(17.5f));
@@ -994,7 +1007,15 @@ TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's 
 
     // In its column over the water: straight across; on the far bank: the target.
     Board::JumperStep d = board.getJumperWaypoint(Vector2D{ 2.5f, 16.5f }, left);
+    if (P0088::jumpEdge()) {
+        // Patch 0090: inside the walk corridor a jumper takes the walker's
+        // waypoint, its own line to the target where that crosses the bank.
+        const Vector2D walk = board.getNextWaypoint(Vector2D{ 2.5f, 16.5f }, left);
+        REQUIRE(d.waypoint.x == Catch::Approx(walk.x));
+        REQUIRE(d.waypoint.x == Catch::Approx(2.5f + 0.5f / 10.5f));
+    } else {
     REQUIRE(d.waypoint.x == Catch::Approx(2.5f));
+    }
     REQUIRE(d.waypoint.y == Catch::Approx(17.5f));
     REQUIRE(d.speedScale == Catch::Approx(1.0f));
     Board::JumperStep e = board.getJumperWaypoint(Vector2D{ 2.5f, 17.5f }, left);
@@ -1005,8 +1026,13 @@ TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's 
     // Far enough back to reach the column before the water: the straight line
     // to it on the near bank, at walking speed.
     Board::JumperStep f = board.getJumperWaypoint(Vector2D{ 1.0f, 10.0f }, left);
+    if (P0088::jumpEdge()) {   // patch 0090: the edge point from anywhere on the outer side
+        REQUIRE(f.waypoint.x == Catch::Approx(2.2f));
+        REQUIRE(f.waypoint.y == Catch::Approx(17.0f));
+    } else {
     REQUIRE(f.waypoint.x == Catch::Approx(2.5f));
     REQUIRE(f.waypoint.y == Catch::Approx(15.5f));
+    }
     REQUIRE(f.speedScale == Catch::Approx(1.0f));
     Board::JumperStep fromKing = board.getJumperWaypoint(Vector2D{ 9.0f, 0.0f }, right);
     REQUIRE(fromKing.waypoint.x == Catch::Approx(13.5f));   // recorded: 13.55 at the river
@@ -1014,8 +1040,13 @@ TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's 
     // Not far enough back, and more than a tile from the water: 45 degrees at
     // walking speed.
     Board::JumperStep g = board.getJumperWaypoint(Vector2D{ 1.0f, 14.2f }, left);
+    if (P0088::jumpEdge()) {   // patch 0090; more than JUMP_ZONE from the water: walking speed
+        REQUIRE(g.waypoint.x == Catch::Approx(2.2f));
+        REQUIRE(g.waypoint.y == Catch::Approx(17.0f));
+    } else {
     REQUIRE(g.waypoint.x == Catch::Approx(2.5f));
     REQUIRE(g.waypoint.y == Catch::Approx(15.7f));
+    }
     REQUIRE(g.speedScale == Catch::Approx(1.0f));
 
     // A building in the middle is its target: the same 45 degrees, towards
@@ -1027,9 +1058,15 @@ TEST_CASE("a river jumper goes 45 degrees to within half a tile of its target's 
 
     // Team 1 is the mirror.
     Board::JumperStep i = board.getJumperWaypoint(Vector2D{ 16.0f, 18.0f }, Vector2D{ 14.0f, 6.0f });
+    if (P0088::jumpEdge()) {   // patch 0090
+        REQUIRE(i.waypoint.x == Catch::Approx(14.8f));
+        REQUIRE(i.waypoint.y == Catch::Approx(16.0f));
+        REQUIRE(i.speedScale == Catch::Approx(edgeScale));
+    } else {
     REQUIRE(i.waypoint.x == Catch::Approx(14.5f));
     REQUIRE(i.waypoint.y == Catch::Approx(16.5f));
     REQUIRE(i.speedScale == Catch::Approx(fast));
+    }
 
     // A target on its own side of the river: the target.
     Board::JumperStep k = board.getJumperWaypoint(Vector2D{ 1.0f, 10.0f }, Vector2D{ 9.0f, 14.0f });
@@ -1042,6 +1079,24 @@ TEST_CASE("a jumper beside its crossing, on the outer side, walks onto the colum
           "[board][waypoint][patch0087]") {
     Board board;
     const Vector2D left{ 3.0f, 27.0f }, right{ 14.0f, 27.0f };
+    if (P0088::jumpEdge()) {
+        // Patch 0090: beside the bridge (within BRIDGE_WALK_REACH of the
+        // column, outer side) a jumper takes the walker's route; recorded
+        // (2, 15): 2.24 / 2.46 / 2.71 on real rows 14.5 / 15 / 16, not the
+        // column at the bank.
+        for (const auto& [from, to] : { std::pair<Vector2D, Vector2D>{ { 2.0f, 15.0f }, left },
+                                        { { 15.0f, 15.0f }, right },
+                                        { { 15.0f, 18.0f }, { 14.0f, 6.0f } },
+                                        { { 2.0f, 18.0f }, { 3.0f, 6.0f } } }) {
+            const Board::JumperStep js = board.getJumperWaypoint(from, to);
+            const Vector2D walk = board.getNextWaypoint(from, to);
+            REQUIRE(js.waypoint.x == Catch::Approx(walk.x));
+            REQUIRE(js.waypoint.y == Catch::Approx(walk.y));
+            REQUIRE(js.speedScale == Catch::Approx(1.0f));
+            REQUIRE(std::abs(js.waypoint.x - (from.x < 8.5f ? 3.0f : 14.0f)) >= 0.5f - 1e-4f);
+        }
+        return;
+    }
     Board::JumperStep a = board.getJumperWaypoint(Vector2D{ 2.0f, 15.0f }, left);
     REQUIRE(a.waypoint.x == Catch::Approx(3.0f));
     REQUIRE(a.waypoint.y == Catch::Approx(15.5f));
@@ -1085,7 +1140,11 @@ TEST_CASE("getJumperWaypoint never returns the caller's own position",
                         REQUIRE(here.distanceTo(js.waypoint) > Board::WAYPOINT_ARRIVAL_EPS);
                         const bool plain = js.speedScale == Catch::Approx(1.0f);
                         const bool fast = js.speedScale == Catch::Approx(Board::JUMP_DIAGONAL_SPEED);
-                        REQUIRE((plain || fast));
+                        // Patch 0090 jumpedge: the jump to the edge point keeps the forward
+                        // speed, so its scale lies between the two.
+                        const bool edge = P0088::jumpEdge() && js.speedScale >= 1.0f - 1e-4f
+                            && js.speedScale <= Board::JUMP_DIAGONAL_SPEED + 1e-4f;
+                        REQUIRE((plain || fast || edge));
                     }
                 }
             }
@@ -1121,9 +1180,14 @@ TEST_CASE("a Hog Rider lands where the recorded one does, when a straight one wo
     };
     struct Case { float from, lands; };
     // placed on -> far-bank x. Recorded: 2.52, 14.54, 3.6, 3.0, 14.0, 3.05-3.2.
-    const Case cases[] = { { 1.0f, 2.5f }, { 16.0f, 14.5f }, { 6.0f, 3.5f }, { 11.0f, 13.5f },
-                           { 0.0f, 2.5f }, { 17.0f, 14.5f },
-                           { 2.0f, 3.0f }, { 15.0f, 14.0f }, { 3.0f, 3.0f }, { 14.0f, 14.0f } };
+    // Patch 0090 (jumpedge): 2.52 / 14.54 were box centres; the box carries
+    // the Hog's hammer, +0.3 outward while it faces up the left lane
+    // (runs/bridge_1126): the corner Hog lands on 2.2 / 14.8 (n 136 / 130),
+    // and the one beside the bridge walks, 2.6 / 14.4 at the far bank.
+    const bool edge = P0088::jumpEdge();
+    const Case cases[] = { { 1.0f, edge ? 2.2f : 2.5f }, { 16.0f, edge ? 14.8f : 14.5f }, { 6.0f, 3.5f }, { 11.0f, 13.5f },
+                           { 0.0f, edge ? 2.2f : 2.5f }, { 17.0f, edge ? 14.8f : 14.5f },
+                           { 2.0f, edge ? 2.59f : 3.0f }, { 15.0f, edge ? 14.41f : 14.0f }, { 3.0f, 3.0f }, { 14.0f, 14.0f } };
     for (int team : { 0, 1 }) {
         const Landing straight = land(3.0f, team);
         REQUIRE(straight.tick > 0);
@@ -1182,4 +1246,67 @@ TEST_CASE("river jumpers from every start cross the river", "[board][waypoint][r
     INFO(stuck << " of " << runs << " never crossed; first few:" << examples.str());
     REQUIRE(stuck == 0);
     REQUIRE(runs == 5 * 2 * 3 * 171);
+}
+
+// Patch 0090 (CR_P0088=hogspeed): on 174 clean real tracks past the river
+// (runs/bridge_1126/speed2.py, real rows 18.6-21.6, both screen halves) the Hog
+// runs 2.34 tiles/s, not S/50 = 2.40, while Ice Golem, Skeletons and Knight
+// match S/50 on the same rows. Over the water it keeps its speed, so the
+// crossing jumpedge fits is unchanged.
+TEST_CASE("hogspeed: the Hog Rider walks 2.5 % slower on land and keeps its speed over the water",
+          "[board][patch0090]") {
+    REQUIRE(P0088::HOG_LAND_SPEED_OF_S50 * 2.40f == Catch::Approx(2.34f));
+    REQUIRE(P0088::hogLandScale() * P0088::speedScale() == Catch::Approx(0.975f * 0.010f / 0.011045f));
+    const std::vector<int> deck = { 15, 6, 25, 40, 24, 72, 33, 7 };
+    constexpr int HOG = 15, LUMBERJACK = 21;   // same tier (120)
+    const float want = P0088::hogSpeed() ? 0.975f : 1.0f;
+    auto spawn = [](GameManager& game, float hx, float hy, float lx, float ly,
+                    std::shared_ptr<Troop>& hog, std::shared_ptr<Troop>& lj) {
+        Board& board = game.getBoard();
+        CardRegistry::getInstance().getCard(HOG)->spawnEntity(hx, hy, 0, board);
+        CardRegistry::getInstance().getCard(LUMBERJACK)->spawnEntity(lx, ly, 0, board);
+        board.commitPendingEntities();
+        for (const auto& e : board.getEntities()) {
+            if (e->cardId == HOG) hog = std::dynamic_pointer_cast<Troop>(e);
+            if (e->cardId == LUMBERJACK) lj = std::dynamic_pointer_cast<Troop>(e);
+        }
+    };
+    SECTION("open ground past the river: Hog step / Lumberjack step") {
+        GameManager game(deck, deck);
+        std::shared_ptr<Troop> hog, lj;
+        spawn(game, 3.0f, 20.5f, 14.0f, 20.5f, hog, lj);
+        REQUIRE(hog); REQUIRE(lj);
+        REQUIRE(hog->landSpeedScale == Catch::Approx(want));
+        REQUIRE(lj->landSpeedScale == 1.0f);
+        float hs = 0.0f, ls = 0.0f; int n = 0;
+        for (int t = 1; t <= 40; ++t) {
+            const Vector2D h0 = hog->position, l0 = lj->position;
+            game.step();
+            const float dh = h0.distanceTo(hog->position), dl = l0.distanceTo(lj->position);
+            if (h0.y >= 20.5f && hog->position.y <= 23.0f && l0.y >= 20.5f && lj->position.y <= 23.0f
+                && dh > 0.05f && dl > 0.05f) { hs += dh; ls += dl; ++n; }
+        }
+        INFO("ticks " << n << " hog " << hs << " lumberjack " << ls);
+        REQUIRE(n >= 5);
+        REQUIRE(hs / ls == Catch::Approx(want).epsilon(0.005));
+    }
+    SECTION("over the water: the Hog's step is the Lumberjack's on open ground") {
+        if (!P0088::jumpEdge()) return;   // the column route over the bridge (0090 jumpedge)
+        GameManager game(deck, deck);
+        Board& board = game.getBoard();
+        std::shared_ptr<Troop> hog, lj;
+        spawn(game, 3.0f, 12.0f, 14.0f, 6.0f, hog, lj);
+        REQUIRE(hog); REQUIRE(lj);
+        float hs = 0.0f, ls = 0.0f; int nh = 0, nl = 0;
+        for (int t = 1; t <= 60; ++t) {
+            const Vector2D h0 = hog->position, l0 = lj->position;
+            game.step();
+            const float dh = h0.distanceTo(hog->position), dl = l0.distanceTo(lj->position);
+            if (h0.y >= board.getRiverStart() && hog->position.y < board.getRiverEnd() && dh > 0.05f) { hs += dh; ++nh; }
+            if (l0.y >= 6.5f && lj->position.y <= 12.5f && dl > 0.05f) { ls += dl; ++nl; }
+        }
+        INFO("water ticks " << nh << " step " << hs / std::max(nh, 1) << ", land ticks " << nl << " step " << ls / std::max(nl, 1));
+        REQUIRE(nh >= 3); REQUIRE(nl >= 5);
+        REQUIRE((hs / nh) / (ls / nl) == Catch::Approx(1.0f).epsilon(0.005));
+    }
 }

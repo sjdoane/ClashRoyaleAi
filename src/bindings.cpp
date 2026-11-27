@@ -671,6 +671,8 @@ PYBIND11_MODULE(clash_royale_env, m) {
         d["bankrows"] = P0088::bankRows(); d["physdist"] = P0088::physDist(); d["jumpcol"] = P0088::jumpCol();
         d["speed_scale"] = P0088::speedScale();
         d["pocketcells"] = P0088::pocketCells(); d["kingpath"] = P0088::kingPath();   // patch 0089 (exact names only)
+        d["jumpedge"] = P0088::jumpEdge(); d["walklegs"] = P0088::walkLegs();   // patch 0090 (exact names only)
+        d["hogspeed"] = P0088::hogSpeed(); d["hog_land_scale"] = P0088::hogSpeed() ? P0088::hogLandScale() : 1.0f;
         return d;
     }, "Patch 0088: the switches this process's engine has latched (read once from CR_P0088).");
 

@@ -41,6 +41,10 @@ inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const
             }
         }
     }
+    // Patch 0090 (CR_P0088=hogspeed): the Hog Rider walks at 2.34 tiles/s on land.
+    if (P0088::hogSpeed() && stats.name == "Hog Rider") {
+        if (auto* t = dynamic_cast<Troop*>(entity.get())) t->landSpeedScale = P0088::hogLandScale();
+    }
     // Deploy time (CardStats.h: DEPLOY_TIME_TICKS unless the card publishes
     // its own). Set here because every troop and building passes through;
     // spells and deploy effects do not, since a spell has its own delay.

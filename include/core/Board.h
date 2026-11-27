@@ -628,6 +628,30 @@ public:
     static constexpr float JUMP_ZONE = 1.0f;
     static constexpr float JUMP_DIAGONAL_SPEED = 1.41421356f;
     static constexpr float BRIDGE_WALK_REACH = 1.0f;
+    // Patch 0090 jumpedge: where the corner jump lands, outside the target
+    // column (real deck edges 2.0 / 15.0 by the bridge posts; the Hog lands
+    // 0.2 inside them), and how far past the near bank (real row 16.0).
+    static constexpr float JUMP_EDGE_INSET = 0.8f;
+    static constexpr float JUMP_EDGE_ROWS = 1.5f;
+    // ... and the straight run after it: to JUMP_EDGE_RUN engine rows past the
+    // far bank (engine 20.0 = real 18.0), only on the edge line (within
+    // JUMP_EDGE_RUN_TOL of its x) and only with the target at least
+    // JUMP_EDGE_RUN_CLEAR rows beyond the run's end.
+    static constexpr float JUMP_EDGE_RUN = 2.5f;
+    static constexpr float JUMP_EDGE_RUN_TOL = 0.05f;
+    static constexpr float JUMP_EDGE_RUN_CLEAR = 2.0f;
+    // The run's next point, or y = -1e9 when there is none.
+    Vector2D jumpEdgeRun(const Vector2D& at, const Vector2D& targetPos, float farY, float dir) const {
+        const Vector2D none{ at.x, -1.0e9f };
+        const float laneX = (std::abs(at.x - LEFT_WALK_X) <= std::abs(at.x - RIGHT_WALK_X)) ? LEFT_WALK_X : RIGHT_WALK_X;
+        if (std::abs(targetPos.x - laneX) > BRIDGE_HALF_WIDTH + 1e-3f) return none;
+        const float out = (targetPos.x < ArenaLayout::CENTER_X) ? -1.0f : 1.0f;
+        if (std::abs(at.x - (targetPos.x + out * JUMP_EDGE_INSET)) > JUMP_EDGE_RUN_TOL) return none;
+        const float runEnd = farY + dir * JUMP_EDGE_RUN;
+        if ((runEnd - at.y) * dir <= WAYPOINT_ARRIVAL_EPS) return none;
+        if ((targetPos.y - runEnd) * dir < JUMP_EDGE_RUN_CLEAR) return none;
+        return Vector2D{ at.x, runEnd };
+    }
     // colLatch (jumpcol only): the unit's own record of the step-onto-the-column
     // decision, -1 undecided, 0 no, 1 yes; null = decide on the spot.
     JumperStep getJumperWaypoint(const Vector2D& currentPos, const Vector2D& targetPos,
@@ -638,6 +662,14 @@ public:
         const float dir = up ? 1.0f : -1.0f;
         const bool targetBeyond = up ? (targetPos.y >= farY) : (targetPos.y <= farY);
         const bool beforeFarBank = up ? (currentPos.y < farY) : (currentPos.y > farY);
+        // Patch 0090 jumpedge: past the far bank, a unit that landed on the
+        // edge line runs straight on to JUMP_EDGE_RUN rows past the bank before
+        // it turns to its target (recorded corner Hog: x 2.24 / 2.26 / 2.31 on
+        // real rows 17 / 18 / 19, then 2.48 / 2.54 on 20 / 21).
+        if (P0088::jumpEdge() && !beforeFarBank) {
+            const Vector2D run = jumpEdgeRun(currentPos, targetPos, farY, dir);
+            if (run.y > -1000.0f) return { run, 1.0f };
+        }
         if (!targetBeyond || !beforeFarBank) return { targetPos, 1.0f };
 
         const float toWater = (nearY - currentPos.y) * dir;      // > 0 while short of the water
@@ -646,6 +678,43 @@ public:
         const float gx = std::max(targetPos.x - WALK_HALF_WIDTH,
                                   std::min(currentPos.x, targetPos.x + WALK_HALF_WIDTH));
         const float lateral = std::abs(gx - currentPos.x);
+        // Patch 0090 (CR_P0088=jumpedge, P0088.h). Only for a target in the
+        // lane: its column within the deck of the bridge nearest the unit.
+        // Recorded (runs/bridge_1126, true positions = box centre less the
+        // hammer's 0.3): the corner Hog (1, 15) goes in a straight line to
+        // (2.2, real row 16.0) and lands there (n 140; (16, 15) on 14.8, n 130;
+        // the opponents' the same, n 13), forward at its walking speed (real
+        // rows 17 / 18 / 19 at 1.10 / 1.58 / 2.05 s); the Hog beside the bridge
+        // (2, 15) walks onto it (2.24 / 2.46 / 2.71 on real 14.5 / 15 / 16,
+        // n 12; (15, 15) the mirror, n 8).
+        if (P0088::jumpEdge()) {
+            const float laneX = (std::abs(currentPos.x - LEFT_WALK_X) <= std::abs(currentPos.x - RIGHT_WALK_X))
+                ? LEFT_WALK_X : RIGHT_WALK_X;
+            if (std::abs(targetPos.x - laneX) <= BRIDGE_HALF_WIDTH + 1e-3f) {
+                const bool inBand = toWater <= WAYPOINT_ARRIVAL_EPS;      // on the near bank or past it
+                // Arrival tolerance: a unit that stopped within WAYPOINT_ARRIVAL_EPS
+                // of the bridge mouth (the corridor's edge) has arrived there; a
+                // tighter test sent a beside-the-bridge Hog 0.004 short of it into
+                // the corner jump instead (a 2.5 % slower step was enough).
+                const bool inCorridor = std::abs(currentPos.x - laneX) <= WALK_HALF_WIDTH + WAYPOINT_ARRIVAL_EPS;
+                const float out = (targetPos.x < ArenaLayout::CENTER_X) ? -1.0f : 1.0f;
+                const Vector2D edge{ targetPos.x + out * JUMP_EDGE_INSET, nearY + dir * JUMP_EDGE_ROWS };
+                const float toEdge = (edge.y - currentPos.y) * dir;
+                const bool walk = inBand ? inCorridor : (off <= BRIDGE_WALK_REACH + 1e-3f);
+                if (walk) return { getNextWaypoint(currentPos, targetPos), 1.0f };
+                if (outerSide) {
+                    if (toEdge <= WAYPOINT_ARRIVAL_EPS || currentPos.engineDistanceTo(edge) <= WAYPOINT_ARRIVAL_EPS) {
+                        const Vector2D run = jumpEdgeRun(currentPos, targetPos, farY, dir);
+                        return { run.y > -1000.0f ? run : targetPos, 1.0f };
+                    }
+                    float scale = 1.0f;
+                    if (toWater <= JUMP_ZONE) {
+                        scale = std::min(JUMP_DIAGONAL_SPEED, currentPos.engineDistanceTo(edge) / toEdge);
+                    }
+                    return { edge, scale };
+                }
+            }
+        }
         // Patch 0088 (CR_P0088=jumpcol): the step onto the column replaces the
         // diagonal jump only, i.e. only where the jump would otherwise start
         // (toWater <= lateral: it cannot walk into the corridor before the
