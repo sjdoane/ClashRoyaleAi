@@ -247,6 +247,10 @@ struct CardStats {
     // Rascals): a second, independently targeting unit spawned at the same
     // point by CardFactories::spawn.
     std::shared_ptr<CardStats> secondaryUnit;
+    // Patch 0091 evogb: a second spell thrown with this one at the point
+    // mirrored across the arena's middle (2 x CENTER_X - x, same y): the
+    // Evolved Goblin Barrel's decoy (royalesim evo_mirror). Null = none.
+    std::shared_ptr<CardStats> spellMirrorDecoy;
     // Patch 0046. The game data marks two of those cards `SpawnAttach`: the
     // Ram carries its rider and the Goblin Giant its two Spear Goblins. An
     // attached secondary has no body of its own while its carrier lives: it
@@ -631,6 +635,10 @@ struct CardStats {
     // tiles per tick; see spellProjectileSpeed.
     CardStats& withThrownFromKingTower(int publishedSpeed) {
         spellProjectileSpeed = publishedSpeed;
+        return *this;
+    }
+    CardStats& withMirrorDecoy(CardStats decoy) {
+        spellMirrorDecoy = std::make_shared<CardStats>(std::move(decoy));
         return *this;
     }
     CardStats& withSecondaryUnit(CardStats unit) {

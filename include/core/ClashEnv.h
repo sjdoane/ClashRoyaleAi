@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include "GameManager.h"
 #include "TimeoutRules.h"
 #include "HeuristicOpponent.h"
@@ -1038,6 +1039,18 @@ public:
     // recorded separately from how it is encoded.
     int getLastPlayedTick(int team, int cardId) const {
         return game.getLastPlayedTick(team, cardId);
+    }
+
+    // Patch 0091, read-only: each evolution card of `team`'s deck ->
+    // (cycles until evolved, evolved uses remaining), PlayerState's own
+    // countdown. The next cast of that card is evolved iff the first is <= 0.
+    std::map<int, std::pair<int, int>> getEvolutionState(int team) const {
+        const PlayerState& p = (team == 0) ? game.playerAI : game.playerOpponent;
+        std::map<int, std::pair<int, int>> out;
+        for (const auto& kv : p.evolutionState) {
+            out[kv.first] = { kv.second.cyclesUntilEvolved, kv.second.evolvedUsesRemaining };
+        }
+        return out;
     }
 
     // Reproducibility: same seed, same opening hands, cycle order and heuristic

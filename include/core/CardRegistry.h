@@ -250,6 +250,15 @@ private:
         return troop(-20, "Goblins", 0.0f, Archetype::MeleeSquad, 202, SPEED_VERY_FAST, 0.5f, 125, 11, 'g')
             .withOffsets({ {0.0f, 0.5f}, {0.5f, -0.5f}, {-0.5f, -0.5f} });
     }
+    // Patch 0091 evogb: royalesim units.GoblinDummy (HP 32 -> 81, Damage 26 ->
+    // 66 at level 11, HitSpeed 1100, LoadTime 700, Range 0.5, Speed 120 =
+    // the Goblin's). Named "Goblins" so it takes the Goblin's load-time,
+    // body and mass rows (the dummy's own body is not in the data). Offsets:
+    // the real barrel's with x negated (EVO_BARREL_DECOY_POINTS).
+    static CardStats goblinDummyStats() {
+        return troop(-53, "Goblins", 0.0f, Archetype::MeleeSquad, 81, SPEED_VERY_FAST, 0.5f, 66, 11, 'g')
+            .withOffsets({ {-0.0f, 0.5f}, {-0.5f, -0.5f}, {0.5f, -0.5f} });
+    }
     static CardStats graveyardSkeletonStats() {
         return troop(-21, "Skeletons", 0.0f, Archetype::MeleeSquad, 81, SPEED_FAST, 0.5f, 81, 11, 'k');
     }
@@ -305,7 +314,9 @@ private:
             .withFlying().withTargetsAir();
     }
     static CardStats suspiciousBushGoblinStats() {
-        return troop(-30, "Bush Goblins", 0.0f, Archetype::MeleeSquad, 304, 0.5f, 0.8f, 256, 14, 'g')
+        // Patch 0091 bushpop: royalesim BushGoblin Speed 60 = Medium (1.2 tiles/s
+        // with "speed"); 0.5 was not sourced.
+        return troop(-30, "Bush Goblins", 0.0f, Archetype::MeleeSquad, 304, P0088::bushPop() ? SPEED_MEDIUM : 0.5f, 0.8f, 256, 14, 'g')
             .withOffsets({ {-0.4f, 0.0f}, {0.4f, 0.0f} });
     }
     static CardStats goblinCageBrawlerStats() {
@@ -792,8 +803,10 @@ private:
         // Invisibility returns 1.8 s after the last attack (published
         // buff_when_not_attacking_time 1800 ms, patch 0040): with a hit every
         // 1.8 s the Ghost stays visible for as long as it keeps attacking.
+        // Patch 0091 ghostcloak / ghostsplash (P0088.h): 2.3 s and 1.0; off = 18 and 0.
         add(troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1152, SPEED_FAST, 1.2f, 263, 18, 'Q')
-            .withInvisibility(18)
+            .withInvisibility(P0088::ghostRevealTicks())
+            .withSplash(P0088::ghostSplashRadius())
             .withIgnoresRiver());
         // Mega Knight: the deploy slam is the spawn-effect burst (published
         // radius 2.2, 430; the area hit's radius is 1.3: patch 0048). The periodic jump closes 3.5-5 tiles instantly with a 2.0x,
@@ -1000,7 +1013,9 @@ private:
             .withSightRange(7.5f)   /* published ElectroGiant SightRange 7500 (patch 0045) */
             .withSplash(1.5f)
             .withPeriodicEffect(50, std::make_shared<AreaStunEffect>(2.5f, 5)) /* audit 0003: wiki Electro Giant, level 11 */);
-        add(troop(85, "Suspicious Bush", 2.0f, Archetype::MeleeBuildingTargeter, 81, SPEED_MEDIUM, 0.5f, 256, 14, '}')
+        // Patch 0091 bushpop: Range 1600 (royalesim); it never hits (CombatEntity).
+        add(troop(85, "Suspicious Bush", 2.0f, Archetype::MeleeBuildingTargeter, 81, SPEED_MEDIUM,
+                  P0088::bushPop() ? P0088::BUSH_RANGE : 0.5f, 256, 14, '}')
             .withSightRange(7.5f)   /* published SuspiciousBush SightRange 7500 (patch 0045) */
             // Visible from its first hit for as long as it keeps hitting (one
             // hit interval, patch 0040): the Bush is revealed once it reaches
@@ -1160,7 +1175,8 @@ private:
             .withOffsets({ {-0.5f, -0.5f}, {0.5f, -0.5f}, {0.0f, 0.5f} })
             .withSecondaryUnit(
                 troop(-27, "Spear Goblins", 0.0f, Archetype::RangedSquad, 133, SPEED_VERY_FAST, 5.0f, 81, 16, 'S')
-                    .withOffsets({ {-0.5f, 0.5f}, {0.5f, 0.5f}, {0.0f, -0.5f} })));
+                    .withOffsets({ {-0.5f, 0.5f}, {0.5f, 0.5f}, {0.0f, -0.5f} })
+                    .withTargetsAir(P0088::gangAir())));   // patch 0091 gangair (P0088.h); off = ground only
         // Rascals: the Boy, and two Girls with the published RascalGirl row of
         // release 15.535.13 (hp 261, damage 125, hit speed 1.0 s, load 0.5 s,
         // Medium speed, range 5.0); they used to reuse Spear Goblins. Patch 0048.
@@ -1378,11 +1394,21 @@ private:
 
         // Goblin Barrel: the real second barrel on the mirrored lane is
         // approximated as 6 Goblins at one landing point.
+        // Patch 0091 evogb: the plain barrel plus a decoy barrel at the
+        // mirrored point with 3 GoblinDummy at the mirrored members (x offsets
+        // negated). See P0088.h.
         addEvolution(132,
             spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
                 .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()))
                 .withThrownFromKingTower(400),
-            spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
+            P0088::evoGb()
+            ? spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
+                .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()))
+                .withThrownFromKingTower(400)
+                .withMirrorDecoy(spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
+                    .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinDummyStats()))
+                    .withThrownFromKingTower(400))
+            : spell(109, "Goblin Barrel", 3.0f, 0.5f, 0, 8, '[')
                 .withSpellSpawn(std::make_shared<PeriodicSpawnEffect>(goblinBarrelGoblinStats()
                     .withOffsets({ {-0.4f,0.0f},{0.4f,0.0f},{0.0f,0.4f},{-0.4f,0.4f},{0.4f,0.4f},{0.0f,-0.4f} })))
                 .withThrownFromKingTower(400),
@@ -1425,9 +1451,10 @@ private:
         // after the last attack (patch 0040).
         addEvolution(136,
             troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1152, SPEED_FAST, 1.2f, 263, 18, 'Q')
-                .withInvisibility(18).withIgnoresRiver(),
+                .withInvisibility(P0088::ghostRevealTicks()).withSplash(P0088::ghostSplashRadius())
+                .withIgnoresRiver(),
             troop(47, "Royal Ghost", 3.0f, Archetype::MeleeSquad, 1152, SPEED_FAST, 1.2f, 263, 18, 'Q')
-                .withInvisibility(18)
+                .withInvisibility(P0088::ghostRevealTicks()).withSplash(P0088::ghostSplashRadius())
                 .withOnHitSpawn(std::make_shared<PeriodicSpawnEffect>(royalGhostSouldierStats()
                     .withOffsets({ {-0.4f, 0.0f}, {0.4f, 0.0f} })))
                 .withIgnoresRiver(),

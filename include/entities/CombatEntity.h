@@ -604,7 +604,14 @@ public:
     bool takesAreaDamage() const override { return !isRiding(); }
     // An underground Tesla is drawn for both players (patch 0086).
     bool isSeenOnBoard() const override {
-        return isTargetable() || (hidesWhenIdle && !isRiding());
+        if (isTargetable() || (hidesWhenIdle && !isRiding())) return true;
+        // Patch 0091 cloakboard / bushboard (P0088.h): the screen shows a
+        // cloaked Royal Ghost and the walking Suspicious Bush, so the board
+        // planes do too. Only what is drawn changes, not who may target it.
+        if (isRiding()) return false;
+        if (P0088::cloakBoard() && cardId == P0088::ROYAL_GHOST_CARD_ID) return true;
+        if (P0088::bushBoard() && cardId == P0088::SUSPICIOUS_BUSH_CARD_ID) return true;
+        return false;
     }
 
     // Soul collection: any death within radius, ally or enemy.
@@ -1014,6 +1021,16 @@ public:
 
             float dist = position.distanceTo(target->position);
             float effectiveAttackRange = effectiveRangeTo(target);
+
+            // Patch 0091 bushpop (P0088.h): the Suspicious Bush deals no damage;
+            // it dies on the tick it comes into reach (Kamikaze, no wind-up),
+            // and its death effect lets the Bush Goblins out.
+            if (P0088::bushPop() && cardId == P0088::SUSPICIOUS_BUSH_CARD_ID
+                && dist <= effectiveAttackRange && !jumpLock && !stunned) {
+                hp = 0;
+                clampPosition(board);
+                return;
+            }
 
             if (dist <= effectiveAttackRange && !jumpLock) {
                 // First hit: a new engagement winds up for loadTicks first,

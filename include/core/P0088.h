@@ -138,6 +138,81 @@ inline bool hogSpeed() { static const bool b = onExact("hogspeed"); return b; }
 constexpr float HOG_LAND_SPEED_OF_S50 = 2.34f / 2.40f;
 inline float hogLandScale() { return HOG_LAND_SPEED_OF_S50 * (0.010f / 0.011045f) / speedScale(); }
 
+// Patch 0091 switches (exact names only, like 0089/0090; "all" does not enable
+// them). Each one makes the sim match real play for a card real opponents beat
+// us with (runs/sim_0091/REPORT.md has the sources):
+//   cloakboard  a cloaked Royal Ghost (card 47, plain and Evolution) is written
+//               into both players' board planes like a visible unit. Real
+//               players see the faint ghost; the live detector boxes it at
+//               ~0.9 while cloaked and live_ppo/cloaked_rows.py encodes it.
+//               Targeting is unchanged: troops and buildings still cannot pick
+//               it, spells and splash still hit it (Entity::takesAreaDamage).
+//   bushboard   the walking (cloaked) Suspicious Bush (card 85) is written into
+//               the board planes the same way (live detector 0.58-0.96 while it
+//               walks); untargetable as before.
+//   bushpop     the Suspicious Bush never attacks: on the tick it comes into
+//               reach of its building it dies (no damage) and its death
+//               spawns the 2 Bush Goblins (royalesim cards-15535.1:
+//               SuspiciousBush Damage 0, Kamikaze, HitSpeed 300 = LoadTime
+//               300 so no wind-up, calibration KAMIKAZE_DEATH at_fire).
+//               Range 1.6 (Range 1600). The goblins come out 625 / 675 ms
+//               after the death (SuspiciousBush_DummyAEO schedule, use_deploy)
+//               and then deploy their 1 s: here they are hidden and
+//               untargetable for 6 / 7 ticks and deploy 10 + 6 / 10 + 7.
+//               Bush Goblin speed Medium, 1.2 tiles/s (BushGoblin Speed 60).
+//               Live: goblins first boxed 0.77-1.03 s after the bush stopped
+//               (3 pops, runs/sim_0091/REPORT.md).
+//   evogb       the Evolved Goblin Barrel (card 132, evolved cast) is the
+//               plain barrel (3 Goblins, plain formation) PLUS a decoy barrel
+//               thrown at the mirrored point (2 x CENTER_X - x, y), same
+//               flight, landing 3 GoblinDummy (81 hp, 66 damage, hit 1.1 s,
+//               load 0.7 s, range 0.5, speed 2.4) at the mirrored members
+//               (royalesim evolutions.GoblinBarrel_EV1.evo_mirror,
+//               GoblinBarrelSpell_EV1_Decoy, units.GoblinDummy, calibration
+//               EVO_BARREL_DECOY_POINTS). Live: two barrels from one fused
+//               sprite to mirrored targets, goblins at both Princess Towers
+//               (runs/live/20261124-094533 f010151-f010179). Without it the
+//               evolved cast is 6 Goblins at one point (not sourced).
+inline bool cloakBoard() { static const bool b = onExact("cloakboard"); return b; }
+inline bool bushBoard() { static const bool b = onExact("bushboard"); return b; }
+inline bool bushPop() { static const bool b = onExact("bushpop"); return b; }
+inline bool evoGb() { static const bool b = onExact("evogb"); return b; }
+constexpr int ROYAL_GHOST_CARD_ID = 47;
+constexpr int SUSPICIOUS_BUSH_CARD_ID = 85;
+constexpr int BUSH_GOBLIN_STATS_ID = -30;
+// SuspiciousBush_DummyAEO schedule: delay_ms 675 (x -1) and 625 (x +1),
+// rounded to engine ticks, in spawn-offset order {-0.4, 0}, {+0.4, 0}.
+constexpr int BUSH_GOBLIN_DELAY_TICKS[2] = {7, 6};
+constexpr float BUSH_RANGE = 1.6f;
+
+// Patch 0091, priority 2 (exact names only, default off; sources from the
+// royalesim reference data, cards-15535.1 = the 15.535.29 client's asset pack):
+//   gangair     Goblin Gang's three Spear Goblins (unit -27) hit air.
+//               GoblinGang second_summon SpearGoblin x 3; units.SpearGoblin
+//               attacks_air true (the same record as card 23, which already
+//               has withTargetsAir, and Goblin Giant's -26).
+//   ghostsplash the Royal Ghost's hit splashes 1.0 round its target
+//               (units.Ghost and units.Ghost_EV1 area_damage_radius_milli
+//               1000, self_as_aoe_center false). Card 47 and both forms of
+//               136. Applied as every melee splash here
+//               (MeleeTroop::performAttack -> applySplashDamage: centre to
+//               centre, air included); whether the real splash reaches air
+//               bodies is not in the data and is not decided here.
+//   ghostcloak  the Ghost hides again 2.3 s after its hit, not 1.8 s
+//               (units.Ghost / Ghost_EV1 idle_invisibility time_ms 2000,
+//               counted from the END of the attack; calibration INVISIBILITY,
+//               measured on client 15.535.29 and 16.402: towers drop it on
+//               the hit + 46 ticks of 50 ms in 18 of 26 cases, its attack
+//               ending on the hit + 5-6; the engine has no back-swing, so it
+//               counts from the hit). Patch 0040's 1800 is release 15.535.13.
+inline bool gangAir() { static const bool b = onExact("gangair"); return b; }
+inline bool ghostSplash() { static const bool b = onExact("ghostsplash"); return b; }
+inline bool ghostCloak() { static const bool b = onExact("ghostcloak"); return b; }
+constexpr float GHOST_SPLASH = 1.0f;
+constexpr int GHOST_RECLOAK_TICKS = 23;
+inline int ghostRevealTicks() { return ghostCloak() ? GHOST_RECLOAK_TICKS : 18; }
+inline float ghostSplashRadius() { return ghostSplash() ? GHOST_SPLASH : 0.0f; }
+
 // Tornado (royalesim area_effect_objects Tornado, status ATTRACT_LAW
 // base_speed): life 1050 ms, every tick a victim in the radius takes an extra
 // step of attract_percentage 360 % of its own base speed toward the centre.

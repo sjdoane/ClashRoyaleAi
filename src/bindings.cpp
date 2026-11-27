@@ -529,6 +529,10 @@ PYBIND11_MODULE(clash_royale_env, m) {
              py::arg("team"), py::arg("card_id"))
         .def("get_last_played_tick", &ClashEnv::getLastPlayedTick,
              py::arg("team"), py::arg("card_id"))
+        .def("get_evolution_state", &ClashEnv::getEvolutionState, py::arg("team"),
+             "Patch 0091, read-only: {evolution card id: (cycles until evolved, "
+             "evolved uses remaining)} for `team`. The next cast of a card is "
+             "evolved iff its first value is <= 0.")
         // Reproducible episodes: seeds both engine generators and re-deals
         // (ClashEnv::seed).
         .def("seed", &ClashEnv::seed, py::arg("seed"))
@@ -673,6 +677,8 @@ PYBIND11_MODULE(clash_royale_env, m) {
         d["pocketcells"] = P0088::pocketCells(); d["kingpath"] = P0088::kingPath();   // patch 0089 (exact names only)
         d["jumpedge"] = P0088::jumpEdge(); d["walklegs"] = P0088::walkLegs();   // patch 0090 (exact names only)
         d["hogspeed"] = P0088::hogSpeed(); d["hog_land_scale"] = P0088::hogSpeed() ? P0088::hogLandScale() : 1.0f;
+        d["cloakboard"] = P0088::cloakBoard(); d["bushboard"] = P0088::bushBoard(); d["bushpop"] = P0088::bushPop(); d["evogb"] = P0088::evoGb();   // patch 0091 (exact names only)
+        d["gangair"] = P0088::gangAir(); d["ghostsplash"] = P0088::ghostSplash(); d["ghostcloak"] = P0088::ghostCloak();   // patch 0091 priority 2
         return d;
     }, "Patch 0088: the switches this process's engine has latched (read once from CR_P0088).");
 

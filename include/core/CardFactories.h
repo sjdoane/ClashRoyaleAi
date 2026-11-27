@@ -359,6 +359,11 @@ inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board
         spell->rollBodyDepth = stats.spellRollBodyDepth;
     }
     board.addEntity(spell);
+    // Patch 0091 evogb: the decoy is thrown with it, at the mirrored point,
+    // and is added after it (get_pending_spells lists the real one first).
+    if (stats.spellMirrorDecoy) {
+        spawnSpell(*stats.spellMirrorDecoy, 2.0f * ArenaLayout::CENTER_X - x, y, team, board);
+    }
 }
 
 // `played`: the card itself is being played (set only by the registry's spawn
@@ -390,6 +395,20 @@ inline void spawn(const CardStats& stats, float x, float y, int team, Board& boa
                 if (auto rider = std::dynamic_pointer_cast<Troop>(board.getPendingEntity(i))) {
                     rider->rideOn(*carrier, stats.secondaryDropsOnCarrierDeath);
                 }
+            }
+        }
+    }
+    // Patch 0091 bushpop: the Suspicious Bush's death spawns each Bush Goblin
+    // 625 / 675 ms late (SuspiciousBush_DummyAEO schedule): until then it is
+    // out of the observation and cannot be picked as a target, and its 1 s
+    // deploy starts after the delay.
+    if (P0088::bushPop() && stats.id == P0088::BUSH_GOBLIN_STATS_ID) {
+        int k = 0;
+        for (size_t i = firstPrimary; i < firstSecondary && k < 2; ++i) {
+            if (auto unit = std::dynamic_pointer_cast<CombatEntity>(board.getPendingEntity(i))) {
+                unit->deployTicksRemaining += P0088::BUSH_GOBLIN_DELAY_TICKS[k];
+                unit->temporaryInvisibilityTicksRemaining = P0088::BUSH_GOBLIN_DELAY_TICKS[k];
+                ++k;
             }
         }
     }
