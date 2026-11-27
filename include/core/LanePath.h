@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <memory>
 #include "ArenaLayout.h"
 #include "Board.h"
@@ -30,6 +31,32 @@ inline std::shared_ptr<Entity> laneObjective(const Board& board, int myTeam,
         if (ArenaLayout::isLeftLane(e->position.x) == wantLeft) lanePrincess = e;
     }
     return lanePrincess ? lanePrincess : king;
+}
+
+// Patch 0089 kingpath (used by CombatEntity, only for a King in sight): is `from` past the river (on the King's side) with
+// the straight line to the King clear of every other standing tower? Clear =
+// the segment keeps more than the tower's collision radius from its centre.
+inline constexpr float KINGPATH_INNER_HALF_WIDTH = 3.0f;
+inline bool straightToKing(const Board& board, int myTeam, const Vector2D& from,
+                           const std::shared_ptr<Entity>& king) {
+    const bool past = (myTeam == 0) ? (from.y >= board.getRiverEnd())
+                                    : (from.y <= board.getRiverStart());
+    if (!past) return false;
+    // Only from the inner pocket: within KINGPATH_INNER_HALF_WIDTH of the
+    // centre line (engine columns 6-11). Further out the lane walk W1 already
+    // matches royalesim's grid path for a Hog within 0.25 s (verify/j/cmp_table.out).
+    if (std::fabs(from.x - ArenaLayout::CENTER_X) > KINGPATH_INNER_HALF_WIDTH) return false;
+    const float dx = king->position.x - from.x, dy = king->position.y - from.y;
+    const float len2 = dx * dx + dy * dy;
+    for (const auto& e : board.getEntities()) {
+        if (e.get() == king.get() || !e->isAlive() || !e->isTower()) continue;
+        float t = len2 > 0.0f ? ((e->position.x - from.x) * dx + (e->position.y - from.y) * dy) / len2 : 0.0f;
+        t = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+        const float cx = from.x + t * dx - e->position.x, cy = from.y + t * dy - e->position.y;
+        const float r = e->getCollisionRadius();
+        if (cx * cx + cy * cy <= r * r) return false;
+    }
+    return true;
 }
 
 // Where to walk while approaching `target`. For anything but an enemy King, the

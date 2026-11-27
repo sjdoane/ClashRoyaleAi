@@ -533,14 +533,28 @@ public:
     // refused all of them, and a replay moved each to the river bank, 4-7 s
     // further from the King Tower.
     static constexpr float POCKET_DEEPEST_ROW_TEAM0_HALF = 11.0f;
-    bool inPocket(int team, float x, float y) const {
+    // Engine rows 15 and 18 are real rows 14 and 17 (ArenaLayout::realRow).
+    static bool isBankCorner(float x, float y) {
+        const bool edge = x < 0.5f || x > static_cast<float>(ArenaLayout::WIDTH) - 1.5f;
+        const bool bank = std::fabs(y - 15.0f) < 0.5f || std::fabs(y - 18.0f) < 0.5f;
+        return edge && bank;
+    }
+    bool inPocket(int team, float x, float y, bool building = false) const {
         const int enemy = 1 - team;
         if (enemy == 0) {
             if (y < POCKET_DEEPEST_ROW_TEAM0_HALF - Board::CELL_HALF_EXTENT) return false;
         } else {
             if (y > ArenaLayout::mirrorY(POCKET_DEEPEST_ROW_TEAM0_HALF) + Board::CELL_HALF_EXTENT) return false;
         }
-        if (y > board.getRiverStart() && y < board.getRiverEnd() && !board.isOnBridge(x)) return false;
+        // Patch 0089: in the river band only the lane's inner deck column
+        // (the walk corridor, cells 3 and 14) opens, and never for a building.
+        // Human replays: 9,125 troop plays on the river rows, all on x 3 / 14;
+        // 0 of 2,701 pocket buildings on a river row (royalesim agrees).
+        if (y > board.getRiverStart() && y < board.getRiverEnd()) {
+            if (P0088::pocketCells()) {
+                if (building || !Board::inWalkCorridor(x)) return false;
+            } else if (!board.isOnBridge(x)) return false;
+        }
         const bool left = ArenaLayout::isLeftLane(x);
         for (const auto& entity : board.getEntities()) {
             if (entity->team != enemy || !entity->isAlive() || !entity->isTower()) continue;
@@ -552,7 +566,7 @@ public:
 
     bool isValidPlacement(int team, float x, float y, bool isSpell, float placedRadius,
                           bool deployAnywhere = false, bool isRollingSpell = false,
-                          bool ownSideOnly = false) const {
+                          bool ownSideOnly = false, bool isBuilding = false) const {
         float maxX = static_cast<float>(board.getWidth() - 1);
         float maxY = static_cast<float>(board.getHeight() - 1);
         if (x < 0.0f || x > maxX || y < 0.0f || y > maxY) return false;
@@ -573,7 +587,15 @@ public:
 
             // Deploy-anywhere cards (Miner, Goblin Drill) skip the own-half
             // rule but not the building check below.
-            if (!deployAnywhere && !onOwnHalf(team, y) && !inPocket(team, x, y)) return false;
+            // Patch 0089: the four river-bank corner cells (real rows 14 and 17,
+            // columns 0 and 17) take no card: 0 of 5.2 M human plays on the own
+            // bank row and 0 of ~23 k on the enemy bank row use them.
+            if (P0088::pocketCells() && isBankCorner(x, y)) return false;
+            // Patch 0089: a deploy-anywhere card stays off river water (the
+            // decks' inner column only), like everything else on the ground.
+            if (P0088::pocketCells() && deployAnywhere && y > board.getRiverStart() && y < board.getRiverEnd() &&
+                !Board::inWalkCorridor(x)) return false;
+            if (!deployAnywhere && !onOwnHalf(team, y) && !inPocket(team, x, y, isBuilding)) return false;
 
             // Nothing may be placed on an existing building: the gap is its
             // radius plus the new card's footprint.
@@ -648,7 +670,7 @@ public:
 
         if (!isValidPlacement(team, x, y, effectiveDef->isSpell, effectiveDef->placementRadius,
                               effectiveDef->deployAnywhere, effectiveDef->rollRange > 0.0f,
-                              effectiveDef->castOwnSideOnly)) return false;
+                              effectiveDef->castOwnSideOnly, effectiveDef->isBuilding)) return false;
 
         PlayerState::PlayCardResult result = player.playCard(handIndex, costOverride);
         if (result.cardId != -1) {

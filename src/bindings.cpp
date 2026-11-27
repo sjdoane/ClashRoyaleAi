@@ -670,6 +670,7 @@ PYBIND11_MODULE(clash_royale_env, m) {
         d["evocannon"] = P0088::evoCannon(); d["speed"] = P0088::speed(); d["stomp"] = P0088::stomp();
         d["bankrows"] = P0088::bankRows(); d["physdist"] = P0088::physDist(); d["jumpcol"] = P0088::jumpCol();
         d["speed_scale"] = P0088::speedScale();
+        d["pocketcells"] = P0088::pocketCells(); d["kingpath"] = P0088::kingPath();   // patch 0089 (exact names only)
         return d;
     }, "Patch 0088: the switches this process's engine has latched (read once from CR_P0088).");
 

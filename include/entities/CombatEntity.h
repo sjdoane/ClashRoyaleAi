@@ -1160,7 +1160,16 @@ public:
                 // Lane-aware approach: a King objective is walked to up this
                 // unit's own lane; any other target is its own position
                 // (LanePath::approachPoint).
-                if (!windowRooted) moveTowards(board, LanePath::approachPoint(board, team, position, target));
+                // Patch 0089 kingpath: a King IN SIGHT from past the river, with
+                // no standing tower on the line, is walked to straight
+                // (royalesim: the blind walk keeps the lane, a seen King is
+                // walked at).
+                if (!windowRooted) {
+                    const bool straight = P0088::kingPath() && target->isTower() && target->symbol == 'R'
+                        && dist <= effectiveSightTo(target)
+                        && LanePath::straightToKing(board, team, position, target);
+                    moveTowards(board, straight ? target->position : LanePath::approachPoint(board, team, position, target));
+                }
                 if (chargeThreshold > 0.0f) chargeProgress += beforeMove.distanceTo(position);
             }
         } else if (stunned || rampGracePeriodTicks <= 0 || ticksSinceLastHit >= rampGracePeriodTicks) {

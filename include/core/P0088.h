@@ -78,6 +78,32 @@ inline bool physDist() { static const bool b = on("physdist"); return b; }
 inline bool jumpCol() { static const bool b = on("jumpcol"); return b; }
 inline float speedScale() { return speed() ? 0.010f / 0.011045f : 1.0f; }
 
+// Patch 0089 switches, read from the same CR_P0088 list but NOT turned on by
+// "all" (so an "all" list keeps meaning the 0088 engine):
+//   pocketcells  the pocket opens only the lane's inner bridge column (cells
+//                3 / 14), no building on a bridge cell, no card on the four
+//                bank corner cells (0|17, 15|18), no deploy-anywhere card on
+//                river water off the bridge (human replays, royalesim)
+//   kingpath     a King-bound unit already past the river walks straight at
+//                the King when that line passes no standing tower, instead of
+//                the lane waypoint W1 (LanePath::approachPoint; royalesim
+//                path2026: no waypoint, the pocket Hog from the centre column
+//                hits the King ~2 s sooner)
+inline bool onExact(const char* name) {
+    const std::string& s = raw();
+    const std::string n(name);
+    size_t i = 0;
+    while (!s.empty() && i <= s.size()) {
+        size_t j = s.find(',', i);
+        if (j == std::string::npos) j = s.size();
+        if (s.substr(i, j - i) == n) return true;
+        i = j + 1;
+    }
+    return false;
+}
+inline bool pocketCells() { static const bool b = onExact("pocketcells"); return b; }
+inline bool kingPath() { static const bool b = onExact("kingpath"); return b; }
+
 // Tornado (royalesim area_effect_objects Tornado, status ATTRACT_LAW
 // base_speed): life 1050 ms, every tick a victim in the radius takes an extra
 // step of attract_percentage 360 % of its own base speed toward the centre.
