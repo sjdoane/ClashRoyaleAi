@@ -1,6 +1,7 @@
 #pragma once
 #include "CardEntity.h"
 #include "CombatEntity.h"
+#include "Troop.h"
 #include "OnHitEffect.h"
 #include "PeriodicEffect.h"
 #include "Board.h"
@@ -120,6 +121,15 @@ public:
         tierFewDamage(tierFewDamage), tierManyDamage(tierManyDamage),
         spellTowerDamageMultiplier(spellTowerDamageMultiplier), totalHits(remainingHits) {}
 
+    // Patch 0088 (CR_P0088=tornado): a pulling spell that drags for its life
+    // instead of one pull on landing (royalesim Tornado: life 1050 ms, every
+    // tick each enemy troop in the radius takes an extra step of
+    // attractFactor x its own base speed toward the centre, buildings
+    // excepted). attractTicksLeft counts the ticks of drag left, the landing
+    // tick included; 0 = the old single pull. Set by CardFactories::spawnSpell.
+    float attractFactor = 0.0f;
+    int attractTicksLeft = 0;
+
     bool isTargetable() const override { return false; }
 
     // For Board::deepCopy: a spell mid-fuse or mid-volley resumes where the
@@ -166,6 +176,11 @@ public:
             delayTicks--;
             return;
         }
+        if (landed && attractTicksLeft > 0 && remainingHits <= 0) {
+            // Patch 0088: the drag after the (last) damage application.
+            attract(board);
+            return;
+        }
         landed = true;
         if (isRolling()) {
             updateRoll(board);
@@ -188,7 +203,7 @@ public:
         for (const auto& entity : board.getEntities()) {
             bool teamMatches = alliesOnly ? (entity->team == this->team) : (entity->team != this->team);
             if (entity->isAlive() && entity->takesAreaDamage() && teamMatches && entity->id != this->id
-                && (!groundOnly || !entity->isFlying)
+                && (!groundOnly || !(entity->isFlying || entity->jumpingNow))
                 && position.distanceTo(entity->position) <= radius + CombatEntity::effectiveRadiusOf(*entity)) {
                 candidates.push_back(entity);
             }
@@ -223,7 +238,7 @@ public:
             // else scaled by spellTowerDamageMultiplier.
             int dealt = entity->isTower() ? towerDamage(effectiveDamage) : effectiveDamage;
             entity->takeDamage(dealt);
-            if (knockback != 0.0f) {
+            if (knockback != 0.0f && attractTicksLeft <= 0) {
                 if (knockback > 0.0f) {
                     pushAway(*entity, position, knockback);
                 } else {
@@ -256,12 +271,32 @@ public:
             // tickInterval ran every multi-hit spell a tick slow (Poison 1.1 s,
             // Graveyard 0.6 s; UPSTREAM_REQUESTS.md item 32i).
             delayTicks = (tickInterval > 0) ? tickInterval - 1 : 0;
+            if (attractTicksLeft > 0) attract(board);
+        } else if (attractTicksLeft > 0) {
+            attract(board);
         } else {
             hp = 0;
         }
     }
 
 private:
+    // One tick of a Tornado's drag (patch 0088). A building and a Crown Tower
+    // are not moved (exemptFromForcedMovement), nor a unit mid-jump; a unit
+    // published IgnorePushback is (royalesim moves it). pullToward never
+    // carries a unit past the centre. The spell ends with its last tick.
+    void attract(Board& board) {
+        for (const auto& entity : board.getEntities()) {
+            if (!entity->isAlive() || !entity->takesAreaDamage()) continue;
+            if (entity->team == this->team || entity->id == this->id) continue;
+            if (groundOnly && (entity->isFlying || entity->jumpingNow)) continue;
+            if (position.distanceTo(entity->position) > radius + CombatEntity::effectiveRadiusOf(*entity)) continue;
+            auto troop = std::dynamic_pointer_cast<Troop>(entity);
+            if (!troop) continue;
+            pullToward(*entity, position, attractFactor * troop->getSpeed());
+        }
+        if (--attractTicksLeft <= 0) hp = 0;
+    }
+
     int towerDamage(int troopDamage) const {
         return (crownTowerDamage >= 0) ? crownTowerDamage
                                        : static_cast<int>(troopDamage * spellTowerDamageMultiplier);
@@ -304,7 +339,7 @@ private:
         for (const auto& entity : board.getEntities()) {
             if (!entity->isAlive() || !entity->takesAreaDamage()) continue;
             if (entity->team == this->team || entity->id == this->id) continue;
-            if (groundOnly && entity->isFlying) continue;
+            if (groundOnly && (entity->isFlying || entity->jumpingNow)) continue;
             if (alreadySwept(entity->id)) continue;
 
             const float r = CombatEntity::effectiveRadiusOf(*entity);

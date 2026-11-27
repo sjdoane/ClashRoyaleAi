@@ -1,4 +1,5 @@
 #pragma once
+#include "P0088.h"
 #include <string>
 #include <functional>
 #include <unordered_map>
@@ -406,7 +407,9 @@ private:
         // every 0.5 s (280 DPS), range 4.0, air and ground, 10 s lifetime
         // (Building decay, replacing the hp-transform timer), 2 s deploy
         // (History 12/1/2026). The lifetime clock runs through the deploy.
-        return building(-45, "Trusty Turret", 0.0f, 1536, 't', 4.0f, 140, 5)
+        // Patch 0088 (CR_P0088=turret): 148 a hit, the tower-health step
+        // read 15 times in the live recordings (140 never).
+        return building(-45, "Trusty Turret", 0.0f, 1536, 't', 4.0f, P0088::turret() ? 148 : 140, 5)
             .withTargetsAir()
             .withDeployTime(20)
             .withLifetime(100);
@@ -764,7 +767,7 @@ private:
         // The body is 1.2 tiles long (published projectile_radius_y 600, each
         // way): what lands in the corridor after it has rolled by is not hit,
         // so a Log cast as a Goblin Barrel is thrown rolls past under it.
-        add(spell(33, "The Log", 2.0f, 3.9f, 269, 8, 'o')
+        add(spell(33, "The Log", 2.0f, 3.9f, 269, P0088::log() ? 5 : 8 /* patch 0088: royalesim first contact 0.2-0.3 s sooner */, 'o')
             .withGroundOnly()
             .withRollingSweep(10.1f, 3.9f, 0.34f, 0.7f)
             .withRollBodyDepth(1.2f)); // audit 0003: wiki The Log, level 11; Crown Tower damage: CrownTowerDamage.h
@@ -1345,7 +1348,7 @@ private:
                 .withSpawnEffect(2.0f, 261)
                 .withSpawnBarrage({ {-7.0f, 3.0f}, {-3.5f, 3.0f}, {0.0f, 3.0f}, {3.5f, 3.0f}, {7.0f, 3.0f},
                                     {-5.25f, 6.0f}, {-1.75f, 6.0f}, {1.75f, 6.0f}, {5.25f, 6.0f} },
-                                  1.0f, 76),
+                                  1.0f, P0088::evoCannon() ? 53 : 76 /* patch 0088: external candidate, unverified */),
             2, 1);
 
         // Firecracker: the real center and shrapnel sparks (low damage every

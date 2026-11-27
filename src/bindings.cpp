@@ -2,6 +2,7 @@
 #include <pybind11/stl.h>
 #include <optional>
 #include "ArenaLayout.h"
+#include "P0088.h"
 #include "ClashEnv.h"
 #include "SpawnOnAbility.h"
 #include "CappedSpawnOnHitEffect.h"
@@ -660,6 +661,17 @@ PYBIND11_MODULE(clash_royale_env, m) {
         "to its first application. Thrown spells fly from `team`'s King Tower, "
         "so the answer grows with the distance; every other spell returns its "
         "fixed spell_delay_ticks.");
+
+    m.def("p0088_active", []() {
+        pybind11::dict d;
+        d["raw"] = P0088::raw();
+        d["tornado"] = P0088::tornado(); d["jump"] = P0088::jump(); d["jumpspeed"] = P0088::jumpSpeed();
+        d["log"] = P0088::log(); d["turret"] = P0088::turret(); d["king"] = P0088::king();
+        d["evocannon"] = P0088::evoCannon(); d["speed"] = P0088::speed(); d["stomp"] = P0088::stomp();
+        d["bankrows"] = P0088::bankRows(); d["physdist"] = P0088::physDist(); d["jumpcol"] = P0088::jumpCol();
+        d["speed_scale"] = P0088::speedScale();
+        return d;
+    }, "Patch 0088: the switches this process's engine has latched (read once from CR_P0088).");
 
     m.def("get_card_stats", [](int cardId) {
         const CardDefinition* def = CardRegistry::getInstance().getCard(cardId);

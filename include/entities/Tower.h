@@ -1,4 +1,5 @@
 #pragma once
+#include "P0088.h"
 #include "Building.h"
 #include "Projectile.h"
 
@@ -69,7 +70,7 @@ public:
             // Trigger 1: any damage. Latched on hp < maxHp rather than hooked
             // into one of the several damage entry points; the latch only sets,
             // so a heal cannot re-sleep it.
-            if (hp < maxHp) awake = true;
+            bool trigger = hp < maxHp;
 
             // Trigger 2: a friendly Princess Tower destroyed. The count is
             // recorded on the first update rather than compared with 2, since a
@@ -79,7 +80,12 @@ public:
                 if (e->isAlive() && e->isTower() && e->team == team && e->symbol != 'R') ++living;
             }
             if (initialFriendlyPrincesses < 0) initialFriendlyPrincesses = living;
-            else if (living < initialFriendlyPrincesses) awake = true;
+            else if (living < initialFriendlyPrincesses) trigger = true;
+            // Patch 0088 (CR_P0088=king): the King wakes KING_WAKE_DELAY_TICKS
+            // after its trigger (royalesim KING_ACTIVATE_TIME_MS 3550).
+            if (trigger && !P0088::king()) awake = true;
+            else if (trigger && wakeDelayLeft < 0) wakeDelayLeft = P0088::KING_WAKE_DELAY_TICKS;
+            if (wakeDelayLeft >= 0 && wakeDelayLeft-- == 0) awake = true;
         }
         Building::update(board);
     }
@@ -105,4 +111,6 @@ private:
     bool awake = true;
     // -1 until the first update() records the starting count.
     int initialFriendlyPrincesses = -1;
+    // Patch 0088: ticks until a triggered King wakes, -1 = not triggered.
+    int wakeDelayLeft = -1;
 };

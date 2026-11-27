@@ -813,6 +813,13 @@ public:
         // hook, even with the cooldown already at 0. A slow is also "frozen"
         // here and keeps attacking, only slower.
         const bool stunned = wasFrozen && slowThisTick <= 0.0f;
+        // Patch 0088 (CR_P0088=jump): a river jumper that was in the air last
+        // tick keeps its target, does not attack and goes on moving; Troop::
+        // moveTowards sets the flag again if it is still over the water after
+        // this tick's move (crforge: no target selection, no attack while
+        // JUMPING). Never set with the switch off.
+        const bool jumpLock = jumpingNow && !stunned;
+        jumpingNow = false;
         // Published for Troop::moveTowards, which runs after the decrement.
         frozenThisTick = wasFrozen;
         freezeSlowThisTick = slowThisTick;
@@ -960,6 +967,7 @@ public:
                 if (e->id == forcedTargetEntityId && e->isAlive() && e->isTargetable()) { target = e; break; }
             }
         }
+        if (!target && jumpLock) target = resolveCurrentTarget(board);
         if (!target) {
             target = stunned ? nullptr : resolveCurrentTarget(board);
             if (target && position.distanceTo(target->position) > effectiveRangeTo(target)) {
@@ -1007,7 +1015,7 @@ public:
             float dist = position.distanceTo(target->position);
             float effectiveAttackRange = effectiveRangeTo(target);
 
-            if (dist <= effectiveAttackRange) {
+            if (dist <= effectiveAttackRange && !jumpLock) {
                 // First hit: a new engagement winds up for loadTicks first,
                 // so the first hit lands loadTicks after coming into range
                 // and later hits follow every attackCooldown. A slow slows
@@ -1130,7 +1138,7 @@ public:
                     }
                     if (dieAfterFirstHit) hp = 0;
                 }
-            } else if (!stunned && jumpMaxRange > 0.0f && dist >= jumpMinRange && dist <= jumpMaxRange && currentCooldown == 0.0f) {
+            } else if (!stunned && !jumpLock && jumpMaxRange > 0.0f && dist >= jumpMinRange && dist <= jumpMaxRange && currentCooldown == 0.0f) {
                 // Jump (Mega Knight): close to just inside attack range and
                 // land a boosted, splashing hit at once.
                 ticksSinceAttack = 0;
@@ -1141,7 +1149,7 @@ public:
                     { id, team, cardId, target->id, target->cardId, target->team, jumpDamage, board.currentTick, target->isTower() });
                 applySplashDamage(board, target->position, jumpSplashRadius, target->id, id, team, cardId, jumpDamage);
                 currentCooldown = static_cast<float>(attackCooldown);
-            } else if (!stunned && hookRange > 0.0f && dist <= hookRange && currentCooldown == 0.0f) {
+            } else if (!stunned && !jumpLock && hookRange > 0.0f && dist <= hookRange && currentCooldown == 0.0f) {
                 // Hook: pull the target to just inside melee range; the damage
                 // lands on a later hit. A no-op on a building.
                 pullToward(*target, position, dist - effectiveAttackRange + 0.1f);
@@ -1456,7 +1464,7 @@ inline void applySplashDamage(Board& board, const Vector2D& origin, float radius
     for (const auto& entity : board.getEntities()) {
         if (entity->id == excludeId) continue; // already hit as the primary target
         if (entity->team == attackerTeam || !entity->isAlive() || !entity->takesAreaDamage()) continue;
-        if (!hitsAir && entity->isFlying) continue;
+        if (!hitsAir && (entity->isFlying || entity->jumpingNow)) continue; // jumpingNow: patch 0088
         if (origin.distanceTo(entity->position) > radius) continue;
         entity->takeDamage(dealt);
         board.statsEvents.notifyDamageDealt(

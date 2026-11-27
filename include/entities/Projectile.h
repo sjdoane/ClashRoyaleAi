@@ -120,6 +120,8 @@ public:
             } else {
                 float dx = t->position.x - position.x;
                 float dy = t->position.y - position.y;
+                // dist is in real tiles under CR_P0088=physdist: the engine
+                // step is scaled so the shot covers `speed` real tiles.
                 position.x += (dx / dist) * speed;
                 position.y += (dy / dist) * speed;
             }

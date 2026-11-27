@@ -5,6 +5,7 @@
 #include <cmath>
 #include <unordered_map>
 #include "ArenaLayout.h"
+#include "P0088.h"
 #include "CardLevels.h"
 #include "Entity.h"
 #include "StatsEventBus.h"
@@ -365,6 +366,9 @@ public:
 
                 // Only entities in the same plane collide; fliers pass through
                 // everything.
+                // A river jumper mid-jump touches nothing (patch 0088,
+                // crforge ContactRule; never set with the switch off).
+                if (e1->jumpingNow || e2->jumpingNow) continue;
                 if (isTroop1 && isTroop2 && b1.flying == b2.flying) {
                     float dx = e1->position.x - e2->position.x;
                     float dy = e1->position.y - e2->position.y;
@@ -517,8 +521,8 @@ public:
 
         // The nearer corridor, by its centre (patch 0087: the lane column,
         // until then the deck's seam half a tile further out).
-        float distToLeft = currentPos.distanceTo(Vector2D{ LEFT_WALK_X, leftBridge.y });
-        float distToRight = currentPos.distanceTo(Vector2D{ RIGHT_WALK_X, rightBridge.y });
+        float distToLeft = currentPos.engineDistanceTo(Vector2D{ LEFT_WALK_X, leftBridge.y });
+        float distToRight = currentPos.engineDistanceTo(Vector2D{ RIGHT_WALK_X, rightBridge.y });
         float bridgeX = (distToLeft < distToRight) ? LEFT_WALK_X : RIGHT_WALK_X;
 
         if (isCurrentBelow || isCurrentAbove) {
@@ -529,7 +533,7 @@ public:
             const float farY = isCurrentBelow ? riverY_end : riverY_start;
             Vector2D nearBank{ crossingX(currentPos, targetPos, nearY, bridgeX), nearY };
             const Vector2D farBank{ crossingX(currentPos, targetPos, farY, bridgeX), farY };
-            if (currentPos.distanceTo(nearBank) <= WAYPOINT_ARRIVAL_EPS) {
+            if (currentPos.engineDistanceTo(nearBank) <= WAYPOINT_ARRIVAL_EPS) {
                 return farBank;
             }
             // Pushed along the bank onto the deck's outer tile (patch 0087):
@@ -554,7 +558,7 @@ public:
         if (isTargetAbove || isTargetBelow) {
             const float exitY = isTargetAbove ? riverY_end : riverY_start;
             Vector2D exitBank{ crossingX(currentPos, targetPos, exitY, bridgeX), exitY };
-            if (currentPos.distanceTo(exitBank) <= WAYPOINT_ARRIVAL_EPS) {
+            if (currentPos.engineDistanceTo(exitBank) <= WAYPOINT_ARRIVAL_EPS) {
                 return targetPos;
             }
             return exitBank;
@@ -624,7 +628,10 @@ public:
     static constexpr float JUMP_ZONE = 1.0f;
     static constexpr float JUMP_DIAGONAL_SPEED = 1.41421356f;
     static constexpr float BRIDGE_WALK_REACH = 1.0f;
-    JumperStep getJumperWaypoint(const Vector2D& currentPos, const Vector2D& targetPos) const {
+    // colLatch (jumpcol only): the unit's own record of the step-onto-the-column
+    // decision, -1 undecided, 0 no, 1 yes; null = decide on the spot.
+    JumperStep getJumperWaypoint(const Vector2D& currentPos, const Vector2D& targetPos,
+                                 int* colLatch = nullptr) const {
         const bool up = targetPos.y > currentPos.y;
         const float nearY = up ? riverY_start : riverY_end;
         const float farY = up ? riverY_end : riverY_start;
@@ -636,20 +643,42 @@ public:
         const float toWater = (nearY - currentPos.y) * dir;      // > 0 while short of the water
         const float off = std::abs(targetPos.x - currentPos.x);
         const bool outerSide = (currentPos.x - targetPos.x) * (targetPos.x - ArenaLayout::CENTER_X) > 0.0f;
-        if (outerSide && toWater > WAYPOINT_ARRIVAL_EPS && off > WAYPOINT_ARRIVAL_EPS
-            && off <= BRIDGE_WALK_REACH + 1e-3f) {
+        const float gx = std::max(targetPos.x - WALK_HALF_WIDTH,
+                                  std::min(currentPos.x, targetPos.x + WALK_HALF_WIDTH));
+        const float lateral = std::abs(gx - currentPos.x);
+        // Patch 0088 (CR_P0088=jumpcol): the step onto the column replaces the
+        // diagonal jump only, i.e. only where the jump would otherwise start
+        // (toWater <= lateral: it cannot walk into the corridor before the
+        // water). The recorded basis is Hogs placed ON the bank tile beside
+        // the bridge (2,15) / (15,15) / (3,15). A Hog that walks from further
+        // back walks into the corridor and crosses on its edge; recorded
+        // enemy Hogs from behind the bridge never cross on the column
+        // (runs/hoggap_1125/colB). Off: any Hog within a tile outside the
+        // column short of the water heads for the column (patch 0087).
+        // Decided once, the first time the unit is beside its crossing: the step
+        // itself changes the geometry (it heads for the column, not the
+        // corridor edge), so the test is not re-run along the way.
+        const bool beside = outerSide && toWater > WAYPOINT_ARRIVAL_EPS && off > WAYPOINT_ARRIVAL_EPS
+            && off <= BRIDGE_WALK_REACH + 1e-3f;
+        bool jumpWouldStart = true;
+        if (P0088::jumpCol() && beside) {
+            if (colLatch == nullptr) {
+                jumpWouldStart = toWater <= lateral * 1.001f;
+            } else {
+                if (*colLatch < 0) *colLatch = (toWater <= lateral * 1.001f) ? 1 : 0;
+                jumpWouldStart = *colLatch == 1;
+            }
+        }
+        if (beside && jumpWouldStart) {
             // Beside its crossing: onto the column at the bank, no jump.
             return { Vector2D{ targetPos.x, nearY }, 1.0f };
         }
 
-        const float gx = std::max(targetPos.x - WALK_HALF_WIDTH,
-                                  std::min(currentPos.x, targetPos.x + WALK_HALF_WIDTH));
-        const float lateral = std::abs(gx - currentPos.x);
         if (lateral <= WAYPOINT_ARRIVAL_EPS) {
             // In its column: straight across. Never a point it already stands
             // on (Troop::moveTowards would not move).
             const Vector2D across{ currentPos.x, farY };
-            if (currentPos.distanceTo(across) <= WAYPOINT_ARRIVAL_EPS) return { targetPos, 1.0f };
+            if (currentPos.engineDistanceTo(across) <= WAYPOINT_ARRIVAL_EPS) return { targetPos, 1.0f };
             return { across, 1.0f };
         }
         if (toWater >= lateral) return { Vector2D{ gx, nearY }, 1.0f };

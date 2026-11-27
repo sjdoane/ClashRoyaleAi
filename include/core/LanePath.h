@@ -60,7 +60,7 @@ inline Vector2D approachPoint(const Board& board, int myTeam, const Vector2D& fr
     const bool advancingUp = (enemyTeam == 1);
     const bool reachedRow = advancingUp ? (from.y >= w1.y) : (from.y <= w1.y);
     if (reachedRow) return target->position;
-    if (from.distanceTo(w1) <= Board::WAYPOINT_ARRIVAL_EPS) return target->position;
+    if (from.engineDistanceTo(w1) <= Board::WAYPOINT_ARRIVAL_EPS) return target->position;
     return w1;
 }
 

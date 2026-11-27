@@ -1,5 +1,8 @@
 #pragma once
 #include "CombatEntity.h"
+#include "P0088.h"
+#include "ArenaLayout.h"
+#include <cmath>
 
 class Troop : public CombatEntity {
 protected:
@@ -7,6 +10,13 @@ protected:
 
 public:
     bool riverIgnores = false;
+    // Patch 0088 (CR_P0088=stomp): the walk-pause clock, set by applyCardMetadata.
+    int stompStopMs = 0, stompWaitMs = 0, stompClockMs = 0;
+    // Patch 0088 (jumpcol): Board::getJumperWaypoint's step-onto-the-column
+    // decision for the current target column (-1 undecided).
+    int jumpColLatch = -1;
+    float jumpColTargetX = -1000.0f;
+    float stompWalkScale = 1.0f;   // floor(S (stop+wait)/stop) / S
 
     // Base speed for the observation encoder. Not freeze-adjusted: the
     // observation describes the unit, and a freeze shows up as it not moving.
@@ -38,6 +48,20 @@ protected:
         // "river jumpers from every start cross the river"). A walker and a
         // flying unit take one leg, exactly as before.
         const bool jumper = riverIgnores && !isFlying;
+        // Patch 0088 (CR_P0088=stomp): share of this tick spent walking, two
+        // royalesim 50 ms ticks of its stomp clock. The clock does not run
+        // while the unit is held by a full stop.
+        float stompFactor = 1.0f;
+        if (P0088::stomp() && stompStopMs > 0 && !(frozenThisTick && freezeSlowThisTick <= 0.0f)) {
+            int walked = 0;
+            for (int sub = 0; sub < 2; ++sub) {
+                stompClockMs += 50;
+                if (stompClockMs <= stompStopMs) { ++walked; continue; }
+                const int rem = stompClockMs - (stompStopMs + stompWaitMs);
+                if (rem >= 0) { stompClockMs = rem; ++walked; }
+            }
+            stompFactor = stompWalkScale * walked / 2.0f;
+        }
         const int maxLegs = jumper ? 3 : 1;
         Vector2D at = position;
         float budget = 1.0f;          // share of this tick's movement left
@@ -48,13 +72,16 @@ protected:
             if (!riverIgnores) {
                 waypoint = board.getNextWaypoint(at, dest);
             } else if (!isFlying) {
-                const Board::JumperStep js = board.getJumperWaypoint(at, dest);
+                if (P0088::jumpCol() && std::abs(dest.x - jumpColTargetX) > 1e-3f) {
+                    jumpColTargetX = dest.x; jumpColLatch = -1;   // new target column: decide again
+                }
+                const Board::JumperStep js = board.getJumperWaypoint(at, dest, P0088::jumpCol() ? &jumpColLatch : nullptr);
                 waypoint = js.waypoint;
                 jumpScale = js.speedScale;
             }
             const float dx = waypoint.x - at.x;
             const float dy = waypoint.y - at.y;
-            const float distToWaypoint = at.distanceTo(waypoint);
+            const float distToWaypoint = at.engineDistanceTo(waypoint);
 
             // Must be the same constant getNextWaypoint uses for arrival; two
             // different epsilons produce an absorbing state at the bridge mouths
@@ -73,6 +100,16 @@ protected:
             if (inAbilityWindow()) currentSpeed *= windowMoveMultiplier;
             // The diagonal leg of a river jump (patch 0087).
             currentSpeed *= jumpScale;
+            // Patch 0088 (CR_P0088=jumpspeed): over the water a jumper moves
+            // at its JumpSpeed (Hog 160 / Speed 120), on top of the diagonal.
+            if (jumper && P0088::jumpSpeed() && overWater(board, at, dest)) {
+                currentSpeed *= P0088::JUMP_SPEED_RATIO;
+            }
+            currentSpeed *= stompFactor;
+            // Patch 0088 (CR_P0088=bankrows): speed is in REAL tiles on the
+            // squeezed rows: an engine step (ux, uy) costs sqrt(ux^2 + (k uy)^2)
+            // real tiles, k = d realRow / dy (0.5 on y 13-15 and 18-20).
+            if (P0088::bankRows() && distToWaypoint > 0.0f) currentSpeed *= bankRowFactor(at.y, dx / distToWaypoint, dy / distToWaypoint);
             // Land on the waypoint, never past it: an overshoot along a bank
             // line keeps the unit "below" the river, so it is handed the same
             // bridge mouth back and orbits it forever (UPSTREAM_REQUESTS.md
@@ -85,6 +122,26 @@ protected:
         }
         // Flying troops pass over building footprints.
         if (moved) position = isFlying ? at : board.resolvePositionAgainstBuildings(at, id, bodyRadius);
+        // Patch 0088 (CR_P0088=jump): in the air while over the water on its
+        // way across (crforge RouteFollower JUMPING: from the last land node
+        // to the first one beyond). CombatEntity::update clears it each tick
+        // before it moves, so a unit that stops is no longer jumping.
+        if (P0088::jump() && jumper && moved && overWater(board, position, dest)) jumpingNow = true;
+    }
+
+    static float bankRowFactor(float y, float ux, float uy) {
+        const float k = ((y >= 13.0f && y < 15.0f) || (y >= 18.0f && y < 20.0f)) ? 0.5f : 1.0f;
+        if (k == 1.0f) return 1.0f;
+        const float c = std::sqrt(ux * ux + k * k * uy * uy);
+        return c > 1e-6f ? 1.0f / c : 1.0f;
+    }
+
+    // Over the river (bank to bank) and heading across it to dest.
+    static bool overWater(const Board& board, const Vector2D& p, const Vector2D& dest) {
+        constexpr float e = 1e-3f;
+        if (dest.y > p.y) return p.y >= board.getRiverStart() - e && p.y < board.getRiverEnd() - e && dest.y >= board.getRiverEnd();
+        if (dest.y < p.y) return p.y <= board.getRiverEnd() + e && p.y > board.getRiverStart() + e && dest.y <= board.getRiverStart();
+        return false;
     }
 
     void clampPosition(Board& board) override {

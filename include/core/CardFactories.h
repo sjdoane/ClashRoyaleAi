@@ -1,5 +1,6 @@
 #pragma once
 #include "CardStats.h"
+#include "P0088.h"
 #include "LoadTimes.h"
 #include "SightClips.h"
 #include "ProjectileSpeeds.h"
@@ -31,6 +32,15 @@ inline void applyOnHit(const std::shared_ptr<CombatEntity>& entity, const CardSt
 inline void applyCardMetadata(const std::shared_ptr<CombatEntity>& entity, const CardStats& stats) {
     entity->name = stats.name;
     entity->cardId = stats.id;
+    if (P0088::stomp()) {
+        if (auto* t = dynamic_cast<Troop*>(entity.get())) {
+            const P0088::Stomp st = P0088::stompFor(stats.name);
+            if (st.stopMs > 0) {
+                t->stompStopMs = st.stopMs; t->stompWaitMs = st.waitMs; t->stompClockMs = 0;
+                t->stompWalkScale = float((st.speed * (st.stopMs + st.waitMs)) / st.stopMs) / float(st.speed);
+            }
+        }
+    }
     // Deploy time (CardStats.h: DEPLOY_TIME_TICKS unless the card publishes
     // its own). Set here because every troop and building passes through;
     // spells and deploy effects do not, since a spell has its own delay.
@@ -221,7 +231,7 @@ inline void spawnMeleeSquad(const CardStats& stats, float x, float y, int team, 
         const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<MeleeTroop>(
             board.allocateId(), slot.x, slot.y, stats.hp, team,
-            stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
+            stats.speed * P0088::speedScale(), stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);
         board.addEntity(troop);
@@ -234,7 +244,7 @@ inline void spawnRangedSquad(const CardStats& stats, float x, float y, int team,
         const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<RangedTroop>(
             board.allocateId(), slot.x, slot.y, stats.hp, team,
-            stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
+            stats.speed * P0088::speedScale(), stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         troop->boomerang = stats.boomerang;
         troop->boomerangReturnDelayTicks = stats.boomerangReturnDelayTicks;
@@ -250,7 +260,7 @@ inline void spawnMeleeBuildingTargeter(const CardStats& stats, float x, float y,
         const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<BuildingTargeter>(
             board.allocateId(), slot.x, slot.y, stats.hp, team,
-            stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
+            stats.speed * P0088::speedScale(), stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);
         board.addEntity(troop);
@@ -263,7 +273,7 @@ inline void spawnRangedBuildingTargeter(const CardStats& stats, float x, float y
         const Vector2D slot = formationSlot(x, y, offset, team);
         auto troop = std::make_shared<RangedBuildingTargeter>(
             board.allocateId(), slot.x, slot.y, stats.hp, team,
-            stats.speed, stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
+            stats.speed * P0088::speedScale(), stats.attackRange, stats.damage, stats.attackCooldown, stats.symbol);
         if (shouldIgnoreRiver(stats)) troop->setIgnoresRiver(true);
         applyCardMetadata(troop, stats);
         board.addEntity(troop);
@@ -331,6 +341,11 @@ inline void spawnSpell(const CardStats& stats, float x, float y, int team, Board
     spell->crownTowerDamage = stats.spellCrownTowerDamage;
     spell->spawnRingRadius = stats.spellSpawnRingRadius;
     spell->thrown = stats.spellProjectileSpeed > 0;
+    // Patch 0088 (CR_P0088=tornado): the Tornado drags for its life.
+    if (P0088::tornado() && stats.name == "Tornado") {
+        spell->attractFactor = P0088::TORNADO_ATTRACT;
+        spell->attractTicksLeft = P0088::TORNADO_LIFE_TICKS;
+    }
     // Rolling spells (The Log, Barbarian Barrel) are configured after
     // construction: configureRoll latches the roll origin from the spawn
     // position, so it must run before the first update.

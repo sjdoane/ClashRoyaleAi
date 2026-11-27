@@ -5,11 +5,27 @@
 #include <string>
 #include <typeinfo>
 #include <unordered_map>
+#include "P0088.h"
+#include "ArenaLayout.h"
 
 struct Vector2D {
     float x, y;
 
+    // The distance the game's rules use. Patch 0088 (CR_P0088=physdist): in
+    // real 32-row tiles (ArenaLayout::realRow), so the engine's two extra bank
+    // rows do not stretch ranges, sight or the nearest-target comparison.
     float distanceTo(const Vector2D& other) const {
+        if (P0088::physDist()) {
+            const float dx = other.x - x;
+            const float dy = ArenaLayout::realRow(other.y) - ArenaLayout::realRow(y);
+            return std::sqrt(dx * dx + dy * dy);
+        }
+        return engineDistanceTo(other);
+    }
+
+    // Straight-line distance in engine tiles: for movement legs, waypoint
+    // arrival and pushes, which step through engine coordinates.
+    float engineDistanceTo(const Vector2D& other) const {
         return std::sqrt((other.x - x) * (other.x - x) + (other.y - y) * (other.y - y));
     }
 };
@@ -55,6 +71,10 @@ public:
     // A plain field, not a virtual: findTarget and resolveCollisions read it in
     // tight loops.
     bool isFlying = false;
+    // Patch 0088 (CR_P0088=jump): a river jumper in the air over the water,
+    // set by Troop::moveTowards each tick it moves. Always false with the
+    // switch off.
+    bool jumpingNow = false;
 
     // Set by Board::commitPendingEntities once this entity carries its team's
     // level (CardLevels.h). Copied with the entity, so a snapshot or a Clone
@@ -181,7 +201,10 @@ public:
 // The two pushes (pushAway, pushAlong) also tell the entity it was knocked back
 // (Entity::onKnockedBack); the pulls and the lane mirror do not.
 inline bool exemptFromForcedMovement(const Entity& entity) {
-    return entity.isBuilding();
+    // A unit mid-jump is not pushed or pulled (patch 0088, crforge BuffPush /
+    // royalesim jump_ignores_pushback); jumpingNow is only ever set with the
+    // switch on.
+    return entity.isBuilding() || entity.jumpingNow;
 }
 
 // Moves `entity` up to `distance` tiles toward `point`, never past it. A
@@ -191,7 +214,7 @@ inline bool exemptFromForcedMovement(const Entity& entity) {
 inline void pullToward(Entity& entity, const Vector2D& point, float distance) {
     if (exemptFromForcedMovement(entity)) return;
     if (distance <= 0.0f) return; // nothing to close
-    float dist = entity.position.distanceTo(point);
+    float dist = entity.position.engineDistanceTo(point);
     if (dist <= 0.01f) return; // coincident: no direction
     float moveBy = (distance < dist) ? distance : dist;
     entity.position.x += (point.x - entity.position.x) / dist * moveBy;
@@ -213,7 +236,7 @@ inline void pushAway(Entity& entity, const Vector2D& point, float distance) {
     if (exemptFromForcedMovement(entity)) return;
     if (entity.ignoresPushback()) return;
     if (distance <= 0.0f) return; // see pullToward
-    float dist = entity.position.distanceTo(point);
+    float dist = entity.position.engineDistanceTo(point);
     if (dist <= 0.01f) return; // coincident: no direction
     entity.position.x += (entity.position.x - point.x) / dist * distance;
     entity.position.y += (entity.position.y - point.y) / dist * distance;
